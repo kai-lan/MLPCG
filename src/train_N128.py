@@ -10,36 +10,31 @@ import scipy.sparse as sparse
 import time
 #import matplotlib.pyplot as plt
 
-
-
-#project_name = "MLCG_3D_N64"
-project_name = "MLCG_3D_newA_N128"
+project_name = "3D_N128"
 project_folder_subname = os.path.basename(os.getcwd())
 print("project_folder_subname = ", project_folder_subname)
-project_folder_general = "/home/oak/projects/ML_preconditioner_project/"+project_name+"/"
-project_data_folder = "/home/oak/projects/ML_preconditioner_project/data/"+project_name+"/"
-#project_data_folder2 = "/data/oak/ML_preconditioner_project/data/"+project_name+"/"
-project_data_folder3 = "/data/oak/ML_preconditioner_project/data_newA/"+project_name+"/"
+project_folder_general = "../dataset/train/forTraining/3D_N128" 
 
-sys.path.insert(1, project_folder_general+'../lib/')
+sys.path.insert(1, '../lib/')
 import conjugate_gradient as cg
 import pressure_laplacian as pl
 import helper_functions as hf
 
 dim = 128
 dim2 = dim**3
+
 #%%
-epoch_num = int(sys.argv[1]) #1000
-epoch_each_iter = int(sys.argv[2]) #1 
+epoch_num = int(sys.argv[1]) 
+epoch_each_iter = int(sys.argv[2]) 
 b_size = int(sys.argv[3]) #10
-loading_number = int(sys.argv[4]) #200
-gpu_usage = int(1024*np.double(sys.argv[5])) # 12
-which_gpu = sys.argv[6]  #0
-#lr = np.double(sys.argv[5])
+loading_number = int(sys.argv[4])
+gpu_usage = int(1024*np.double(sys.argv[5])) 
+which_gpu = sys.argv[6]  
+
 lr = 1.0e-4
 os.environ["CUDA_VISIBLE_DEVICES"]=which_gpu
 
-"""
+"""Here you can use GPU memory option
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
   try:
@@ -62,17 +57,7 @@ if gpus:
 #%% Creating ConjugateGradientSparse Object
 print("Creating ConjugateGradientSparse Object")
 
-#pres_lap_sparse = pl.pressure_laplacian_sparse(dim-1)
-#pres_lap = pl.pressure_laplacian(dim-1)
-#name_sparse_matrix = project_folder_general+"data/A_Sparse_3D_N"+str(dim-1)+".npz"
-#sparse.save_npz(name_sparse_matrix, pres_lap_sparse.A_sparse)
-#A_sparse_scipy = sparse.load_npz(name_sparse_matrix)
-#%%%
-#name_sparse_matrix = project_folder_general+"data/A_Sparse_3D_N"+str(dim-1)+".npz"
-name_sparse_matrix = project_folder_general + "data/output3d128_new_tgsl_rotating_fluid/matrixA_"+str(1)+".bin"   
-#sparse.save_npz(name_sparse_matrix, pres_lap_sparse.A_sparse)
-#pres_lap = pl.pressure_laplacian_3D_sparse(dim-1)
-#A_sparse = sparse.load_npz(name_sparse_matrix)
+name_sparse_matrix = project_folder_general+"/matrixA.bin"                                                                                                                                             
 A_sparse_scipy = hf.readA_sparse(dim, name_sparse_matrix,'f')
 
 CG = cg.ConjugateGradientSparse(A_sparse_scipy)
@@ -82,26 +67,7 @@ coo = A_sparse_scipy.tocoo()
 indices = np.mat([coo.row, coo.col]).transpose()
 A_sparse = tf.SparseTensor(indices, np.float32(coo.data), coo.shape)
 
-#%%
-rand_vec_x = np.random.normal(0,1, [dim2])
-b_rand = CG.multiply_A_sparse(rand_vec_x)
-b = b_rand.copy()
 
-data_folder_name = project_folder_general+"data/output3d128_smoke_sigma/"
-b_smoke = hf.get_frame_from_source(10, data_folder_name)
-
-data_folder_name = project_folder_general+"data/output3d128_new_tgsl_rotating_fluid/"
-n=10
-b_rotate = hf.get_frame_from_source(n, data_folder_name)
-
-#x_orig = np.random.rand(dim2)
-#b_rand = A_sparse_scipy.dot(x_orig)
-with open(project_folder_general+"data/b_rand.npy", 'wb') as f:
-    np.save(f,b_rand)
-
-#with open(data_folder_name+"b_rand.npy", 'rb') as f:
-#    b_rand = np.load(f)
-print("sum(b) = ",sum(b_rand))
 
 #%%    
 def custom_loss_function_cnn_1d_fast(y_true,y_pred):
@@ -154,6 +120,17 @@ model.compile(optimizer="Adam", loss=custom_loss_function_cnn_1d_fast) #MeanSqua
 model.optimizer.lr = lr;
 model.summary()
 
+
+
+rand_vec_x = np.random.normal(0,1, [dim2])
+b_rand = CG.multiply_A_sparse(rand_vec_x)
+b = b_rand.copy()
+
+data_folder_name = project_folder_general+"data/output3d128_smoke_sigma/"
+b_smoke = hf.get_frame_from_source(10, data_folder_name)
+
+data_folder_name = project_folder_general+"data/output3d128_smoke_sigma/"
+b_rotate = hf.get_frame_from_source(10, data_folder_name)
 #%%
 training_loss_name = project_folder_general+project_folder_subname+"/"+project_name+"_training_loss.npy"
 validation_loss_name = project_folder_general+project_folder_subname+"/"+project_name+"_validation_loss.npy"
@@ -161,25 +138,13 @@ training_loss = []
 validation_loss = []
 
 
-#d_name = "b_rhs_eigvector_first_half_10_last_half_90_new_random_N"
-#d_name = "b_rhs_20000_eigvector_first_half_10_last_half_90_random_N"
-#d_name = "b_rhs_20000_10000_ritz_vectors_first_half_10_last_half_90_random_N63"
 d_name = "b_rhs_20000_10000_ritz_vectors_newA_90_10_random_N128"
-#d_name = "b_rhs_20000_10000_A_cos_vectors_V2_for_3D_random_N63"
-#d_name = "b_rhs_20000_10000_faulty_ritz_vectors_V2_for_3D_random_N63"
-
-#d_name = "b_rhs_20000_10000_ritz_vectors_combined_3_N63"
-print(d_name)
-
 
 #%%
 total_data_points = 20000
-#loading_number = 100
 for_loading_number = round(total_data_points/loading_number)
 b_rhs = np.zeros([loading_number,dim2])
-foldername = project_data_folder3+d_name+'/'
-with open(foldername+str(10)+'.npy', 'rb') as f:  
-    b_dataset_test = np.load(f)
+
 for i in range(1,epoch_num):    
     print("Training at i = " + str(i))
     
@@ -200,7 +165,6 @@ for i in range(1,epoch_num):
         sub_train_size = round(0.9*loading_number)
         sub_test_size = loading_number - sub_train_size
         iiln = ii*loading_number
-        #x_train = tf.convert_to_tensor(b_rhs[0:sub_train_size].reshape([sub_train_size,dim,dim,dim,1]),dtype=tf.float32) 
         x_train = tf.convert_to_tensor(b_rhs[0:loading_number].reshape([loading_number,dim,dim,dim,1]),dtype=tf.float32) 
         x_test = tf.convert_to_tensor(b_rhs[sub_train_size:loading_number].reshape([sub_test_size,dim,dim,dim,1]),dtype=tf.float32)         
          
@@ -252,7 +216,7 @@ for i in range(1,epoch_num):
     tol=1.0e-12
     print("Rotating Fluid Test")
     x_sol, res_arr_ml_generated_cg = CG.cg_on_ML_generated_subspace(b_rotate, np.zeros(b_rotate.shape), model_predict, max_it,tol, True)
-    print("Smoke Plume est")
+    print("Smoke Plume Test")
     x_sol, res_arr_ml_generated_cg = CG.cg_on_ML_generated_subspace(b_smoke, np.zeros(b_smoke.shape), model_predict, max_it,tol, True)
     print("RandomRHSTest")
     x_sol, res_arr_ml_generated_cg = CG.cg_on_ML_generated_subspace(b_rand, np.zeros(b_rand.shape), model_predict, max_it,tol, True)

@@ -14,7 +14,6 @@ project_name = "3D_N64"
 project_folder_subname = os.path.basename(os.getcwd())
 print("project_folder_subname = ", project_folder_subname)
 project_folder_general = "../dataset/train/forTraining/3D_N64"
-project_data_folder = "/home/oak/projects/ML_preconditioner_project/data/"+project_name+"/"
 
 sys.path.insert(1, '../lib/')
 import conjugate_gradient as cg
@@ -108,6 +107,10 @@ b_rand = CG.multiply_A_sparse(rand_vec_x)
 data_folder_name = project_folder_general+"data/output3d64_smoke/"
 b_smoke = hf.get_frame_from_source(10, data_folder_name)
 
+data_folder_name = project_folder_general+"data/output3d128_smoke_sigma/"
+b_rotate = hf.get_frame_from_source(10, data_folder_name)
+
+
 #%%
 training_loss_name = project_folder_general+project_folder_subname+"/"+project_name+"_training_loss.npy"
 validation_loss_name = project_folder_general+project_folder_subname+"/"+project_name+"_validation_loss.npy"
@@ -178,7 +181,9 @@ for i in range(1,epoch_num):
     model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,dim,dim,dim]),dtype=tf.float32),training=False).numpy()[0,:,:].reshape([dim2]) #first_residual
     max_it=30
     tol=1.0e-12
-    
+
+    print("Rotating Fluid Test")
+    x_sol, res_arr_ml_generated_cg = CG.cg_on_ML_generated_subspace(b_rotate, np.zeros(b_rotate.shape), model_predict, max_it,tol, True)    
     print("Smoke Plume Test")
     x_sol, res_arr_ml_generated_cg = CG.cg_on_ML_generated_subspace(b_smoke, np.zeros(b.shape), model_predict, max_it,tol, True)
     print("RandomRHSi Test")
