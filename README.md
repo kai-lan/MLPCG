@@ -4,7 +4,7 @@
 This repository is based on the paper,[Our paper].
 We accelate of fluid simulations by embedding a neural network in an existing solver for pressure, replacing an expensive pressure projection linked to a Poisson equation on the pressure, which is usually solved with iterative methods (CG or Jacobi methods). 
 We implemented our code with TensorFLow(keras) for training parts.
-#C++/CUDA implementation of the inviscid, incompressible fluid solver (based on the open-source fluid simulator [Mantaflow](http://mantaflow.com/), aimed at the Computer Graphics community).
+We also have C++/CUDA implementation version.
 
 
 ## Requirements
