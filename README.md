@@ -32,7 +32,8 @@ The test data is under ```/test``` folder.The place of the folder is shown as be
 
 ```
 .
-└── HomeDir(dataDir)
+└── HomeDir(cloned Dir)
+    ├── src
     └── dataset
         ├── test
         └── train
