@@ -23,6 +23,13 @@ We placed dataset here [place of the folder].Here, we generated this dataset by 
 ### Training model
 We placed already trained model here ```/trainedmodel```. Here, we also placed the training code.
 
+```
+cd ThisDir/src
+python train_N64.py [epoch number] [epoch number for saved model] [batch size] [loading data size for once] [gpu usage memory 1024*int] [GPU id]
+```
+
+
+
 ## Running test
 The test data is under ```/test``` folder.The place of the folder is shown as below.
 * RHS_.bin --> rhs
