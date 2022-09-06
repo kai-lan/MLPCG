@@ -1,5 +1,5 @@
 
-project_name = "3D_256"#should change correct name
+project_name = "3D_256" #should change correct name
 subproject_name = "SmokePlume"
 
 trainedmodel_folder_name = "../dataset/train/trainedmodel"
@@ -16,7 +16,8 @@ import scipy.sparse as sparse
 from numpy.linalg import norm
 import time
 
-sys.path.insert(1, '../lib/')
+dir_path = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(1, dir_path+'/../lib/')
 
 import conjugate_gradient as cg
 import pressure_laplacian as pl
