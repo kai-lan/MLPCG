@@ -77,4 +77,3 @@ print("MLPCG ::::::::::: ", time_cg_ml," secs.")
 
 p_out = "/results/"+project+"/frame_"+str(frame)
 np.save(p_out, x_sol)
-
