@@ -75,11 +75,11 @@ def get_frame_from_source(n,data_folder_name,normalize = True, d_type='double'):
     file_rhs = data_folder_name + "div_v_star_"+str(n)+".bin"
     if(os.path.exists(file_rhs)):
         r0 = np.fromfile(file_rhs, dtype=d_type)
-        print(r0[0])
-        r1 = np.delete(r0, [0])
+        #print(r0[0])
+        r0 = np.delete(r0, [0])
         if normalize:
-            return r1/np.linalg.norm(r1)
-        return r1            
+            return r0/np.linalg.norm(r0)
+        return r0            
     else:
         print("No file for n = "+str(n)+" in data folder "+data_folder_name)
 
