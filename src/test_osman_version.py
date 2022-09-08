@@ -30,8 +30,8 @@ N = 128 # parser 1
 # k = 64 uses model trained model
 k = 64 # parser 2
 float_type = "F16" #parser 3 (optional)
-trained_model_name = dir_path+"/../dataset/trained_models/model_N"+str(N)+"_from"+str(k)+"_"+float_type+"/"
-
+dataset_path = dir_path + "/../dataset"
+trained_model_name = dataset_path+"/trained_models/model_N"+str(N)+"_from"+str(k)+"_"+float_type+"/"
 model = hf.load_model_from_source(trained_model_name)
 model.summary()
 print("model has parameters is ",model.count_params())
@@ -53,8 +53,8 @@ model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,N,N,N]),dtype=
 example_name = "rotating_fluid" #parser
 frame_number = 2 #parser
 initial_normalization = False 
-b_file_name = dir_path + "/../dataset/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "/" 
-A_file_name = dir_path + "/../dataset/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "/matrixA_"+str(frame_number)+".bin" 
+b_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "/" 
+A_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "/matrixA_"+str(frame_number)+".bin" 
 b = hf.get_frame_from_source(frame_number, b_file_name, initial_normalization)
 A = hf.readA_sparse(N, A_file_name,'f')
 CG = cg.ConjugateGradientSparse(A)
@@ -80,6 +80,6 @@ time_cg_ml = time.time() - t0
 print("MLPCG ::::::::::: ", time_cg_ml," secs.")
 
 
-p_out = "/results/"+project+"/frame_"+str(frame)
-np.save(p_out, x_sol)
+#p_out = "/results/"+project+"/frame_"+str(frame)
+#np.save(p_out, x_sol)
 
