@@ -21,6 +21,10 @@ import conjugate_gradient as cg
 #import pressure_laplacian as pl
 import helper_functions as hf
 
+#this makes sure that we are on cpu
+os.environ["CUDA_VISIBLE_DEVICES"]= ''
+
+
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-N", "--resolution", type=int, choices=[64, 128, 256, 384],
@@ -34,10 +38,6 @@ parser.add_argument("-ex", "--example_type", type=str, choices=["rotating_fluid"
 parser.add_argument("-fn", "--frame_number", type=int,
                     help="example type", default=2)
 
-
-example_name = "rotating_fluid" 
-frame_number = 2 #parser
-
 args = parser.parse_args()
 #%%
 N = args.resolution
@@ -45,7 +45,7 @@ if N == 64:
     print("Not supported yet")
     exit()
 
-k = args.resolution
+k = args.trained_model_type
 
 float_type = args.float_type
 if float_type == 16:
@@ -101,7 +101,6 @@ normalize_ = False
 
 #gpu_usage = 1024*48.0#int(1024*np.double(sys.argv[5]))
 #which_gpu = 0#sys.argv[6]
-#os.environ["CUDA_VISIBLE_DEVICES"]= ''
 #gpus = tf.config.list_physical_devices('GPU')
 
 #%% Testing
