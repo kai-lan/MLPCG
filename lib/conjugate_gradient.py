@@ -1686,7 +1686,7 @@ class ConjugateGradientSparse:
         return x_sol,res_arr    
 
 
-    def cg_on_ML_generated_subspace(self, b, x_init, model_predict, max_it=100,tol=1e-10,fluid = False,verbose=True):
+    def DGCM(self, b, x_init, model_predict, max_it=100,tol=1e-10,fluid = False,verbose=True):
         dim2 =len(b)
         x_sol = np.zeros(b.shape)
         res_arr = []
