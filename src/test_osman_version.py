@@ -23,15 +23,17 @@ import helper_functions as hf
 
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
-parser.add_argument("-N", "--resolution", type=int, choices=[64, 128],
+parser.add_argument("-N", "--resolution", type=int, choices=[64, 128, 256, 384],
                     help="N or resolution of test")
+parser.add_argument("-k", "--trained_model_type", type=int, choices=[64, 128],
+                    help="which model to test")
+
 args = parser.parse_args()
 N = args.resolution
 if N == 64:
     print("Not supported yet")
-    N=128
-
-
+    exit()
+k = args.resolution
 #%% Setup The Dimension and Load the Model
 #Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
 #N = 128 # parser 1
