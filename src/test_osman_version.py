@@ -24,16 +24,39 @@ import helper_functions as hf
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-N", "--resolution", type=int, choices=[64, 128, 256, 384],
-                    help="N or resolution of test")
+                    help="N or resolution of test", default = 128)
 parser.add_argument("-k", "--trained_model_type", type=int, choices=[64, 128],
-                    help="which model to test")
+                    help="which model to test", default=128)
+parser.add_argument("-f", "--float_type", type=int, choices=[16, 32],
+                    help="model parameters' float type", default=32)
+parser.add_argument("-ex", "--example_type", type=str, choices=["rotating_fluid"],
+                    help="example type", default="rotating_fluid")
+parser.add_argument("-fn", "--frame_number", type=int,
+                    help="example type", default=2)
+
+
+example_name = "rotating_fluid" 
+frame_number = 2 #parser
 
 args = parser.parse_args()
+#%%
 N = args.resolution
 if N == 64:
     print("Not supported yet")
     exit()
+
 k = args.resolution
+
+float_type = args.float_type
+if float_type == 16:
+    dtype_ = tf.float16
+if float_type == 32:
+    dtype_ = tf.float32
+
+example_name = args.example_type
+
+frame_number =  args.frame_number
+
 #%% Setup The Dimension and Load the Model
 #Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
 #N = 128 # parser 1
@@ -42,17 +65,12 @@ k = args.resolution
 # the matrices ...
 # k defines which parameters and model to be used. Currently we present two model.
 # k = 64 uses model trained model
-k = 64 # parser 2
-float_type = "F16" #parser 3 (optional)
 dataset_path = dir_path + "/../../dataset_mlpcg"
-trained_model_name = dataset_path+"/trained_models/model_N"+str(N)+"_from"+str(k)+"_"+float_type+"/"
+trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_"+float_type+"/"
 model = hf.load_model_from_source(trained_model_name)
+
 model.summary()
 print("model has parameters is ",model.count_params())
-if float_type == "F16":
-    dtype_ = tf.float16
-if float_type == "F32":
-    dtype_ = tf.float32
 
 # This is the lambda function that is needed in DGCM algorithm
 model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,N,N,N]),dtype=dtype_),training=False).numpy()[0,:,:].reshape([N**3]) #first_residual
@@ -64,8 +82,7 @@ model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,N,N,N]),dtype=
 #TODO: Add pictures to show different examples: SmokePlume, rotating_fluid
 # old names: rotating_fluid -> output3d128_new_tgsl_rotating_fluid
 
-example_name = "rotating_fluid" #parser
-frame_number = 2 #parser
+
 initial_normalization = False 
 b_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "/" 
 A_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "/matrixA_"+str(frame_number)+".bin" 
