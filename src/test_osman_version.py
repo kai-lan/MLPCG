@@ -33,10 +33,16 @@ parser.add_argument("-k", "--trained_model_type", type=int, choices=[64, 128],
                     help="which model to test", default=128)
 parser.add_argument("-f", "--float_type", type=int, choices=[16, 32],
                     help="model parameters' float type", default=32)
-parser.add_argument("-ex", "--example_type", type=str, choices=["rotating_fluid"],
+parser.add_argument("-ex", "--example_type", type=str, choices=["rotating_fluid", "smoke"],
                     help="example type", default="rotating_fluid")
 parser.add_argument("-fn", "--frame_number", type=int,
                     help="example type", default=2)
+parser.add_argument("--max_cg_iter", type=int,
+                    help="maximum cg iteration", default=1000)
+parser.add_argument("-tol","--tolerance", type=float,
+                    help="tolerance for both DGCM and CG algorithm", default=1.0e-4)
+
+
 
 args = parser.parse_args()
 #%%
@@ -55,7 +61,13 @@ if float_type == 32:
 
 example_name = args.example_type
 
-frame_number =  args.frame_number
+frame_number = args.frame_number
+
+max_cg_iter = args.max_cg_iter
+
+tol = args.tolerance 
+
+
 
 #%% Setup The Dimension and Load the Model
 #Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
@@ -70,7 +82,7 @@ trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str
 model = hf.load_model_from_source(trained_model_name)
 
 model.summary()
-print("model has parameters is ",model.count_params())
+print("number of parameters in the model is ",model.count_params())
 
 # This is the lambda function that is needed in DGCM algorithm
 model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,N,N,N]),dtype=dtype_),training=False).numpy()[0,:,:].reshape([N**3]) #first_residual
@@ -94,8 +106,6 @@ CG = cg.ConjugateGradientSparse(A)
 
 #%%
 # parameters for CG
-tol = 1e-4 #parser
-max_it_cg = 100
 normalize_ = False 
 
 
@@ -108,15 +118,16 @@ normalize_ = False
 model_predict(b)
 
 print("DGCM is running...")
-t0=time.time()                                                                                                                                                                                         
-x_sol, res_arr= CG.DGCM(b, np.zeros(b.shape), model_predict, max_it_cg, tol, False ,True)
+t0=time.time()                                  
+max_DGCM_iter = 100                                                                                                                                      
+x_sol, res_arr= CG.DGCM(b, np.zeros(b.shape), model_predict, max_DGCM_iter, tol, False ,True)
 time_cg_ml = time.time() - t0
 print("DGCM ::::::::::: ", time_cg_ml," secs.")
 
 
 print("CG is running...")
 t0=time.time()
-x_sol_cg, res_arr_cg = CG.cg_normal(np.zeros(b.shape),b,max_it_cg,tol,True)
+x_sol_cg, res_arr_cg = CG.cg_normal(np.zeros(b.shape),b,max_cg_iter,tol,True)
 time_cg = time.time() - t0
 print("CG ::::::::::: ",time_cg, " secs")
 
