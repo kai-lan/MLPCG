@@ -66,7 +66,7 @@ frame_number =  args.frame_number
 # k defines which parameters and model to be used. Currently we present two model.
 # k = 64 uses model trained model
 dataset_path = dir_path + "/../../dataset_mlpcg"
-trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_"+float_type+"/"
+trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_F"+str(float_type)+"/"
 model = hf.load_model_from_source(trained_model_name)
 
 model.summary()
