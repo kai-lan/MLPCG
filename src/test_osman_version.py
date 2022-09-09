@@ -105,11 +105,21 @@ normalize_ = False
 #gpus = tf.config.list_physical_devices('GPU')
 
 #%% Testing
-t0=time.time()                                                                                                                                                                                         
-x_sol, res_arr= CG.cg_on_ML_generated_subspace(b, np.zeros(b.shape), model_predict, max_it_cg, tol, False ,True)
-time_cg_ml = time.time() - t0
-print("MLPCG ::::::::::: ", time_cg_ml," secs.")
+# Dummy Calling:
+model_predict(b)
 
+print("DGCM is running...")
+t0=time.time()                                                                                                                                                                                         
+x_sol, res_arr= CG.DGCM(b, np.zeros(b.shape), model_predict, max_it_cg, tol, False ,True)
+time_cg_ml = time.time() - t0
+print("DGCM ::::::::::: ", time_cg_ml," secs.")
+
+
+print("CG is running...")
+t0=time.time()
+x_sol_cg, res_arr_cg = CG.cg_normal(np.zeros(b.shape),b,max_it_cg,tol,True)
+time_cg = time.time() - t0
+print("CG ::::::::::: ",time_cg, " secs")
 
 #p_out = "/results/"+project+"/frame_"+str(frame)
 #np.save(p_out, x_sol)
