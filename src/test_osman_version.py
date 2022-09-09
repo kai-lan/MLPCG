@@ -15,14 +15,26 @@ import tensorflow as tf
 import scipy.sparse as sparse
 from numpy.linalg import norm
 import time
+import argparse
 
 import conjugate_gradient as cg
 #import pressure_laplacian as pl
 import helper_functions as hf
 
+#%% Get Arguments from parser
+parser = argparse.ArgumentParser()
+parser.add_argument("-N", "--resolution", type=int, choices=[64, 128],
+                    help="N or resolution of test")
+args = parser.parse_args()
+N = args.resolution
+if N == 64:
+    print("Not supported yet")
+    N=128
+
+
 #%% Setup The Dimension and Load the Model
 #Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
-N = 128 # parser 1
+#N = 128 # parser 1
 #Decide which model to run: 64 or 128 and float type F16 (float 16) or F32 (float32)
 # There are two types of models: k=64 and k=128, where the models trained over 
 # the matrices ...
@@ -30,7 +42,7 @@ N = 128 # parser 1
 # k = 64 uses model trained model
 k = 64 # parser 2
 float_type = "F16" #parser 3 (optional)
-dataset_path = dir_path + "/../dataset"
+dataset_path = dir_path + "/../../dataset_mlpcg"
 trained_model_name = dataset_path+"/trained_models/model_N"+str(N)+"_from"+str(k)+"_"+float_type+"/"
 model = hf.load_model_from_source(trained_model_name)
 model.summary()
