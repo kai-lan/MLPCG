@@ -68,6 +68,8 @@ max_cg_iter = args.max_cg_iter
 
 tol = args.tolerance 
 
+verbose_dgcm = args.verbose_dgcm
+
 #%% 
 # if matrix does not change in the example, use the matrix for the first frame.  
 if example_name in ["smoke_pass_bunny"]:
@@ -75,7 +77,6 @@ if example_name in ["smoke_pass_bunny"]:
 else:
     matrix_frame_number = frame_number
     
-
 
 #%% Setup The Dimension and Load the Model
 #Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
@@ -109,11 +110,6 @@ b = hf.get_frame_from_source(frame_number, b_file_name, initial_normalization)
 A = hf.readA_sparse(N, A_file_name,'f')
 CG = cg.ConjugateGradientSparse(A)
 
-#Only For test
-print("matrix_frame_number = ",matrix_frame_number)
-A_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "/matrixA_"+str(2)+".bin" 
-A2= hf.readA_sparse(N, A_file_name,'f')
-print("diff_norm = ",sparse.linalg.norm(A-A2))
 
 #%%
 # parameters for CG
