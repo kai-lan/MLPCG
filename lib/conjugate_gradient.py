@@ -1736,12 +1736,12 @@ class ConjugateGradientSparse:
                 print(i+1,norm_r)
             if norm_r < tol:
                 print("cg_on_ML_generated_subspace converged in ", i+1, " iterations to residual ",norm_r)
-                print("Actual norm = ",self.norm(b-self.multiply_A(x_sol)))
-                return x_sol,res_arr
+                #print("Actual norm = ",self.norm(b-self.multiply_A(x_sol)))
+                return x_sol, res_arr
             
-        print("cg_on_ML_generated_subspace converged in ", max_it, " iterations to residual ",norm_r)
-        print("Real norm = ",self.norm(b-self.multiply_A(x_sol)))
-        return x_sol,res_arr    
+        print("cg_on_ML_generated_subspace converged in ", max_it, "(maximum iteration) iterations to residual ",norm_r)
+        #print("Real norm = ",self.norm(b-self.multiply_A(x_sol)))
+        return x_sol, res_arr    
 
 
 
