@@ -86,7 +86,7 @@ else:
 # the matrices ...
 # k defines which parameters and model to be used. Currently we present two model.
 # k = 64 uses model trained model
-dataset_path = dir_path + "/../../dataset_mlpcg" # change this to where you put the dataset folder
+dataset_path = "/data/oak/dataset_mlpcg" # change this to where you put the dataset folder
 trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_F"+str(float_type)+"/"
 model = hf.load_model_from_source(trained_model_name)
 
