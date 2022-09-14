@@ -70,6 +70,8 @@ tol = args.tolerance
 
 verbose_dgcm = args.verbose_dgcm
 
+verbose_ldlt = verbose_dgcm
+
 #%% 
 # if matrix does not change in the example, use the matrix for the first frame.  
 if example_name in ["smoke_pass_bunny"]:
@@ -129,7 +131,7 @@ t0=time.time()
 max_DGCM_iter = 100                                                                                                                                      
 x_sol, res_arr= CG.DGCM(b, np.zeros(b.shape), model_predict, max_DGCM_iter, tol, False ,verbose_dgcm)
 time_cg_ml = time.time() - t0
-print("DGCM ::::::::::: ", time_cg_ml," secs.")
+print("DGCM took ", time_cg_ml," secs.")
 
 
 print("CG is running...")
@@ -137,6 +139,26 @@ t0=time.time()
 x_sol_cg, res_arr_cg = CG.cg_normal(np.zeros(b.shape),b,max_cg_iter,tol,True)
 time_cg = time.time() - t0
 print("CG took ",time_cg, " secs")
+
+
+print("LDLT is running...")
+
+t0=time.time()
+L, D = CG.ldlt()
+time_ldlt_creation = time.time() - t0
+print("L and D computed in ", time_ldlt_creation, " seconds.")
+l_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "_matrix_L_fn"+str(matrix_frame_number)+".npz" 
+d_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "_matrix_D_fn"+str(matrix_frame_number)+".npz" 
+sparse.save_npz(l_name, L)
+sparse.save_npz(d_name, D)
+#L = sparse.load_npz(l_name)
+#D = sparse.load_npz(d_name)
+
+print("LDLT PCG is running...")
+t0 = time.time()
+x,res_arr_cg  = CG.ldlt_pcg(L, D, b, max_cg_iter, tol, verbose_ldlt)
+time_ldlt_pcg = time.time() - t0
+print("LDLT PCG took ", time_ldlt_pcg, " seconds.")
 
 #p_out = "/results/"+project+"/frame_"+str(frame)
 #np.save(p_out, x_sol)
