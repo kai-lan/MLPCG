@@ -1500,6 +1500,89 @@ class ConjugateGradientSparse:
     
     
     #LDLT
+    def forward_subs(self,L, b):
+        #here L is sparse matrix        
+        #y=[]
+        #y = np.zeros(b.shape)
+        y = b.copy()
+        for i in range(len(b)):
+            if(abs(L[i,i])>1.0e-5):   
+                #y.append(b[i])
+                rr , cc = L.getrow(i).nonzero()
+                for j in cc:
+                    if j < i:
+                        y[i]=y[i]-(L[i,j]*y[j])
+                    
+                y[i]=y[i]/L[i,i]
+        return y
+
+    def back_subs(self,U,y):
+        x=np.zeros_like(y)
+        U2 = sparse.triu(U,k=1,format="csr")
+        
+        for i in range(len(x),0,-1):
+            if(abs(U[i-1,i-1])>1.0e-5):
+                #uu = np.dot(U[i-1,i:],x[i:])
+                #ui  = U.getrow(i).dot(x)[0]
+                #uu = U2.dot(x)[0]
+                x[i-1]=(y[i-1]-U.getrow(i-1).dot(x)[0])/U[i-1,i-1]
+        return x
+
+
+    
+    def ldlt(self):
+        #L = self.A.copy()
+        L = sparse.tril(self.A_sparse,k=0,format="csr")
+        #rows_L,  cols_L = L.nonzero()
+        #L = np.matrix(np.zeros((n,n)))
+        #D = np.matrix(np.zeros((n,n)))    
+        D = sparse.diags(self.A_sparse.diagonal(),format="csr")                              
+        L[0,0] = 1.0;                  
+        #A1=A@A            
+        for i in range(1,self.n):
+            #if (abs(L[i,i])> 1.0e-5):
+            #print("i = ",i)
+            rr , cc = L.getrow(i).nonzero()
+            #print("cc = ",cc)
+            for j in cc:  #for j in range(i)        0,1,...,i-1        
+                if j<i:
+                    lld = self.A_sparse[i,j]
+                    for k in cc: #careful
+                        if k<j:
+                            lld = lld - L[i,k]*L[j,k]*D[k,k]
+                    if abs(D[j,j])>1.0e-5:
+                        L[i,j] = lld/D[j,j]
+            
+            ld = self.A_sparse[i,i]              
+            for k in cc:
+                if k < i:
+                    ld = ld - L[i,k]*L[i,k]*D[k,k]       
+            D[i,i] = ld
+            L[i,i] = 1.0
+        return L, D
+ 
+    
+    def ldlt_pcg(self,L, D, b, max_it = 100, tol = 1.0e-15,verbose = False):
+        res_arr = []                   
+        x_sol = np.zeros(b.shape)
+        b_iter = b.copy()
+        x_init = np.zeros(b.shape)
+        #print("L and D are being computed...")
+        #L,D = self.ldlt()
+        #print("L and D are computed.")
+        U = D@L.T
+        def mult_precond_ldlt(x):                                                       
+            y_inter=self.forward_subs(L,x)
+            y=self.back_subs(U,y_inter) 
+            return y                 
+        mult_precond = lambda x: mult_precond_ldlt(x)
+        x_sol, res_arr = self.pcg_normal(x_init,b_iter,mult_precond,max_it,tol,verbose)
+        return x_sol, res_arr
+
+    
+    
+    #LDLT -- old
+    """
     def forward_subs(self,L,b):
         y=[]
         for i in range(len(b)):
@@ -1557,6 +1640,8 @@ class ConjugateGradientSparse:
         mult_precond = lambda x: mult_precond_ldlt(x)
         x_sor, res_arr = self.pcg_normal(x_init,b_iter,mult_precond,max_it,tol,verbose)
         return x_sol, res_arr
+    """
+    
     
     def gauss_seidel(self, b, x, max_iterations, tolerance, verbose):
         #x is the initial condition
