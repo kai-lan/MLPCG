@@ -34,7 +34,7 @@ parser.add_argument("-k", "--trained_model_type", type=int, choices=[64, 128],
 parser.add_argument("-f", "--float_type", type=int, choices=[16, 32],
                     help="model parameters' float type", default=32)
 parser.add_argument("-ex", "--example_type", type=str, choices=["rotating_fluid", "smoke_pass_bunny"],
-                    help="example type", default="smoke_pass_bunny")
+                    help="example type", default="rotating_fluid")
 parser.add_argument("-fn", "--frame_number", type=int,
                     help="example type", default=2)
 parser.add_argument("--max_cg_iter", type=int,
@@ -74,7 +74,7 @@ verbose_ldlt = verbose_dgcm
 
 #%% 
 # if matrix does not change in the example, use the matrix for the first frame.  
-if example_name in ["smoke_pass_bunny"]:
+if example_name in ["rotating_fluid"]:
     matrix_frame_number = 1
 else:
     matrix_frame_number = frame_number
@@ -90,13 +90,13 @@ else:
 # k = 64 uses model trained model
 dataset_path = "/data/oak/dataset_mlpcg" # change this to where you put the dataset folder
 trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_F"+str(float_type)+"/"
-model = hf.load_model_from_source(trained_model_name)
+#model = hf.load_model_from_source(trained_model_name)
 
-model.summary()
-print("number of parameters in the model is ",model.count_params())
+#model.summary()
+#print("number of parameters in the model is ",model.count_params())
 
 # This is the lambda function that is needed in DGCM algorithm
-model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,N,N,N]),dtype=dtype_),training=False).numpy()[0,:,:].reshape([N**3]) #first_residual
+#model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,N,N,N]),dtype=dtype_),training=False).numpy()[0,:,:].reshape([N**3]) #first_residual
 
 
 #%% Load the matrix, vectors, and solver
@@ -124,14 +124,14 @@ normalize_ = False
 
 #%% Testing
 # Dummy Calling:
-model_predict(b)
+#model_predict(b)
 
 print("DGCM is running...")
-t0=time.time()                                  
-max_DGCM_iter = 100                                                                                                                                      
-x_sol, res_arr= CG.DGCM(b, np.zeros(b.shape), model_predict, max_DGCM_iter, tol, False ,verbose_dgcm)
-time_cg_ml = time.time() - t0
-print("DGCM took ", time_cg_ml," secs.")
+#t0=time.time()                                  
+#max_DGCM_iter = 100                                                                                                                                      
+#x_sol, res_arr= CG.DGCM(b, np.zeros(b.shape), model_predict, max_DGCM_iter, tol, False ,verbose_dgcm)
+#time_cg_ml = time.time() - t0
+#print("DGCM took ", time_cg_ml," secs.")
 
 
 print("CG is running...")
@@ -139,6 +139,13 @@ t0=time.time()
 x_sol_cg, res_arr_cg = CG.cg_normal(np.zeros(b.shape),b,max_cg_iter,tol,True)
 time_cg = time.time() - t0
 print("CG took ",time_cg, " secs")
+
+## deflated version of cg ##
+t0=time.time()
+x_sol_cg, res_arr_cg = CG.deflated_pcg(b,max_cg_iter,tol,"jacobi",16)
+#(self, b, max_outer_it = 100, pcg_inner_it = 1, tol = 1.0e-15, method = "jacobi", num_vectors = 16, verbose = False):   
+time_cg = time.time() - t0
+#print("CG took ",time_cg, " secs")
 
 
 print("LDLT is running...")

@@ -8,6 +8,7 @@ import time
 import scipy.sparse as sparse
 import scipy.sparse.linalg
 import helper_functions as hf
+from scipy.sparse import identity
 #from copy import copy
 
 class ConjugateGradient:
@@ -1447,6 +1448,46 @@ class ConjugateGradientSparse:
         
         return Q, diagonal, sub_diagonal
 
+    def deflated_pcg(self, b, max_outer_it = 100,tol = 1.0e-15, method = "jacobi", num_vectors = 16, verbose = False):
+        res_arr = []    
+        x_sol = np.zeros(b.shape)
+        b_iter = b.copy()
+        x_init = np.zeros(b.shape)
+        Q = self.create_ritz_vectors(b_iter,num_vectors)
+        print(Q.shape)
+        lambda_ = self.create_ritz_values(Q)
+        I_lam = np.ones(lambda_.shape)
+        I = sparse.identity(b.shape[0])
+        A_c_inv = np.diag(I_lam/lambda_)
+        Q_sp = scipy.sparse.csr_matrix(Q)
+        Q_sp_t = Q_sp.transpose()
+        print(Q_sp_t.shape)
+        zAcinv = scipy.sparse.csr_matrix(Q_sp_t.dot(A_c_inv))
+        print(zAcinv.shape)
+        zAcinvz = scipy.sparse.csr_matrix(zAcinv.dot(Q_sp))
+        print(zAcinvz.shape)
+        P = I - self.A_sparse.dot(zAcinvz)
+        print(P.shape)
+        exit(0)
+        #ayano
+        for i in range(max_outer_it):
+            if method == "approximate_eigenmodes":
+                mult_precond = lambda x: self.mult_precond_method1(x,Q,lambda_)
+            else:           
+                print("Method is not recognized!")
+                return  
+            x_sol1, res_arr1 = self.pcg_normal(x_init, b_iter, mult_precond, pcg_inner_it, tol, False)
+            x_sol = x_sol + x_sol1
+            b_iter = b - self.multiply_A_sparse(x_sol)
+
+            b_norm = np.linalg.norm(b_iter)
+            res_arr = res_arr + res_arr1[0:pcg_inner_it]                
+            print("restarting at i = "+ str(i)+ " , residual = "+ str(b_norm))                 
+            if b_norm < tol:
+                print("RestartedPCG converged in "+str(i)+" iterations.")                                                                                                                            
+                break
+        return x_sol, res_arr
+
     def restarted_pcg_automatic(self, b, max_outer_it = 100, pcg_inner_it = 1, tol = 1.0e-15, method = "approximate_eigenmodes", num_vectors = 16, verbose = False):
         res_arr = []    
         x_sol = np.zeros(b.shape)
@@ -1475,7 +1516,6 @@ class ConjugateGradientSparse:
                 print("RestartedPCG converged in "+str(i)+" iterations.")                                                                                                                            
                 break
         return x_sol, res_arr
-
 
 
     def restarted_pcg_manual(self, b, mult_precond_method, max_outer_it = 100, pcg_inner_it = 1, tol = 1.0e-15, verbose = False):
