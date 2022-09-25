@@ -28,7 +28,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]= ''
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-N", "--resolution", type=int, choices=[64, 128, 256, 384],
-                    help="N or resolution of test", default = 128)
+                    help="N or resolution of test", default = 16)
 parser.add_argument("-k", "--trained_model_type", type=int, choices=[64, 128],
                     help="which model to test", default=128)
 parser.add_argument("-f", "--float_type", type=int, choices=[16, 32],
@@ -48,9 +48,7 @@ parser.add_argument("--verbose_dgcm", type=bool,
 args = parser.parse_args()
 #%%
 N = args.resolution
-if N == 64:
-    print("Not supported yet")
-    exit()
+#if N == 64:
 
 k = args.trained_model_type
 
@@ -88,7 +86,8 @@ else:
 # the matrices ...
 # k defines which parameters and model to be used. Currently we present two model.
 # k = 64 uses model trained model
-dataset_path = "/data/oak/dataset_mlpcg" # change this to where you put the dataset folder
+dataset_path = "/home/ayano/project/tgsl/projects/incompressible_flow/build/"
+#"/data/oak/dataset_mlpcg" # change this to where you put the dataset folder
 trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_F"+str(float_type)+"/"
 #model = hf.load_model_from_source(trained_model_name)
 
@@ -105,10 +104,20 @@ trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str
 #TODO: Add pictures to show different examples: SmokePlume, rotating_fluid
 # old names: rotating_fluid -> output3d128_new_tgsl_rotating_fluid
 
+#%% Getting RHS for the Testing
+d_type='double'
+def get_frame_from_source(file_rhs,d_type='double'):
+    if(os.path.exists(file_rhs)):
+        r0 = np.fromfile(file_rhs, dtype=d_type)
+        r1 = np.delete(r0, [0])
+        return r1
+
+
+
 initial_normalization = False 
-b_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "/" 
-A_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "/matrixA_"+str(matrix_frame_number)+".bin" 
-b = hf.get_frame_from_source(frame_number, b_file_name, initial_normalization)
+b_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/div_v_star"+str(matrix_frame_number)+".bin" 
+A_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/matrixA_"+str(matrix_frame_number)+".bin" 
+b = get_frame_from_source(b_file_name)
 A = hf.readA_sparse(N, A_file_name,'f')
 CG = cg.ConjugateGradientSparse(A)
 
