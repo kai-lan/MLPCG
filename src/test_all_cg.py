@@ -114,8 +114,8 @@ def get_frame_from_source(file_rhs,d_type='double'):
 
 
 initial_normalization = False 
-b_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/div_v_star"+str(matrix_frame_number)+".bin" 
-A_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/matrixA_"+str(matrix_frame_number)+".bin" 
+b_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "/div_v_star"+str(matrix_frame_number)+".bin" 
+A_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+ example_name +"/matrixA_"+str(matrix_frame_number)+".bin" 
 b = get_frame_from_source(b_file_name)
 A = hf.readA_sparse(N, A_file_name,'f')
 CG = cg.ConjugateGradientSparse(A)
