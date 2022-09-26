@@ -947,7 +947,7 @@ class ConjugateGradientSparse:
         y = np.zeros(x.shape)
         for i in range(self.n):
             if self.A_sparse[i,i]>self.machine_tol:
-                y[i] = x[i]/self.A[i,i]
+                y[i] = x[i]/self.A_sparse[i,i]
         return y
 
     def mult_precond_method1(self,x,Q,lambda_):
@@ -1448,9 +1448,8 @@ class ConjugateGradientSparse:
         
         return Q, diagonal, sub_diagonal
 
-    def deflated_pcg(self, b, max_outer_it = 100,tol = 1.0e-15, method = "jacobi", num_vectors = 16, verbose = False):
-        res_arr = []    
-        x_sol = np.zeros(b.shape)
+    def deflated_pcg(self, b,max_it = 100,tol = 1.0e-15,num_vectors = 16, verbose = False):
+        res_arr = [] 
         b_iter = b.copy()
         x_init = np.zeros(b.shape)
         Q = self.create_ritz_vectors(b_iter,num_vectors)
@@ -1460,33 +1459,78 @@ class ConjugateGradientSparse:
         A_c_inv = np.diag(I_lam/lambda_)
         Q_sp = scipy.sparse.csr_matrix(Q)
         Q_sp_t = Q_sp.transpose()
-        print("1:",Q_sp_t.shape)
+        print("1:q_t",Q_sp_t.shape)
         zAcinv = scipy.sparse.csr_matrix(Q_sp_t.dot(A_c_inv))
-        print("2:",zAcinv.shape)
+        print("2:zAcinv",zAcinv.shape)
+        print("3:Acinv",A_c_inv.shape)
         #zAcinvz = scipy.sparse.csr_matrix(zAcinv.dot(Q_sp))
         zAcinvz = (zAcinv.dot(Q_sp))
-        print("3:",zAcinvz.shape)
-        P = I - self.A_sparse.dot(zAcinvz)
+        print("4:zAinvz",zAcinvz.shape)
+        #P = I - self.A_sparse.dot(zAcinvz)
+        P = - self.A_sparse.dot(zAcinvz)
         print(P.shape)
-        exit(0)
+        #x0 r0
         #ayano
-        for i in range(max_outer_it):
-            if method == "approximate_eigenmodes":
-                mult_precond = lambda x: self.mult_precond_method1(x,Q,lambda_)
-            else:           
-                print("Method is not recognized!")
-                return  
-            x_sol1, res_arr1 = self.pcg_normal(x_init, b_iter, mult_precond, pcg_inner_it, tol, False)
-            x_sol = x_sol + x_sol1
-            b_iter = b - self.multiply_A_sparse(x_sol)
+        #b is rhs
+        #x_init is initial prediction
+        #mult_precond is a function for multiplying preconditioner
+        x = x_init.copy()
+        ax = self.multiply_A_sparse(x_init)
+        res = self.norm(ax-b)
+        res_arr = res_arr + [res]
+        if verbose:
+            print("First PCG residual = "+str(res))
+        if res<tol:
+            if verbose:
+                print("PCG converged in 0 iteration. Final residual is "+str(res))
+            return [x, res_arr]
+        
+        mult_precond = lambda x_in_val: self.mult_diag_precond(x_in_val)
+        
+        r = b_iter #- ax(0)
+        x = zAcinvz.dot(r)
+        ax =  self.multiply_A_sparse(x)
+        r = b_iter -  ax
+        z = mult_precond(r)  #precond z0
+        z0 = z.copy()
+        az = self.multiply_A_sparse(z0)
+        #new p0
+        p = z0 -  zAcinvz.dot(az)
 
-            b_norm = np.linalg.norm(b_iter)
-            res_arr = res_arr + res_arr1[0:pcg_inner_it]                
-            print("restarting at i = "+ str(i)+ " , residual = "+ str(b_norm))                 
-            if b_norm < tol:
-                print("RestartedPCG converged in "+str(i)+" iterations.")                                                                                                                            
-                break
-        return x_sol, res_arr
+        rz = np.dot(r,z)
+        rz_k = rz;
+        for it in range(max_it):
+            ap = self.multiply_A_sparse(p)
+            alpha = rz_k/np.dot(p,ap)
+            x = x + p*alpha
+            r = r - ap*alpha
+            #after updated x and r
+            #UPDATING r
+            z = mult_precond(r)             
+            rz = np.dot(r,z)
+            res = self.norm(self.multiply_A_sparse(x)-b)
+            res_arr = res_arr + [res]
+            print("PCG residual = "+str(res)+ ", Ite" + str(it))
+            if res < tol: 
+                if verbose:
+                    print("PCG residual = "+str(res))
+                    print("PCG converged in "+str(it)+ " iterations.")
+                return [x, res_arr]
+            if it != max_it - 1: 
+                az = self.multiply_A_sparse(z)
+                if abs(rz_k)>0:
+                  beta = rz/rz_k
+                else: 
+                  beta = 0
+                print(beta,":beta")
+                pk_1 = p.copy()
+                #p = z.copy()
+                p = z + pk_1*beta - zAcinvz.dot(az)
+                rz_k = rz 
+         
+        if verbose:
+            print("PCG converged in "+str(max_it)+ " iterations to the final residual = "+str(res))
+        return [x, res_arr]
 
     def restarted_pcg_automatic(self, b, max_outer_it = 100, pcg_inner_it = 1, tol = 1.0e-15, method = "approximate_eigenmodes", num_vectors = 16, verbose = False):
         res_arr = []    
