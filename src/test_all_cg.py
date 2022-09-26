@@ -28,7 +28,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]= ''
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-N", "--resolution", type=int, choices=[64, 128, 256, 384],
-                    help="N or resolution of test", default = 16)
+                    help="N or resolution of test", default = 128)
 parser.add_argument("-k", "--trained_model_type", type=int, choices=[64, 128],
                     help="which model to test", default=128)
 parser.add_argument("-f", "--float_type", type=int, choices=[16, 32],
@@ -36,7 +36,7 @@ parser.add_argument("-f", "--float_type", type=int, choices=[16, 32],
 parser.add_argument("-ex", "--example_type", type=str, choices=["rotating_fluid", "smoke_passing_bunny"],
                     help="example type", default="smoke_passing_bunny")
 parser.add_argument("-fn", "--frame_number", type=int,
-                    help="example type", default=2)
+                    help="example type", default=10)
 parser.add_argument("--max_cg_iter", type=int,
                     help="maximum cg iteration", default=1000)
 parser.add_argument("-tol","--tolerance", type=float,
@@ -86,7 +86,7 @@ else:
 # k defines which parameters and model to be used. Currently we present two model.
 # k = 64 uses model trained model
 #dataset_path = "/home/ayano/project/tgsl/projects/incompressible_flow/build/"
-dataset_path = "/data/oak/dataset_mlpcg/"
+dataset_path = "/data/oak/dataset_mlpcg"
 #"/data/oak/dataset_mlpcg" # change this to where you put the dataset folder
 trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_F"+str(float_type)+"/"
 model = hf.load_model_from_source(trained_model_name)
