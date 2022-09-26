@@ -153,7 +153,7 @@ print("CG took ",time_cg, " secs")
 
 
 t0=time.time()
-x_sol_cg, res_arr_cg = CG.deflated_pcg(b,max_cg_iter,tol,200,True)
+x_sol_cg, res_arr_cg = CG.deflated_pcg(b,max_cg_iter,tol,13,True)
 #(self, b, max_outer_it = 100, pcg_inner_it = 1, tol = 1.0e-15, method = "jacobi", num_vectors = 16, verbose = False):   
 time_cg = time.time() - t0
 #print("CG took ",time_cg, " secs")

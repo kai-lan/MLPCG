@@ -8,6 +8,9 @@ import time
 import scipy.sparse as sparse
 import scipy.sparse.linalg
 import helper_functions as hf
+from scipy.sparse.linalg import eigs
+from scipy.sparse.linalg import inv
+from scipy.sparse import diags
 from scipy.sparse import identity
 #from copy import copy
 
@@ -900,7 +903,7 @@ class ConjugateGradientSparse:
     
     #create_approximate_eigenmodes (old name)
     def create_ritz_vectors(self, b, num_vectors, sorting=True):
-        W, diagonal, sub_diagonal = self.lanczos_iteration(b, num_vectors, 1.0e-10)
+        W, diagonal, sub_diagonal = self.lanczos_iteration(b, num_vectors, 1.0e-12)
         if(num_vectors != len(diagonal)):
             print("Careful. Lanczos Iteration converged too early, num_vectors = "+str(num_vectors)+" > "+str(len(diagonal)))
             num_vectors = len(diagonal)
@@ -1448,27 +1451,28 @@ class ConjugateGradientSparse:
         
         return Q, diagonal, sub_diagonal
 
+   
+   #def mult_appro_inv(self,x,Q,lambda_):
+   #     y = np.copy(x)    
+   #     for i in range(Q.shape[0]):
+   #         qTx = np.dot(Q[i],x)
+   #         y = y + qTx*(1/lambda_[i] - 1.0)*Q[i]
+   #     return y
+
+
     def deflated_pcg(self, b,max_it = 100,tol = 1.0e-15,num_vectors = 16, verbose = False):
         res_arr = [] 
         b_iter = b.copy()
         x_init = np.zeros(b.shape)
+        Q = self.lanczos_iteration_with_normalization_correction(b_iter,num_vectors)
         Q = self.create_ritz_vectors(b_iter,num_vectors)
         lambda_ = self.create_ritz_values(Q)
-        I_lam = np.ones(lambda_.shape)
-        I = sparse.identity(b.shape[0])
-        A_c_inv = np.diag(I_lam/lambda_)
+        A_c_inv = inv(diags(lambda_))
         Q_sp = scipy.sparse.csr_matrix(Q)
         Q_sp_t = Q_sp.transpose()
-        print("1:q_t",Q_sp_t.shape)
         zAcinv = scipy.sparse.csr_matrix(Q_sp_t.dot(A_c_inv))
-        print("2:zAcinv",zAcinv.shape)
-        print("3:Acinv",A_c_inv.shape)
         #zAcinvz = scipy.sparse.csr_matrix(zAcinv.dot(Q_sp))
         zAcinvz = (zAcinv.dot(Q_sp))
-        print("4:zAinvz",zAcinvz.shape)
-        #P = I - self.A_sparse.dot(zAcinvz)
-        P = - self.A_sparse.dot(zAcinvz)
-        print(P.shape)
         #x0 r0
         #ayano
         #b is rhs
