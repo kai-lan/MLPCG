@@ -71,7 +71,7 @@ verbose_ldlt = verbose_dgcm
 
 #%% 
 # if matrix does not change in the example, use the matrix for the first frame.  
-if example_name in ["rotating_fluid"]:
+if example_name in ["rotating_fluid", "smoke_passing_bunny"]:
     matrix_frame_number = 1
 else:
     matrix_frame_number = frame_number
