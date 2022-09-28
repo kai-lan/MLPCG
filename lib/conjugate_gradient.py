@@ -1460,7 +1460,7 @@ class ConjugateGradientSparse:
    #     return y
 
 
-    def deflated_pcg(self, b,max_it = 100,tol = 1.0e-15,num_vectors = 16, verbose = False):
+    def deflated_pcg(self, b,max_it = 100, tol = 1.0e-15,num_vectors = 16, verbose = False):
         res_arr = [] 
         b_iter = b.copy()
         x_init = np.zeros(b.shape)
@@ -1859,7 +1859,7 @@ class ConjugateGradientSparse:
         return x_sol,res_arr    
 
 
-    def DGCM(self, b, x_init, model_predict, max_it=100,tol=1e-10,fluid = False,verbose=True):
+    def dcdm(self, b, x_init, model_predict, max_it=100,tol=1e-10,fluid = False,verbose=True):
         dim2 =len(b)
         x_sol = np.zeros(b.shape)
         res_arr = []
@@ -1876,7 +1876,7 @@ class ConjugateGradientSparse:
         if verbose:
             print("Initial residual =",norm_r)
         if norm_r<tol:
-            print("cg_on_ML_generated_subspace converged in 0 iterations to residual ",norm_r)
+            print("DCDM converged in 0 iterations to residual ",norm_r)
             return x_init, res_arr
         
         x_sol = x_init.copy()
@@ -1908,11 +1908,11 @@ class ConjugateGradientSparse:
             if verbose:
                 print(i+1,norm_r)
             if norm_r < tol:
-                print("cg_on_ML_generated_subspace converged in ", i+1, " iterations to residual ",norm_r)
+                print("DCDM converged in ", i+1, " iterations to residual ",norm_r)
                 #print("Actual norm = ",self.norm(b-self.multiply_A(x_sol)))
                 return x_sol, res_arr
             
-        print("cg_on_ML_generated_subspace converged in ", max_it, "(maximum iteration) iterations to residual ",norm_r)
+        print("DCDM converged in ", max_it, "(maximum iteration) iterations to residual ",norm_r)
         #print("Real norm = ",self.norm(b-self.multiply_A(x_sol)))
         return x_sol, res_arr    
 

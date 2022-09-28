@@ -20,9 +20,6 @@ import argparse
 import conjugate_gradient as cg
 import helper_functions as hf
 
-#this makes sure that we are on cpu
-os.environ["CUDA_VISIBLE_DEVICES"]= ''
-
 
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
@@ -44,20 +41,21 @@ parser.add_argument("--verbose_dgcm", type=bool,
                     help="prints residuals of DGCM algorithm for each iteration", default=False)
 parser.add_argument("--dataset_dir", type=str,
                     help="path to the dataset", default="/data/oak/dataset_mlpcg")
+parser.add_argument("--CUDA_VISIBLE_DEVICES", type=str,
+                    help="Determines if DCDM uses GPU. Default DCDM only uses CPU.", default="")
+parser.add_argument("--num_vectors_deflated_pcg", type=int,
+                    help="number of vectors used in DeflatedPCG", default=16)
 parser.add_argument('--skip_dcdm', action="store_true", 
                     help='skips dcdm tests')
-parser.add_argument('--skip_ldlt', action="store_true", 
-                    help='skips ldlt test')
+parser.add_argument('--skip_icpcg', action="store_true", 
+                    help='skips icpcg/ldlt test')
 parser.add_argument('--skip_deflated_pcg', action="store_true", 
                     help='skips deflated pcg test')
 parser.add_argument('--skip_cg', action="store_true", 
                     help='skips cg test')
-#action='store_const',
-
 
 args = parser.parse_args()
 
-print(args.skip_dcdm, " ", args.skip_cg)
 
 #%%
 N = args.resolution
@@ -80,10 +78,12 @@ tol = args.tolerance
 
 verbose_dgcm = args.verbose_dgcm
 
-verbose_ldlt = verbose_dgcm
+verbose_icpcg = verbose_dgcm
 
 dataset_path = args.dataset_dir
 
+#this determines if DCDM uses only CPU or GPU. By default it only uses CPU.
+os.environ["CUDA_VISIBLE_DEVICES"]= args.CUDA_VISIBLE_DEVICES
 
 #%% 
 # if matrix does not change in the example, use the matrix for the first frame.  
@@ -126,7 +126,7 @@ normalize_ = False
 #which_gpu = 0#sys.argv[6]
 #gpus = tf.config.list_physical_devices('GPU')
 
-#%% Testing - DCDM
+#%% Testing
 if not args.skip_dcdm:
     #% Setup The Dimension and Load the Model
     #Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
@@ -149,49 +149,45 @@ if not args.skip_dcdm:
     
     print("DGCM is running...")
     t0=time.time()                                  
-    max_DGCM_iter = 100                                                                                                                                      
-    x_sol, res_arr= CG.DGCM(b, np.zeros(b.shape), model_predict, max_DGCM_iter, tol, False ,verbose_dgcm)
+    max_dcdm_iter = 100                                                                                                                                      
+    x_sol, res_arr= CG.dcdm(b, np.zeros(b.shape), model_predict, max_dcdm_iter, tol, False ,verbose_dgcm)
     time_cg_ml = time.time() - t0
     print("DGCM took ", time_cg_ml," secs.")
 
+if not args.skip_cg:
+    print("CG is running...")
+    t0=time.time()
+    x_sol_cg, res_arr_cg = CG.cg_normal(np.zeros(b.shape),b,max_cg_iter,tol,True)
+    time_cg = time.time() - t0
+    print("CG took ",time_cg, " secs")
 
-#%%
+if not args.skip_deflated_pcg:
+    print("DeflatedPCG is running")
+    t0=time.time()
+    x_sol_cg, res_arr_cg = CG.deflated_pcg(b, max_cg_iter, tol, args.num_vectors_deflated_pcg, True)
+    #(self, b, max_outer_it = 100, pcg_inner_it = 1, tol = 1.0e-15, method = "jacobi", num_vectors = 16, verbose = False):   
+    time_cg = time.time() - t0
+    print("Deflated PCG took ",time_cg, " secs")
 
-print("CG is running...")
-t0=time.time()
-x_sol_cg, res_arr_cg = CG.cg_normal(np.zeros(b.shape),b,max_cg_iter,tol,True)
-time_cg = time.time() - t0
-print("CG took ",time_cg, " secs")
-
-## deflated version of cg ##
-
-
-#t0=time.time()
-#x_sol_cg, res_arr_cg = CG.deflated_pcg(b, max_cg_iter, tol, 13, True)
-#(self, b, max_outer_it = 100, pcg_inner_it = 1, tol = 1.0e-15, method = "jacobi", num_vectors = 16, verbose = False):   
-#time_cg = time.time() - t0
-#print("Deflated PCG took ",time_cg, " secs")
-
-
-print("LDLT is running...")
-
-t0=time.time()
-L, D = CG.ldlt()
-time_ldlt_creation = time.time() - t0
-print("L and D computed in ", time_ldlt_creation, " seconds.")
-l_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "_matrix_L_fn"+str(matrix_frame_number)+".npz" 
-d_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "_matrix_D_fn"+str(matrix_frame_number)+".npz" 
-sparse.save_npz(l_name, L)
-sparse.save_npz(d_name, D)
-#L = sparse.load_npz(l_name)
-#D = sparse.load_npz(d_name)
-
-print("LDLT PCG is running...")
-t0 = time.time()
-x,res_arr_cg  = CG.ldlt_pcg(L, D, b, max_cg_iter, tol, verbose_ldlt)
-time_ldlt_pcg = time.time() - t0
-print("LDLT PCG took ", time_ldlt_pcg, " seconds.")
-
-#p_out = "/results/"+project+"/frame_"+str(frame)
-#np.save(p_out, x_sol)
+if not args.skip_icpcg:
+    print("icpcg is running...")    
+    t0=time.time()
+    L, D = CG.ldlt()
+    time_ldlt_creation = time.time() - t0
+    print("L and D computed in ", time_ldlt_creation, " seconds.")
+    l_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "_matrix_L_fn"+str(matrix_frame_number)+".npz" 
+    d_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "_matrix_D_fn"+str(matrix_frame_number)+".npz" 
+    sparse.save_npz(l_name, L)
+    sparse.save_npz(d_name, D)
+    #L = sparse.load_npz(l_name)
+    #D = sparse.load_npz(d_name)
+    
+    print("icpcg PCG is running...")
+    t0 = time.time()
+    x,res_arr_cg  = CG.ldlt_pcg(L, D, b, max_cg_iter, tol, verbose_icpcg)
+    time_ldlt_pcg = time.time() - t0
+    print("icpcg PCG took ", time_ldlt_pcg, " seconds.")
+    
+    #p_out = "/results/"+project+"/frame_"+str(frame)
+    #np.save(p_out, x_sol)
 
