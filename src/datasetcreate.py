@@ -114,7 +114,7 @@ for it in range(0,for_outside):
         b_rhs_temp[i-l_b]=b_rhs_temp[i-l_b]/np.linalg.norm(b_rhs_temp[i-l_b])
         with open(args.output_dir+'/b_'+str(i)+'.npy', 'wb') as f:
             np.save(f, np.array(b_rhs_temp[i-l_b],dtype=np.float32))
-
+print("Training Dataset is created.")
 
 
 
