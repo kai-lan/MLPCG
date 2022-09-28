@@ -28,7 +28,7 @@ parser.add_argument("--theta", type=int,
 parser.add_argument("--small_matmul_size", type=int,
                     help="Number of vectors.", default=200)
 parser.add_argument("--dataset_dir", type=str,
-                    help="path to the folder containing training matrix", default="/data/oak/dataset_mlpcg")
+                    help="path to the folder containing training matrix")
 parser.add_argument("--output_dir", type=str,
                     help="folder that saves the dataset")
 args = parser.parse_args()
@@ -40,16 +40,16 @@ num_ritz_vectors = args.number_of_base_ritz_vectors
 
 small_matmul_size = args.small_matmul_size
 
+#save output_dir
+import pathlib
+pathlib.Path(args.output_dir).mkdir(parents=True, exist_ok=True) 
+
 #%% Load the matrix A
-A_file_name = args.dataset_dir + "/test_matrices_and_vectors/N"+str(N) + "/matrixA_orig.bin"  #Change this one tho origional matrix (important)
+A_file_name = args.dataset_dir + "/original_matA/A_origN"+str(N)+".bin"  #Change this one tho origional matrix (important)
 A = hf.readA_sparse(N, A_file_name,'f')
 CG = cg.ConjugateGradientSparse(A)
 rand_vec_x = np.random.normal(0,1, [N**3])
 rand_vec = A.dot(rand_vec_x)
-#this could be the original name
-#name_sparse_matrix = project_folder_general + "data/output3d"+str(dim)+"_new_tgsl_rotating_fluid/matrixA_"+str(1)+".bin"   
-
-
 #%% Creating Lanczos Vectors:
 W, diagonal, sub_diagonal = CG.lanczos_iteration_with_normalization_correction(rand_vec, num_ritz_vectors) #this can be loaded directly from c++ output
 #W, diagonal, sub_diagonal = CG.lanczos_iteration(rand_vec, num_ritz_vectors, 1.0e-12) //Without ortogonalization. This is OK for 2D case.
@@ -72,6 +72,7 @@ eigvals, Q0 = np.linalg.eigh(tri_diag)
 eigvals = np.real(eigvals)
 Q0 = np.real(Q0)
 #%%
+
 #ritz_vectors = np.zeros(W.shape)
 ritz_vectors = np.matmul(W.transpose(),Q0).transpose()
 print(eigvals[0:10], eigvals[-10:-1])
@@ -114,7 +115,7 @@ print(" Creating Rhs's")
 for it in range(0,for_outside):
     t0=time.time()
     sample_size = small_matmul_size
-    coef_matrix = np.random.normal(0,1, [num_ritz_vectors-1,sample_size])
+    coef_matrix = np.random.normal(0,1, [num_ritz_vectors-num_zero_ritz_vals,sample_size])
     coef_matrix[0:cut_idx] = 9*np.random.normal(0,1, [cut_idx,sample_size])
 
     l_b = small_matmul_size*it
@@ -122,7 +123,7 @@ for it in range(0,for_outside):
     print(it)
     #b_rhs[l_b:r_b] = np.matmul(ritz_vectors[0:num_ritz_vectors-num_zero_ritz_vals].transpose(),coef_matrix[:,l_b:r_b]).transpose()
     #b_rhs[l_b:r_b] = np.matmul(ritz_vectors[0:num_ritz_vectors-num_zero_ritz_vals].transpose(),coef_matrix).transpose()
-    b_rhs_temp = mat_mult(ritz_vectors[1:num_ritz_vectors].transpose(),coef_matrix).transpose()
+    b_rhs_temp = mat_mult(ritz_vectors[num_zero_ritz_vals:num_ritz_vectors].transpose(),coef_matrix).transpose()
 
     #% % Making sure b is in the range of A
     for i in range(l_b,r_b):
@@ -138,8 +139,6 @@ for it in range(0,for_outside):
     print(norm(b_rhs_temp)**2)
     time_cg_ml = int((time.time() - t0))
     print("data creation at ",it, " took ", time_cg_ml, " seconds.")
-
-
 
 
 
