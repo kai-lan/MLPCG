@@ -25,16 +25,20 @@ parser.add_argument("--sample_size", type=int,
                     help="number of vectors to be created for dataset", default=20000)
 parser.add_argument("--theta", type=int,
                     help="see paper for.", default=500)
+parser.add_argument("--small_matmul_size", type=int,
+                    help="Number of vectors.", default=200)
 parser.add_argument("--dataset_dir", type=str,
                     help="path to the folder containing training matrix", default="/data/oak/dataset_mlpcg")
 parser.add_argument("--output_dir", type=str,
-                    help="folder that saves the dataset", default="/data/oak/dataset_mlpcg")
+                    help="folder that saves the dataset")
 args = parser.parse_args()
 
 #%%
 N = args.resolution
 
 num_ritz_vectors = args.number_of_base_ritz_vectors
+
+small_matmul_size = args.small_matmul_size
 
 #%% Load the matrix A
 A_file_name = args.dataset_dir + "/test_matrices_and_vectors/N"+str(N) + "/matrixA_orig.bin"  #Change this one tho origional matrix (important)
@@ -101,7 +105,11 @@ small_matmul_size = 20
 for_outside = int(args.sample_size/small_matmul_size)
 b_rhs_temp = np.zeros([small_matmul_size,N**3])
 cut_idx = int(num_ritz_vectors/2)+args.theta
-num_zero_ritz_vals = 1
+num_zero_ritz_vals = 0
+while eigvals[num_zero_ritz_vals] < 1.0e-8:
+    num_zero_ritz_vals = num_zero_ritz_vals + 1
+    
+print(num_zero_ritz_vals)
 
 print(" Creating Rhs's")
 for it in range(0,for_outside):
