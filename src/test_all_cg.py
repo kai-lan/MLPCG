@@ -43,8 +43,8 @@ parser.add_argument("-tol","--tolerance", type=float,
                     help="tolerance for both DGCM and CG algorithm", default=1.0e-4)
 parser.add_argument("--verbose_dgcm", type=bool,
                     help="prints residuals of DGCM algorithm for each iteration", default=False)
-parser.add_argument('--skip_dcdm', dest='skip_dcdm', action="store_false", 
-                    const=True, default=False, help='skips dcdm tests')
+parser.add_argument('--skip_dcdm', action="store_false", 
+                    help='skips dcdm tests')
 #action='store_const',
 
 args = parser.parse_args()
