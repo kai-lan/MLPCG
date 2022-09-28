@@ -10,7 +10,7 @@ import os
 dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(1, dir_path+'/../lib/')
 
-import numpy as np
+import numpy as np 
 import tensorflow as tf
 import scipy.sparse as sparse
 from numpy.linalg import norm
@@ -19,7 +19,7 @@ import argparse
 
 import conjugate_gradient as cg
 #import pressure_laplacian as pl
-import helper_functions as hf
+#import helper_functions as hf
 
 #this makes sure that we are on cpu
 os.environ["CUDA_VISIBLE_DEVICES"]= ''
@@ -43,7 +43,9 @@ parser.add_argument("-tol","--tolerance", type=float,
                     help="tolerance for both DGCM and CG algorithm", default=1.0e-4)
 parser.add_argument("--verbose_dgcm", type=bool,
                     help="prints residuals of DGCM algorithm for each iteration", default=False)
-
+parser.add_argument('--skip_dcdm', dest='skip_dcdm', 
+                    const=True, default=False, help='skips dcdm tests')
+#action='store_const',
 
 args = parser.parse_args()
 #%%
@@ -68,6 +70,10 @@ tol = args.tolerance
 verbose_dgcm = args.verbose_dgcm
 
 verbose_ldlt = verbose_dgcm
+
+skip_dcdm = args.skip_dcdm
+
+print("skip_dcdm ", skip_dcdm)
 
 #%% 
 # if matrix does not change in the example, use the matrix for the first frame.  
@@ -106,17 +112,20 @@ model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,N,N,N]),dtype=
 
 #%% Getting RHS for the Testing
 d_type='double'
-def get_frame_from_source(file_rhs,d_type='double'):
+def get_vector_from_source(file_rhs,d_type='double'):
     if(os.path.exists(file_rhs)):
-        r0 = np.fromfile(file_rhs, dtype=d_type)
-        r1 = np.delete(r0, [0])
-        return r1
+        return_vector = np.fromfile(file_rhs, dtype=d_type)
+        return_vector = np.delete(return_vector, [0])
+        return return_vector
+    else:
+        print("RHS does not exist at "+ file_rhs)
+        
 
 
 initial_normalization = False 
 b_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "/div_v_star"+str(matrix_frame_number)+".bin" 
 A_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+ example_name +"/matrixA_"+str(matrix_frame_number)+".bin" 
-b = get_frame_from_source(b_file_name)
+b = get_vector_from_source(b_file_name)
 A = hf.readA_sparse(N, A_file_name,'f')
 CG = cg.ConjugateGradientSparse(A)
 
