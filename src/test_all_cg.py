@@ -100,19 +100,9 @@ else:
 # the matrices ...
 # k defines which parameters and model to be used. Currently we present two model.
 # k = 64 uses model trained model
-dataset_path = "/data/oak/dataset_mlpcg/"
-#dataset_path ="/home/ayano/project/tgsl/projects/incompressible_flow/build"
-#test_matrices_and_vectors/N64/smoke_passing_bunny/" 
-#"/home/ayano/project/tgsl/projects/incompressible_flow/build/"
-#"/data/oak/dataset_mlpcg" # change this to where you put the dataset folder
+dataset_path = "/data/dataset_mlpcg/"
+#"/data/dataset_mlpcg" # change this to where you put the dataset folder
 trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_F"+str(float_type)+"/"
-#model = hf.load_model_from_source(trained_model_name)
-
-#model.summary()
-#print("number of parameters in the model is ",model.count_params())
-
-# This is the lambda function that is needed in DGCM algorithm
-#model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,N,N,N]),dtype=dtype_),training=False).numpy()[0,:,:].reshape([N**3]) #first_residual
 
 #%% Load the matrix, vectors, and solver
 
@@ -156,8 +146,7 @@ if not args.skip_dcdm:
     # 64^3 and 128^3 computational grids
     # k defines which parameters and model to be used. Currently we present two model.
     # k = 64 uses model trained model
-    #dataset_path = "/home/ayano/project/tgsl/projects/incompressible_flow/build/"
-    #"/data/oak/dataset_mlpcg" # change this to where you put the dataset folder
+    #"/data/dataset_mlpcg" # change this to where you put the dataset folder
     print("Loading the model...")
     trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_F"+str(float_type)+"/"
     model = hf.load_model_from_source(trained_model_name)
