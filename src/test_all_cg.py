@@ -44,17 +44,21 @@ parser.add_argument("--verbose_dgcm", type=bool,
                     help="prints residuals of DGCM algorithm for each iteration", default=False)
 parser.add_argument("--dataset_dir", type=str,
                     help="path to the dataset", default="/data/oak/dataset_mlpcg")
-parser.add_argument('--skip_dcdm', action="store_true", 
+parser.add_argument('--skip_dcdm', action="store_false", 
                     help='skips dcdm tests')
-parser.add_argument('--skip_ldlt', action="store_true", 
+parser.add_argument('--skip_ldlt', action="store_false", 
                     help='skips ldlt test')
-parser.add_argument('--skip_deflated_pcg', action="store_true", 
+parser.add_argument('--skip_deflated_pcg', action="store_false", 
                     help='skips deflated pcg test')
 parser.add_argument('--skip_cg', action="store_true", 
                     help='skips cg test')
 #action='store_const',
 
+
 args = parser.parse_args()
+
+print(args.skip_dcdm, " ", args.skip_cg)
+
 #%%
 N = args.resolution
 
@@ -104,8 +108,7 @@ def get_vector_from_source(file_rhs,d_type='double'):
     else:
         print("RHS does not exist at "+ file_rhs)
         
-
-
+print("Matrix A and rhs b is loading...")
 initial_normalization = False 
 b_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+example_name + "/div_v_star"+str(matrix_frame_number)+".bin" 
 A_file_name = dataset_path + "/test_matrices_and_vectors/N"+str(N)+"/"+ example_name +"/matrixA_"+str(matrix_frame_number)+".bin" 
@@ -124,7 +127,7 @@ normalize_ = False
 #gpus = tf.config.list_physical_devices('GPU')
 
 #%% Testing - DCDM
-if ~args.skip_dcdm:
+if not args.skip_dcdm:
     #%% Setup The Dimension and Load the Model
     #Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
     #Decide which model to run: 64 or 128 and float type F16 (float 16) or F32 (float32)
