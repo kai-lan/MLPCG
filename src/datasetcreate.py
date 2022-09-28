@@ -96,8 +96,6 @@ num_zero_ritz_vals = 0
 while eigvals[num_zero_ritz_vals] < 1.0e-8:
     num_zero_ritz_vals = num_zero_ritz_vals + 1
     
-print(num_zero_ritz_vals)
-
 print("Creating Dataset ")
 for it in range(0,for_outside):
     t0=time.time()
