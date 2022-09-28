@@ -24,7 +24,7 @@ import helper_functions as hf
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-N", "--resolution", type=int, choices=[64, 128, 256, 384],
-                    help="N or resolution of test", default = 128)
+                    help="N or resolution of test", default = 128 )
 parser.add_argument("-k", "--trained_model_type", type=int, choices=[64, 128],
                     help="which model to test", default=128)
 parser.add_argument("-f", "--float_type", type=int, choices=[16, 32],
@@ -92,6 +92,28 @@ if example_name in ["rotating_fluid", "smoke_passing_bunny"]:
 else:
     matrix_frame_number = frame_number
     
+#%% Setup The Dimension and Load the Model
+#Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
+#N = 128 # parser 1
+#Decide which model to run: 64 or 128 and float type F16 (float 16) or F32 (float32)
+# There are two types of models: k=64 and k=128, where the models trained over 
+# the matrices ...
+# k defines which parameters and model to be used. Currently we present two model.
+# k = 64 uses model trained model
+dataset_path = "/data/oak/dataset_mlpcg/"
+#dataset_path ="/home/ayano/project/tgsl/projects/incompressible_flow/build"
+#test_matrices_and_vectors/N64/smoke_passing_bunny/" 
+#"/home/ayano/project/tgsl/projects/incompressible_flow/build/"
+#"/data/oak/dataset_mlpcg" # change this to where you put the dataset folder
+trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_F"+str(float_type)+"/"
+#model = hf.load_model_from_source(trained_model_name)
+
+#model.summary()
+#print("number of parameters in the model is ",model.count_params())
+
+# This is the lambda function that is needed in DGCM algorithm
+#model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,N,N,N]),dtype=dtype_),training=False).numpy()[0,:,:].reshape([N**3]) #first_residual
+
 #%% Load the matrix, vectors, and solver
 
 #Decide which example to run for: SmokePlume, ...
@@ -120,7 +142,6 @@ CG = cg.ConjugateGradientSparse(A)
 #%%
 # parameters for CG
 normalize_ = False 
-
 
 #gpu_usage = 1024*48.0#int(1024*np.double(sys.argv[5]))
 #which_gpu = 0#sys.argv[6]
@@ -165,7 +186,6 @@ if not args.skip_deflated_pcg:
     print("DeflatedPCG is running")
     t0=time.time()
     x_sol_cg, res_arr_cg = CG.deflated_pcg(b, max_cg_iter, tol, args.num_vectors_deflated_pcg, True)
-    #(self, b, max_outer_it = 100, pcg_inner_it = 1, tol = 1.0e-15, method = "jacobi", num_vectors = 16, verbose = False):   
     time_cg = time.time() - t0
     print("Deflated PCG took ",time_cg, " secs")
 
@@ -190,4 +210,5 @@ if not args.skip_icpcg:
     
     #p_out = "/results/"+project+"/frame_"+str(frame)
     #np.save(p_out, x_sol)
+
 

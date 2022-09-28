@@ -8,10 +8,12 @@ import time
 import scipy.sparse as sparse
 import scipy.sparse.linalg
 import helper_functions as hf
+import gc
 from scipy.sparse.linalg import eigs
 from scipy.sparse.linalg import inv
 from scipy.sparse import diags
 from scipy.sparse import identity
+from scipy.sparse import csr_matrix
 #from copy import copy
 
 class ConjugateGradient:
@@ -833,7 +835,8 @@ class ConjugateGradientSparse:
             print("A is not a square matrix!")
         self.n = A_sparse.shape[0]
         self.machine_tol = 1.0e-17;
-        self.A_sparse = A_sparse.copy()
+        A_sp = A_sparse.copy()
+        self.A_sparse = A_sp.astype(np.float32)
     
     # here x is np.array with dimension n
     def multiply_A(self,x):
@@ -1460,19 +1463,24 @@ class ConjugateGradientSparse:
    #     return y
 
 
-    def deflated_pcg(self, b,max_it = 100, tol = 1.0e-15,num_vectors = 16, verbose = False):
+    def deflated_pcg_n(self, b,max_it = 100,tol = 1.0e-15,num_vectors = 16, verbose = False):
         res_arr = [] 
         b_iter = b.copy()
         x_init = np.zeros(b.shape)
-        Q = self.lanczos_iteration_with_normalization_correction(b_iter,num_vectors)
+        Q = self.lanczos_iteration(b_iter,num_vectors)
         Q = self.create_ritz_vectors(b_iter,num_vectors)
-        lambda_ = self.create_ritz_values(Q)
-        A_c_inv = inv(diags(lambda_))
-        Q_sp = scipy.sparse.csr_matrix(Q)
-        Q_sp_t = Q_sp.transpose()
-        zAcinv = scipy.sparse.csr_matrix(Q_sp_t.dot(A_c_inv))
-        #zAcinvz = scipy.sparse.csr_matrix(zAcinv.dot(Q_sp))
-        zAcinvz = (zAcinv.dot(Q_sp))
+        lambda_ = (self.create_ritz_values(Q))
+        diag_lam = diags(lambda_)
+        A_c_inv = ( inv(diag_lam)).tocsr()
+        Q_sp = csr_matrix(Q,dtype=np.float32)
+        gc.collect()
+        print("Qsp")
+        print(type(Q_sp),Q_sp.shape,(Q_sp.dtype))
+        print("Qsp_Ac_inv *  Qsp T")
+        zAcinvz = csr_matrix(Q_sp.transpose()*(A_c_inv)*(Q_sp))#.tocsr() 
+        #zAcinvz = (zAcinv*(Q_sp))#.tocsr() 
+        print("Qsp_Ac_inv *  Qsp T")
+        print(type(zAcinvz))
         #x0 r0
         #ayano
         #b is rhs
@@ -1522,6 +1530,95 @@ class ConjugateGradientSparse:
                 return [x, res_arr]
             if it != max_it - 1: 
                 az = self.multiply_A_sparse(z)
+                if abs(rz_k)>0:
+                  beta = rz/rz_k
+                else: 
+                  beta = 0
+                print(beta,":beta")
+                pk_1 = p.copy()
+                #p = z.copy()
+                p = z + pk_1*beta - zAcinvz.dot(az)
+                rz_k = rz 
+         
+        if verbose:
+            print("PCG converged in "+str(max_it)+ " iterations to the final residual = "+str(res))
+        return [x, res_arr]
+
+
+    def deflated_pcg(self, b,max_it = 100,tol = 1.0e-15,num_vectors = 16, verbose = False):
+        res_arr = [] 
+        b_iter = b.copy()
+        x_init = np.zeros(b.shape)
+        Q = self.create_ritz_vectors(b_iter,num_vectors)
+        lambda_ = (self.create_ritz_values(Q))
+        #diag_lam = csr_matrix(diags(lambda_,dtype=np.float32))
+        diag_lam = csr_matrix(diags(lambda_))
+        A_c_inv = csr_matrix(inv(diag_lam),dtype=np.float32)
+        Q_sp = Q.astype(np.float32)#csr_matrix(Q)
+        #Q_sp = csr_matrix(Q,dtype=np.float32)
+        gc.collect()
+        print("Ac_inv")
+        print(type(A_c_inv),A_c_inv.shape,(A_c_inv.dtype))
+        print("Qsp")
+        print(type(Q_sp),Q_sp.shape,(Q_sp.dtype))
+        print("Qsp_Ac_inv *  Qsp T")
+        #zAcinvz = (Q_sp.transpose()*(A_c_inv))*(Q_sp)#.tocsr() 
+        zAcinvz = (Q_sp.transpose()@(A_c_inv))@(Q_sp)#.tocsr() 
+        #zAcinvz =  csr_matrix((Q_sp.transpose()*(A_c_inv))*(Q_sp),np.float32)
+#.tocsr() 
+        print("Qsp_Ac_inv *  Qsp T end")
+        print(type(zAcinvz),zAcinvz.shape,(zAcinvz.dtype))
+        #zAcinvz = csr_matrix(zAcinvz)
+        #print("convert Qsp_Ac_inv *  Qsp T end")
+        #print(type(zAcinvz),zAcinvz.shape,(zAcinvz.dtype))
+        #x0 r0
+        #ayano
+        #b is rhs
+        #x_init is initial prediction
+        #mult_precond is a function for multiplying preconditioner
+        x = x_init.copy()
+        ax = self.multiply_A_sparse(x_init)
+        res = self.norm(ax-b)
+        res_arr = res_arr + [res]
+        if verbose:
+            print("First PCG residual = "+str(res))
+        if res<tol:
+            if verbose:
+                print("PCG converged in 0 iteration. Final residual is "+str(res))
+            return [x, res_arr]
+        
+        mult_precond = lambda x_in_val: self.mult_diag_precond(x_in_val)
+        
+        r = b_iter #- ax(0)
+        x = zAcinvz.dot(r)
+        ax =  self.multiply_A_sparse(x)
+        r = b_iter -  ax
+        z = mult_precond(r)  #precond z0
+        z0 = z.copy()
+        az = self.multiply_A_sparse(z0).astype(np.float32)
+        #new p0
+        p = z0 -  zAcinvz.dot(az)
+        rz = np.dot(r,z)
+        rz_k = rz;
+        for it in range(max_it):
+            ap = self.multiply_A_sparse(p)
+            alpha = rz_k/np.dot(p,ap)
+            x = x + p*alpha
+            r = r - ap*alpha
+            #after updated x and r
+            #UPDATING r
+            z = mult_precond(r)             
+            rz = np.dot(r,z)
+            res = self.norm(self.multiply_A_sparse(x)-b)
+            res_arr = res_arr + [res]
+            print("PCG residual = "+str(res)+ ", Ite" + str(it))
+            if res < tol: 
+                if verbose:
+                    print("PCG residual = "+str(res))
+                    print("PCG converged in "+str(it)+ " iterations.")
+                return [x, res_arr]
+            if it != max_it - 1: 
+                az = self.multiply_A_sparse(z).astype(np.float32)
                 if abs(rz_k)>0:
                   beta = rz/rz_k
                 else: 
