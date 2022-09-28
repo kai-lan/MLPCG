@@ -66,5 +66,20 @@ Q0 = np.real(Q0)
 ritz_vectors = np.matmul(W.transpose(),Q0).transpose()
 print(eigvals[0:10], eigvals[-10:-1])
 
+print("testing")
+i = 60
+j = 60
+print("i = ",i,", j = ",j)
+print(CG.dot(ritz_vectors[i], CG.multiply_A_sparse(ritz_vectors[j])))
+print(eigvals[i])
+i = 60
+j = 90
+print("i = ",i,", j = ",j)
+print(CG.dot(ritz_vectors[i], CG.multiply_A_sparse(ritz_vectors[j])))
+print(eigvals[i])
+
+
+
+
 
 
