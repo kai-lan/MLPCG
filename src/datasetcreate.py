@@ -101,7 +101,6 @@ def mat_mult(A, B):
     return res
 
 
-small_matmul_size = 20
 for_outside = int(args.sample_size/small_matmul_size)
 b_rhs_temp = np.zeros([small_matmul_size,N**3])
 cut_idx = int(num_ritz_vectors/2)+args.theta
