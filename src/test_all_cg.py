@@ -18,8 +18,7 @@ import time
 import argparse
 
 import conjugate_gradient as cg
-#import pressure_laplacian as pl
-#import helper_functions as hf
+import helper_functions as hf
 
 #this makes sure that we are on cpu
 os.environ["CUDA_VISIBLE_DEVICES"]= ''
@@ -43,8 +42,16 @@ parser.add_argument("-tol","--tolerance", type=float,
                     help="tolerance for both DGCM and CG algorithm", default=1.0e-4)
 parser.add_argument("--verbose_dgcm", type=bool,
                     help="prints residuals of DGCM algorithm for each iteration", default=False)
-parser.add_argument('--skip_dcdm', action="store_false", 
+parser.add_argument("--dataset_dir", type=str,
+                    help="path to the dataset", default="/data/oak/dataset_mlpcg")
+parser.add_argument('--skip_dcdm', action="store_true", 
                     help='skips dcdm tests')
+parser.add_argument('--skip_ldlt', action="store_true", 
+                    help='skips ldlt test')
+parser.add_argument('--skip_deflated_pcg', action="store_true", 
+                    help='skips deflated pcg test')
+parser.add_argument('--skip_cg', action="store_true", 
+                    help='skips cg test')
 #action='store_const',
 
 args = parser.parse_args()
@@ -71,9 +78,8 @@ verbose_dgcm = args.verbose_dgcm
 
 verbose_ldlt = verbose_dgcm
 
-skip_dcdm = args.skip_dcdm
+dataset_path = args.dataset_dir
 
-print("skip_dcdm ", skip_dcdm)
 
 #%% 
 # if matrix does not change in the example, use the matrix for the first frame.  
@@ -82,28 +88,6 @@ if example_name in ["rotating_fluid", "smoke_passing_bunny"]:
 else:
     matrix_frame_number = frame_number
     
-
-#%% Setup The Dimension and Load the Model
-#Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
-#N = 128 # parser 1
-#Decide which model to run: 64 or 128 and float type F16 (float 16) or F32 (float32)
-# There are two types of models: k=64 and k=128, where the models trained over 
-# the matrices ...
-# k defines which parameters and model to be used. Currently we present two model.
-# k = 64 uses model trained model
-#dataset_path = "/home/ayano/project/tgsl/projects/incompressible_flow/build/"
-dataset_path = "/data/oak/dataset_mlpcg"
-#"/data/oak/dataset_mlpcg" # change this to where you put the dataset folder
-trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_F"+str(float_type)+"/"
-model = hf.load_model_from_source(trained_model_name)
-
-model.summary()
-print("number of parameters in the model is ",model.count_params())
-
-# This is the lambda function that is needed in DGCM algorithm
-model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,N,N,N]),dtype=dtype_),training=False).numpy()[0,:,:].reshape([N**3]) #first_residual
-
-
 #%% Load the matrix, vectors, and solver
 
 #Decide which example to run for: SmokePlume, ...
@@ -139,17 +123,36 @@ normalize_ = False
 #which_gpu = 0#sys.argv[6]
 #gpus = tf.config.list_physical_devices('GPU')
 
-#%% Testing
-# Dummy Calling:
-model_predict(b)
+#%% Testing - DCDM
+if ~args.skip_dcdm:
+    #%% Setup The Dimension and Load the Model
+    #Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
+    #Decide which model to run: 64 or 128 and float type F16 (float 16) or F32 (float32)
+    # There are two types of models: k=64 and k=128, where the models trained over 
+    # 64^3 and 128^3 computational grids
+    # k defines which parameters and model to be used. Currently we present two model.
+    # k = 64 uses model trained model
+    #dataset_path = "/home/ayano/project/tgsl/projects/incompressible_flow/build/"
+    #"/data/oak/dataset_mlpcg" # change this to where you put the dataset folder
+    print("Loading the model...")
+    trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_F"+str(float_type)+"/"
+    model = hf.load_model_from_source(trained_model_name)
+    model.summary()
+    print("Model loaded. Number of parameters in the model is ",model.count_params())
+    # This is the lambda function that is needed in DGCM algorithm
+    model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,N,N,N]),dtype=dtype_),training=False).numpy()[0,:,:].reshape([N**3]) #first_residual
+    #Dummy Calling
+    model_predict(b)
+    
+    print("DGCM is running...")
+    t0=time.time()                                  
+    max_DGCM_iter = 100                                                                                                                                      
+    x_sol, res_arr= CG.DGCM(b, np.zeros(b.shape), model_predict, max_DGCM_iter, tol, False ,verbose_dgcm)
+    time_cg_ml = time.time() - t0
+    print("DGCM took ", time_cg_ml," secs.")
 
-print("DGCM is running...")
-t0=time.time()                                  
-max_DGCM_iter = 100                                                                                                                                      
-x_sol, res_arr= CG.DGCM(b, np.zeros(b.shape), model_predict, max_DGCM_iter, tol, False ,verbose_dgcm)
-time_cg_ml = time.time() - t0
-print("DGCM took ", time_cg_ml," secs.")
 
+#%%
 
 print("CG is running...")
 t0=time.time()
