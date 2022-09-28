@@ -51,8 +51,10 @@ CG = cg.ConjugateGradientSparse(A)
 rand_vec_x = np.random.normal(0,1, [N**3])
 rand_vec = A.dot(rand_vec_x)
 #%% Creating Lanczos Vectors:
+print("Lanczos Iteration is running...")
 W, diagonal, sub_diagonal = CG.lanczos_iteration_with_normalization_correction(rand_vec, num_ritz_vectors) #this can be loaded directly from c++ output
 #W, diagonal, sub_diagonal = CG.lanczos_iteration(rand_vec, num_ritz_vectors, 1.0e-12) //Without ortogonalization. This is OK for 2D case.
+print("Lanczos Iteration finished.")
 
 #%% Create the tridiagonal matrix from diagonal and subdiagonal entries
 tri_diag = np.zeros([num_ritz_vectors,num_ritz_vectors])
@@ -71,23 +73,8 @@ print("Calculating eigenvectors of the tridiagonal matrix")
 eigvals, Q0 = np.linalg.eigh(tri_diag)
 eigvals = np.real(eigvals)
 Q0 = np.real(Q0)
-#%%
-
-#ritz_vectors = np.zeros(W.shape)
 ritz_vectors = np.matmul(W.transpose(),Q0).transpose()
-print(eigvals[0:10], eigvals[-10:-1])
 
-print("testing")
-i = 60
-j = 60
-print("i = ",i,", j = ",j)
-print(CG.dot(ritz_vectors[i], CG.multiply_A_sparse(ritz_vectors[j])))
-print(eigvals[i])
-i = 60
-j = 90
-print("i = ",i,", j = ",j)
-print(CG.dot(ritz_vectors[i], CG.multiply_A_sparse(ritz_vectors[j])))
-print(eigvals[i])
 
 #%% For fast matrix multiply
 from numba import njit, prange
@@ -111,7 +98,7 @@ while eigvals[num_zero_ritz_vals] < 1.0e-8:
     
 print(num_zero_ritz_vals)
 
-print(" Creating Rhs's")
+print("Creating Dataset ")
 for it in range(0,for_outside):
     t0=time.time()
     sample_size = small_matmul_size
