@@ -44,11 +44,11 @@ parser.add_argument("--verbose_dgcm", type=bool,
                     help="prints residuals of DGCM algorithm for each iteration", default=False)
 parser.add_argument("--dataset_dir", type=str,
                     help="path to the dataset", default="/data/oak/dataset_mlpcg")
-parser.add_argument('--skip_dcdm', action="store_false", 
+parser.add_argument('--skip_dcdm', action="store_true", 
                     help='skips dcdm tests')
-parser.add_argument('--skip_ldlt', action="store_false", 
+parser.add_argument('--skip_ldlt', action="store_true", 
                     help='skips ldlt test')
-parser.add_argument('--skip_deflated_pcg', action="store_false", 
+parser.add_argument('--skip_deflated_pcg', action="store_true", 
                     help='skips deflated pcg test')
 parser.add_argument('--skip_cg', action="store_true", 
                     help='skips cg test')
@@ -128,7 +128,7 @@ normalize_ = False
 
 #%% Testing - DCDM
 if not args.skip_dcdm:
-    #%% Setup The Dimension and Load the Model
+    #% Setup The Dimension and Load the Model
     #Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
     #Decide which model to run: 64 or 128 and float type F16 (float 16) or F32 (float32)
     # There are two types of models: k=64 and k=128, where the models trained over 
