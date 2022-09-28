@@ -15,6 +15,8 @@ We also have C++/CUDA implementation version.
 We are using vertual environment using conda.
 
 
+
+
 ## Training
 ### Dataset
 We placed dataset here [place of the folder].Here, we generated this dataset by calculating ritz vecort, so we also show our code here. [GeneratingData.py]
@@ -36,13 +38,22 @@ The test data is under ```dataset_mlpcg/test_matrices_and_vectors ``` folder.The
 * matrixA_"frame".bin --> system matrix data, they strored by csr format.
 
 
+
+## All datasets
+From here, you can donwload the ```trained model```, ```testing matrix``` and ```A^(0,0) matrix data for generating datasets for training model```.
+
+https://www.dropbox.com/sh/5abjudbcz4i1mk6/AAAhhJ1Y3ZNIl69GF7ZjeTpga?dl=0
+
+
+
 ```
 .
 └── HomeDir(cloned Dir)
     ├── src
-    └── dataset_mlpcg(here, you can place the folder of data)
+    └── dataset_mlpcg(please donwloatd from above link , you can place anywhere and just set the pass)
         ├── test_matrices_and_vectors  
         └── trained_models
+        └── original_matA
             
 ```
 
