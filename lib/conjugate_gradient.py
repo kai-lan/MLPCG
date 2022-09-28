@@ -9,6 +9,7 @@ import scipy.sparse as sparse
 import scipy.sparse.linalg
 import helper_functions as hf
 import gc
+import numpy.linalg as LA
 from scipy.sparse.linalg import eigs
 from scipy.sparse.linalg import inv
 from scipy.sparse import diags
@@ -907,6 +908,7 @@ class ConjugateGradientSparse:
     #create_approximate_eigenmodes (old name)
     def create_ritz_vectors(self, b, num_vectors, sorting=True):
         W, diagonal, sub_diagonal = self.lanczos_iteration(b, num_vectors, 1.0e-12)
+        #W, diagonal, sub_diagonal = self.lanczos_iteration(b, num_vectors, 1.0e-12)
         if(num_vectors != len(diagonal)):
             print("Careful. Lanczos Iteration converged too early, num_vectors = "+str(num_vectors)+" > "+str(len(diagonal)))
             num_vectors = len(diagonal)
@@ -963,7 +965,16 @@ class ConjugateGradientSparse:
             y = y + qTx*(1/lambda_[i] - 1.0)*Q[i]
         return y
 
-    
+    #ayano
+    def Q_Ac_Qt_y(self,x,Q,lambda_):
+        y = np.copy(x)
+        Q_s = Q.astype(np.float32)
+        Qb = (Q_s@x).astype(np.float32)
+        #calc QAinv
+        diag_lam = np.diag(lambda_)
+        QtAinv = Q_s.transpose()@LA.inv(diag_lam)
+        y = QtAinv@Qb
+        return y
     
     
     
@@ -1551,26 +1562,6 @@ class ConjugateGradientSparse:
         x_init = np.zeros(b.shape)
         Q = self.create_ritz_vectors(b_iter,num_vectors)
         lambda_ = (self.create_ritz_values(Q))
-        #diag_lam = csr_matrix(diags(lambda_,dtype=np.float32))
-        diag_lam = csr_matrix(diags(lambda_))
-        A_c_inv = csr_matrix(inv(diag_lam),dtype=np.float32)
-        Q_sp = Q.astype(np.float32)#csr_matrix(Q)
-        #Q_sp = csr_matrix(Q,dtype=np.float32)
-        gc.collect()
-        print("Ac_inv")
-        print(type(A_c_inv),A_c_inv.shape,(A_c_inv.dtype))
-        print("Qsp")
-        print(type(Q_sp),Q_sp.shape,(Q_sp.dtype))
-        print("Qsp_Ac_inv *  Qsp T")
-        #zAcinvz = (Q_sp.transpose()*(A_c_inv))*(Q_sp)#.tocsr() 
-        zAcinvz = (Q_sp.transpose()@(A_c_inv))@(Q_sp)#.tocsr() 
-        #zAcinvz =  csr_matrix((Q_sp.transpose()*(A_c_inv))*(Q_sp),np.float32)
-#.tocsr() 
-        print("Qsp_Ac_inv *  Qsp T end")
-        print(type(zAcinvz),zAcinvz.shape,(zAcinvz.dtype))
-        #zAcinvz = csr_matrix(zAcinvz)
-        #print("convert Qsp_Ac_inv *  Qsp T end")
-        #print(type(zAcinvz),zAcinvz.shape,(zAcinvz.dtype))
         #x0 r0
         #ayano
         #b is rhs
@@ -1590,14 +1581,20 @@ class ConjugateGradientSparse:
         mult_precond = lambda x_in_val: self.mult_diag_precond(x_in_val)
         
         r = b_iter #- ax(0)
-        x = zAcinvz.dot(r)
+
+        #diag_lam = np.diag(lambda_)
+        #lambda_ = LA.inv(diag_lam)
+        x = self.Q_Ac_Qt_y(r,Q,lambda_)  #precond z0
+        #x = zAcinvz.dot(r)
         ax =  self.multiply_A_sparse(x)
+        
         r = b_iter -  ax
         z = mult_precond(r)  #precond z0
         z0 = z.copy()
-        az = self.multiply_A_sparse(z0).astype(np.float32)
+        az = self.multiply_A_sparse(z0)#.astype(np.float32)
         #new p0
-        p = z0 -  zAcinvz.dot(az)
+        tempv = self.Q_Ac_Qt_y(az,Q,lambda_) 
+        p = z0 -  tempv
         rz = np.dot(r,z)
         rz_k = rz;
         for it in range(max_it):
@@ -1618,7 +1615,7 @@ class ConjugateGradientSparse:
                     print("PCG converged in "+str(it)+ " iterations.")
                 return [x, res_arr]
             if it != max_it - 1: 
-                az = self.multiply_A_sparse(z).astype(np.float32)
+                az = self.multiply_A_sparse(z)#.astype(np.float32)
                 if abs(rz_k)>0:
                   beta = rz/rz_k
                 else: 
@@ -1626,7 +1623,8 @@ class ConjugateGradientSparse:
                 print(beta,":beta")
                 pk_1 = p.copy()
                 #p = z.copy()
-                p = z + pk_1*beta - zAcinvz.dot(az)
+                tempv = self.Q_Ac_Qt_y(az,Q,lambda_) 
+                p = z + pk_1*beta - tempv#zAcinvz.dot(az)
                 rz_k = rz 
          
         if verbose:

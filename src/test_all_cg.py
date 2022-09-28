@@ -24,7 +24,7 @@ import helper_functions as hf
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-N", "--resolution", type=int, choices=[64, 128, 256, 384],
-                    help="N or resolution of test", default = 128 )
+                    help="N or resolution of test", default = 256 )
 parser.add_argument("-k", "--trained_model_type", type=int, choices=[64, 128],
                     help="which model to test", default=128)
 parser.add_argument("-f", "--float_type", type=int, choices=[16, 32],
@@ -210,5 +210,4 @@ if not args.skip_icpcg:
     
     #p_out = "/results/"+project+"/frame_"+str(frame)
     #np.save(p_out, x_sol)
-
 
