@@ -63,10 +63,7 @@ At ```dim``` dimention and trained over ```K``` resolution model are named 'mode
 
 ## Installation
 
-1. Clone this repo:
-```
-it clone https://github.com/
-```
+1. Extract  this folder, download the required dataset from above link and place it.
 
 2. Create and activate a conda environement
 ```
