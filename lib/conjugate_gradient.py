@@ -517,8 +517,8 @@ class ConjugateGradient:
         invariant_subspace = False
         it = 1
         while ((it<max_it-1) and (not invariant_subspace)):
-            if it%50==0:
-                print("Lanczoz it = ",it)
+            #if it%50==0:
+            #    print("Lanczos it = ",it)
             #Q[it+1] = np.matmul(self.A, Q[it])
             Q[it+1] = self.multiply_A_sparse(Q[it])
             diagonal[it] = np.dot(Q[it],Q[it+1])
@@ -1276,8 +1276,8 @@ class ConjugateGradientSparse:
         invariant_subspace = False
         it = 1
         while ((it<max_it-1) and (not invariant_subspace)):
-            if it%50==0:
-                print("Lanczoz it = ",it)
+            #if it%50==0:
+            #    print("Lanczos it = ",it)
             #Q[it+1] = np.matmul(self.A, Q[it])
             Q[it+1] = self.multiply_A_sparse(Q[it])
             diagonal[it] = np.dot(Q[it],Q[it+1])
@@ -1328,8 +1328,8 @@ class ConjugateGradientSparse:
         invariant_subspace = False
         it = 1
         while ((it<max_it-1) and (not invariant_subspace)):
-            if it%50==0:
-                print("Lanczoz it = ",it)
+            #if it%50==0:
+            #    print("Lanczos it = ",it)
             #Q[it+1] = np.matmul(self.A, Q[it])
             Q[it+1] = self.multiply_A_sparse(Q[it])
             diagonal[it] = np.dot(Q[it],Q[it+1])            
