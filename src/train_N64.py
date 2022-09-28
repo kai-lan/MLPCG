@@ -183,11 +183,11 @@ for i in range(1,epoch_num):
     tol=1.0e-12
 
     print("Rotating Fluid Test")
-    x_sol, res_arr_ml_generated_cg = CG.cg_on_ML_generated_subspace(b_rotate, np.zeros(b_rotate.shape), model_predict, max_it,tol, True)    
+    x_sol, res_arr_ml_generated_cg = CG.dcdm(b_rotate, np.zeros(b_rotate.shape), model_predict, max_it,tol, True)    
     print("Smoke Plume Test")
-    x_sol, res_arr_ml_generated_cg = CG.cg_on_ML_generated_subspace(b_smoke, np.zeros(b.shape), model_predict, max_it,tol, True)
+    x_sol, res_arr_ml_generated_cg = CG.dcdm(b_smoke, np.zeros(b.shape), model_predict, max_it,tol, True)
     print("RandomRHSi Test")
-    x_sol, res_arr_ml_generated_cg = CG.cg_on_ML_generated_subspace(b_rand, np.zeros(b_rand.shape), model_predict, max_it,tol, True)
+    x_sol, res_arr_ml_generated_cg = CG.dcdm(b_rand, np.zeros(b_rand.shape), model_predict, max_it,tol, True)
 
 
 
