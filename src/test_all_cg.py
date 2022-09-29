@@ -45,14 +45,16 @@ parser.add_argument("--CUDA_VISIBLE_DEVICES", type=str,
                     help="Determines if DCDM uses GPU. Default DCDM only uses CPU.", default="")
 parser.add_argument("--num_vectors_deflated_pcg", type=int,
                     help="number of vectors used in DeflatedPCG", default=50)
+parser.add_argument("--verbose_dcdm", action="store_false", 
+                    help="prints residuals of DCDM algorithm for each iteration", default=False)
 parser.add_argument('--test_dcdm', action="store_false", 
-                    help='test dcdm tests')
+                    help='test dcdm')
 parser.add_argument('--test_icpcg', action="store_false", 
                     help='test icpcg/ldlt test')
 parser.add_argument('--test_deflated_pcg', action="store_false", 
-                    help='test deflated pcg test')
+                    help='test deflated pcg')
 parser.add_argument('--test_cg', action="store_false", 
-                    help='test cg test')
+                    help='test cg')
 
 args = parser.parse_args()
 
@@ -76,9 +78,9 @@ max_cg_iter = args.max_cg_iter
 
 tol = args.tolerance 
 
-verbose_dgcm = args.verbose_dgcm
+verbose_dcdm = args.test_dcdm
 
-verbose_icpcg = verbose_dgcm
+verbose_icpcg = verbose_dcdm
 
 dataset_path = args.dataset_dir
 
@@ -148,7 +150,7 @@ if not args.test_dcdm:
     print("DGCM is running...")
     t0=time.time()                                  
     max_dcdm_iter = 100                                                                                                                                      
-    x_sol, res_arr= CG.dcdm(b, np.zeros(b.shape), model_predict, max_dcdm_iter, tol, False ,verbose_dgcm)
+    x_sol, res_arr= CG.dcdm(b, np.zeros(b.shape), model_predict, max_dcdm_iter, tol, False ,verbose_dcdm)
     time_cg_ml = time.time() - t0
     print("DGCM took ", time_cg_ml," secs.")
 
