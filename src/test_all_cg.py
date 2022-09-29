@@ -91,18 +91,6 @@ if example_name in ["rotating_fluid", "smoke_passing_bunny"]:
     matrix_frame_number = 1
 else:
     matrix_frame_number = frame_number
-    
-#%% Setup The Dimension and Load the Model
-#Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
-#N = 128 # parser 1
-#Decide which model to run: 64 or 128 and float type F16 (float 16) or F32 (float32)
-# There are two types of models: k=64 and k=128, where the models trained over 
-# the matrices ...
-# k defines which parameters and model to be used. Currently we present two model.
-# k = 64 uses model trained model
-#dataset_path = "/data/oak/dataset_mlpcg"
-#"/data/dataset_mlpcg" # change this to where you put the dataset folder
-trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_F"+str(float_type)+"/"
 
 #%% Load the matrix, vectors, and solver
 
