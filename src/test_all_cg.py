@@ -24,9 +24,9 @@ import helper_functions as hf
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-N", "--resolution", type=int, choices=[64, 128, 256, 384],
-                    help="N or resolution of test", default = 256 )
+                    help="N or resolution of test", default = 64)
 parser.add_argument("-k", "--trained_model_type", type=int, choices=[64, 128],
-                    help="which model to test", default=128)
+                    help="which model to test", default=64)
 parser.add_argument("-f", "--float_type", type=int, choices=[16, 32],
                     help="model parameters' float type", default=32)
 parser.add_argument("-ex", "--example_type", type=str, choices=["rotating_fluid", "smoke_passing_bunny"],
@@ -44,15 +44,15 @@ parser.add_argument("--dataset_dir", type=str,
 parser.add_argument("--CUDA_VISIBLE_DEVICES", type=str,
                     help="Determines if DCDM uses GPU. Default DCDM only uses CPU.", default="")
 parser.add_argument("--num_vectors_deflated_pcg", type=int,
-                    help="number of vectors used in DeflatedPCG", default=16)
-parser.add_argument('--skip_dcdm', action="store_true", 
-                    help='skips dcdm tests')
-parser.add_argument('--skip_icpcg', action="store_true", 
-                    help='skips icpcg/ldlt test')
-parser.add_argument('--skip_deflated_pcg', action="store_true", 
-                    help='skips deflated pcg test')
-parser.add_argument('--skip_cg', action="store_true", 
-                    help='skips cg test')
+                    help="number of vectors used in DeflatedPCG", default=50)
+parser.add_argument('--test_dcdm', action="store_false", 
+                    help='test dcdm tests')
+parser.add_argument('--test_icpcg', action="store_false", 
+                    help='test icpcg/ldlt test')
+parser.add_argument('--test_deflated_pcg', action="store_false", 
+                    help='test deflated pcg test')
+parser.add_argument('--test_cg', action="store_false", 
+                    help='test cg test')
 
 args = parser.parse_args()
 
@@ -100,7 +100,7 @@ else:
 # the matrices ...
 # k defines which parameters and model to be used. Currently we present two model.
 # k = 64 uses model trained model
-dataset_path = "/data/dataset_mlpcg/"
+#dataset_path = "/data/oak/dataset_mlpcg"
 #"/data/dataset_mlpcg" # change this to where you put the dataset folder
 trained_model_name = dataset_path + "/trained_models/model_N"+str(N)+"_from"+str(k)+"_F"+str(float_type)+"/"
 
@@ -138,7 +138,7 @@ normalize_ = False
 #gpus = tf.config.list_physical_devices('GPU')
 
 #%% Testing
-if not args.skip_dcdm:
+if not args.test_dcdm:
     #% Setup The Dimension and Load the Model
     #Decide which dimention to test for:  64, 128, 256, 384, 512 (ToDo)
     #Decide which model to run: 64 or 128 and float type F16 (float 16) or F32 (float32)
@@ -164,21 +164,21 @@ if not args.skip_dcdm:
     time_cg_ml = time.time() - t0
     print("DGCM took ", time_cg_ml," secs.")
 
-if not args.skip_cg:
+if not args.test_cg:
     print("CG is running...")
     t0=time.time()
     x_sol_cg, res_arr_cg = CG.cg_normal(np.zeros(b.shape),b,max_cg_iter,tol,True)
     time_cg = time.time() - t0
     print("CG took ",time_cg, " secs")
 
-if not args.skip_deflated_pcg:
+if not args.test_deflated_pcg:
     print("DeflatedPCG is running")
     t0=time.time()
     x_sol_cg, res_arr_cg = CG.deflated_pcg(b, max_cg_iter, tol, args.num_vectors_deflated_pcg, True)
     time_cg = time.time() - t0
     print("Deflated PCG took ",time_cg, " secs")
 
-if not args.skip_icpcg:
+if not args.test_icpcg:
     print("icpcg is running...")    
     t0=time.time()
     L, D = CG.ldlt()
