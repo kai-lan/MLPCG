@@ -47,7 +47,7 @@ parser.add_argument("--input_matrix_A_dir", type=str,
 
 args = parser.parse_args()
 #%%
-N = args.N
+N = args.resolution
 N2 = N**3
 
 #project_name = "3D_N64"
