@@ -57,7 +57,7 @@ N2 = N**3
 
 lr = 1.0e-4  # learning rate
 
-loading_number = int(sys.argv[4])
+loading_number = args.loading_number
 
 # you can modify gpu memory usage editing here
 os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_choice
