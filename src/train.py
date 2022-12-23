@@ -30,7 +30,7 @@ parser.add_argument("--total_number_of_epochs", type=int,
                     help="Total number of epochs for training", default=1000)
 parser.add_argument("--epoch_save_period", type=int,
                     help="Represents epoch save periodicity", default=1)
-parser.add_argument("--loading_number_per", type=int,
+parser.add_argument("--loading_number", type=int,
                     help="Number of vectors.", default=1000)
 parser.add_argument("--gpu_usage", type=int,
                     help="gpu usage, in terms of GB.", default=3)
