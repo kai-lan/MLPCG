@@ -105,7 +105,7 @@ if args.start_epoch == 0:
     validation_loss = []
 else:
     print("Loading model from disk. Starting from epoch = ",args.start_epoch)
-    model_name = args.output_dir + '/'+ args.start_epoch
+    model_name = args.output_dir + '/'+ str(args.start_epoch)
     json_file = open(model_name + '/model.json', 'r')
     loaded_model_json = json_file.read()
     json_file.close()
