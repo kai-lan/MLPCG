@@ -1,8 +1,9 @@
+#python3 train.py -N 64 --batch_size 1 --gpu_usage 40 --gpu_choice 0 --dataset_dir /data/oak/ML_preconditioner_project/data_newA/MLCG_3D_newA_N64/b_rhs_90_10_V2 --output_dir /home/oak/projects/MLPCG_data/trained_models/data_V2/V101/ --input_matrix_A_dir /home/oak/projects/ML_preconditioner_project/MLCG_3D_newA_N64/data/output3d64_new_tgsl_rotating_fluid/matrixA_1.bin 
+
 import os
 import sys
 import numpy as np
 from tensorflow import keras
-from tensorflow.keras import layers
 
 import tensorflow as tf 
 import gc
@@ -13,9 +14,8 @@ import argparse
 
 sys.path.insert(1, '../lib/')
 import conjugate_gradient as cg
-import pressure_laplacian as pl
 import helper_functions as hf
-
+import get_model
 
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
@@ -34,29 +34,31 @@ parser.add_argument("--loading_number", type=int,
                     help="Number of vectors.", default=1000)
 parser.add_argument("--gpu_usage", type=int,
                     help="gpu usage, in terms of GB.", default=3)
+parser.add_argument("--start_epoch", type=int,
+                    help="if saved, start from the saved epoch.", default=0)
 parser.add_argument("--gpu_choice", type=str,
                     help="which gpu to use.", default='0')
 parser.add_argument("--dataset_dir", type=str,
                     help="path to the folder containing dataset vectors")
-parser.add_argument("--test_dir", type=str,
-                    help="path to the folder containing test folders")
+parser.add_argument("--test_frame", type=int,
+                    help="frame number", default=10)
+parser.add_argument("--test1_dir", type=str,
+                    help="path to the folder containing test 1",default='')
+parser.add_argument("--test2_dir", type=str,
+                    help="path to the folder containing test 2",default='')
 parser.add_argument("--output_dir", type=str,
-                    help="save_folder ")
+                    help="save_folder for models")
 parser.add_argument("--input_matrix_A_dir", type=str,
                     help="path to the matrix_A file. It should be .bin file")
+parser.add_argument("--model_type", type=str,
+                    help="model type. Look get_model.py")
 
 args = parser.parse_args()
 #%%
 N = args.resolution
 N2 = N**3
-
-#project_name = "3D_N64"
-#project_folder_subname = os.path.basename(os.getcwd())
-#print("project_folder_subname = ", project_folder_subname)
-#project_folder_general = "../dataset/train/forTraining/3D_N64"
-
+Models = get_model.get_model(N)
 lr = 1.0e-4  # learning rate
-
 loading_number = args.loading_number
 
 # you can modify gpu memory usage editing here
@@ -73,10 +75,9 @@ if gpus:
     print(e)
 
 
+#%% Load the training matrix and correcponding loss function
 A_sparse_scipy = hf.readA_sparse(N, args.input_matrix_A_dir,'f')
-
 CG = cg.ConjugateGradientSparse(A_sparse_scipy)
-
 coo = A_sparse_scipy.tocoo()
 indices = np.mat([coo.row, coo.col]).transpose()
 A_sparse = tf.SparseTensor(indices, np.float32(coo.data), coo.shape)
@@ -91,36 +92,51 @@ def custom_loss_function_cnn_1d_fast(y_true,y_pred):
         err = err + tf.reduce_sum(tf.math.square(tf.reshape(y_true[i],[N2,1]) - tf.sparse.sparse_dense_matmul(A_sparse, x_initial_guesses)))
     return err/b_size_
 
-#%% Training model 
-# get that from library, get model
-fil_num=16
-input_rhs = keras.Input(shape=(N, N, N, 1))
-first_layer = layers.Conv3D(fil_num, (3, 3, 3), activation='linear', padding='same')(input_rhs)
-la = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(first_layer)
-lb = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(la)
-la = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(lb) + la
-lb = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(la)
 
-apa = layers.AveragePooling3D((2, 2,2), padding='same')(lb) 
-apb = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(apa)
-apa = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(apb) + apa
-apb = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(apa)
-apa = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(apb) + apa
-apb = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(apa)
-apa = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(apb) + apa
+#%% Set model and losses
+training_loss_name = args.output_dir + "/training_loss.npy"
+validation_loss_name =  args.output_dir +"/validation_loss.npy"
 
-upa = layers.UpSampling3D((2, 2,2))(apa) + lb
-upb = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(upa) 
-upa = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(upb) + upa
-upb = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(upa) 
-upa = layers.Conv3D(fil_num, (3, 3, 3), activation='relu', padding='same')(upb) + upa
+if args.start_epoch == 0:
+    print("Creating model "+args.model_type)
+    model = Models.get_predefined_model(args.model_type)
+    print("Untrained model created.")
+    training_loss = []
+    validation_loss = []
+else:
+    print("Loading model from disk. Starting from epoch = ",args.start_epoch)
+    model_name = args.output_dir + '/'+ args.start_epoch
+    json_file = open(model_name + '/model.json', 'r')
+    loaded_model_json = json_file.read()
+    json_file.close()
+    model = keras.models.model_from_json(loaded_model_json)
+    # load weights into new model
+    model.load_weights(model_name + "/model.h5")
+    print("Loaded trained model from disk") 
+        
+    with open(training_loss_name, 'rb') as f:
+        training_loss = list(np.load(f))
+    with open(validation_loss_name, 'rb') as f:
+        validation_loss = list(np.load(f))
+        
+    # to not lose data
+    training_loss_name_old = args.output_dir + "/training_loss_old.npy"
+    validation_loss_name_old =  args.output_dir +"/validation_loss_old.npy"
+    with open(training_loss_name_old, 'wb') as f:
+        np.save(f, np.array(training_loss))
+    with open(validation_loss_name_old, 'wb') as f:
+        np.save(f, np.array(validation_loss))
 
-last_layer = layers.Dense(1, activation='linear')(upa)
+    training_loss = training_loss[0:args.start_epoch]
+    validation_loss = validation_loss[0:args.start_epoch]
+    print("training_loss so far \n",training_loss)
+    print("validation_loss so far \n", validation_loss)
 
-model = keras.Model(input_rhs, last_layer)
+    
 model.compile(optimizer="Adam", loss=custom_loss_function_cnn_1d_fast) 
 model.optimizer.lr = lr;
-model.summary()
+model.summary() 
+
 
 #%% testing data rhs
 
@@ -133,15 +149,6 @@ b_rand = CG.multiply_A_sparse(rand_vec_x)
 #data_folder_name = project_folder_general+"data/output3d128_smoke_sigma/"
 #b_rotate = hf.get_frame_from_source(10, data_folder_name)
 
-
-#%%
-#training_loss_name = project_folder_general+project_folder_subname+"/"+project_name+"_training_loss.npy"
-#validation_loss_name = project_folder_general+project_folder_subname+"/"+project_name+"_validation_loss.npy"
-training_loss_name = args.output_dir + "/training_loss.npy"
-validation_loss_name =  args.output_dir +"/validation_loss.npy"
-
-training_loss = []
-validation_loss = []
 
 
 #%%
@@ -186,13 +193,14 @@ for i in range(1,args.total_number_of_epochs):
     training_loss = training_loss + [sum(validation_loss_inner)/for_loading_number]
     validation_loss = validation_loss + [sum(validation_loss_inner)/for_loading_number]
     
-    os.system("mkdir "+args.output_dir+"/"+str(args.epoch_save_period*i))
-    os.system("touch "+args.output_dir+"/"+str(args.epoch_save_period*i)+"/model.json")
+    model_json_dir = args.output_dir+"/"+str(args.start_epoch +args.epoch_save_period*i)
+    os.system("mkdir "+model_json_dir)
+    os.system("touch "+model_json_dir+"/model.json")
     model_json = model.to_json()
-    model_name_json = args.output_dir+"/"+str(args.epoch_save_period*i)
-    with open(model_name_json+ "/model.json", "w") as json_file:
+
+    with open(model_json_dir+ "/model.json", "w") as json_file:
         json_file.write(model_json)
-    model.save_weights(model_name_json + "/model.h5")
+    model.save_weights(model_json_dir + "/model.h5")
     
     with open(training_loss_name, 'wb') as f:
         np.save(f, np.array(training_loss))
@@ -205,12 +213,20 @@ for i in range(1,args.total_number_of_epochs):
     max_it=30
     tol=1.0e-12
 
-    print("Rotating Fluid Test")
-    #x_sol, res_arr_ml_generated_cg = CG.dcdm(b_rotate, np.zeros(b_rotate.shape), model_predict, max_it,tol, True)    
-    print("Smoke Plume Test")
+    #print("Smoke Plume Test")
     #x_sol, res_arr_ml_generated_cg = CG.dcdm(b_smoke, np.zeros(b.shape), model_predict, max_it,tol, True)
-    print("RandomRHSi Test")
+    print("Random RHS Test")
     x_sol, res_arr_ml_generated_cg = CG.dcdm(b_rand, np.zeros(b_rand.shape), model_predict, max_it,tol, True)
 
+    if args.test1_dir != '':
+        print("Test 1")
+        #get rhs b
+        b1 = hf.get_frame_from_source(args.test_frame, args.test1_dir)
+        A_sparse_scipy_test1 = hf.readA_sparse(N, args.test1_dir+"/matrixA_"+str(args.test_frame)+'.bin','f')
+        CG_test1 = cg.ConjugateGradientSparse(A_sparse_scipy_test1)
+        #get test matrix:
+        x_sol, res_arr_ml_generated_cg = CG_test1.dcdm(b1, np.zeros(b1.shape), model_predict, max_it,tol, True)    
+    if args.test2_dir != '':
+        b2 = hf.get_frame_from_source(args.test_frame, args.test2_dir)
 
 

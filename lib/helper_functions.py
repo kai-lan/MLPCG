@@ -34,7 +34,10 @@ def get_vec(file_rhs,normalize = False, d_type='double'):
             return r1            
 
 def get_frame_from_source(n,data_folder_name,normalize = True, d_type='double'):
-    file_rhs = data_folder_name + "div_v_star_"+str(n)+".bin"
+    file_rhs = data_folder_name
+    if file_rhs[-1] != '/':
+        file_rhs = file_rhs+'/'
+    file_rhs = file_rhs + "div_v_star_"+str(n)+".bin"
     if(os.path.exists(file_rhs)):
         r0 = np.fromfile(file_rhs, dtype=d_type)
         #print(r0[0])
