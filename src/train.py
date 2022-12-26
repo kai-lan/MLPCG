@@ -155,9 +155,9 @@ b_rand = CG.multiply_A_sparse(rand_vec_x)
 total_data_points = 20000
 for_loading_number = round(total_data_points/loading_number)
 b_rhs = np.zeros([loading_number,N2])
-perm = np.random.permutation(total_data_points)
-with open(args.dataset_dir+'/perm.npy', 'wb') as f:  
-    np.save(f,perm)
+#perm = np.random.permutation(total_data_points)
+with open(args.dataset_dir+'/perm.npy', 'rb') as f:  
+    perm = np.load(f)
 
 for i in range(1,args.total_number_of_epochs):    
     print("Training at i = " + str(i+args.start_epoch))
