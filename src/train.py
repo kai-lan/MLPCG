@@ -6,8 +6,8 @@ import numpy as np
 from tensorflow import keras
 
 import tensorflow as tf 
-import gc
-import scipy.sparse as sparse
+#import gc
+#import scipy.sparse as sparse
 import time
 #import matplotlib.pyplot as plt
 import argparse
@@ -21,7 +21,6 @@ import get_model
 parser = argparse.ArgumentParser()
 parser.add_argument("-N", "--resolution", type=int, choices=[64, 128],
                     help="N or resolution of the training matrix", default = 64)
-
 parser.add_argument("--sample_size", type=int,
                     help="number of vectors to be created for dataset. I.e., size of the dataset", default=20000)
 parser.add_argument("--batch_size", type=int,
@@ -30,8 +29,10 @@ parser.add_argument("--total_number_of_epochs", type=int,
                     help="Total number of epochs for training", default=1000)
 parser.add_argument("--epoch_save_period", type=int,
                     help="Represents epoch save periodicity", default=1)
-parser.add_argument("--loading_number", type=int,
-                    help="Number of vectors.", default=1000)
+#parser.add_argument("--loading_number", type=int,
+#                    help="Number of vectors per inner step training.", default=1000)
+parser.add_argument("--inner_loop_total", type=int,
+                    help="number loops in inner training", default=20)
 parser.add_argument("--gpu_usage", type=int,
                     help="gpu usage, in terms of GB.", default=3)
 parser.add_argument("--start_epoch", type=int,
@@ -40,6 +41,8 @@ parser.add_argument("--gpu_choice", type=str,
                     help="which gpu to use.", default='0')
 parser.add_argument("--dataset_dir", type=str,
                     help="path to the folder containing dataset vectors")
+parser.add_argument("--num_training_vectors", type=int,
+                    help="number of vectors in trea",default=20000)
 parser.add_argument("--test_frame", type=int,
                     help="frame number", default=10)
 parser.add_argument("--test1_dir", type=str,
@@ -59,7 +62,7 @@ N = args.resolution
 N2 = N**3
 Models = get_model.get_model(N)
 lr = 1.0e-4  # learning rate
-loading_number = args.loading_number
+
 
 # you can modify gpu memory usage editing here
 os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_choice
@@ -152,8 +155,8 @@ b_rand = CG.multiply_A_sparse(rand_vec_x)
 
 
 #%%
-total_data_points = 20000
-for_loading_number = round(total_data_points/loading_number)
+loading_number = round(args.total_data_points/args.inner_loop_total)
+#for_loading_number = round(total_data_points/loading_number)
 b_rhs = np.zeros([loading_number,N2])
 #perm = np.random.permutation(total_data_points)
 with open(args.dataset_dir+'/perm.npy', 'rb') as f:  
@@ -165,8 +168,8 @@ for i in range(1,args.total_number_of_epochs):
     training_loss_inner = []
     validation_loss_inner = []
     t0=time.time()    
-    for ii in range(for_loading_number):
-        print("Sub_training at ",ii,"/",for_loading_number," at training ",i)
+    for ii in range(args.inner_loop_total):
+        print("Sub_training at ",ii,"/",args.inner_loop_total," at training ",i)
 
     
         for j in range(loading_number):
@@ -189,11 +192,11 @@ for i in range(1,args.total_number_of_epochs):
         validation_loss_inner = validation_loss_inner + hist.history['val_loss']  
     
     time_cg_ml = (time.time() - t0)
-    print("Training loss at i = ",sum(training_loss_inner)/for_loading_number)
-    print("Validation loss at i = ",sum(training_loss_inner)/for_loading_number)
+    print("Training loss at i = ",sum(training_loss_inner)/args.inner_loop_total)
+    print("Validation loss at i = ",sum(training_loss_inner)/args.inner_loop_total)
     print("Time for epoch = ",i," is ", time_cg_ml)
-    training_loss = training_loss + [sum(validation_loss_inner)/for_loading_number]
-    validation_loss = validation_loss + [sum(validation_loss_inner)/for_loading_number]
+    training_loss = training_loss + [sum(validation_loss_inner)/args.inner_loop_total]
+    validation_loss = validation_loss + [sum(validation_loss_inner)/args.inner_loop_total]
     
     model_json_dir = args.output_dir+"/"+str(args.start_epoch +args.epoch_save_period*i)
     os.system("mkdir "+model_json_dir)
