@@ -155,8 +155,8 @@ b_rand = CG.multiply_A_sparse(rand_vec_x)
 
 
 #%%
-loading_number = round(args.total_data_points/args.inner_loop_total)
-#for_loading_number = round(total_data_points/loading_number)
+loading_number = round(args.num_training_vectors/args.inner_loop_total)
+#for_loading_number = round(args.num_training_vectors/loading_number)
 b_rhs = np.zeros([loading_number,N2])
 #perm = np.random.permutation(total_data_points)
 with open(args.dataset_dir+'/perm.npy', 'rb') as f:  
