@@ -4,7 +4,7 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(1, dir_path+'/../lib/')
 
 import numpy as np
-import tensorflow as tf
+# import tensorflow as tf
 import scipy.sparse as sparse
 from numpy.linalg import norm
 import time
@@ -18,7 +18,7 @@ import helper_functions as hf
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-N", "--resolution", type=int, choices=[64, 128],
-                    help="N or resolution of the training matrix", default = 128)
+                    help="N or resolution of the training matrix", default = 64)
 parser.add_argument("-m", "--number_of_base_ritz_vectors", type=int,
                     help="number of ritz vectors to be used as the base for the dataset", default=10000)
 parser.add_argument("--sample_size", type=int,
@@ -42,9 +42,7 @@ num_ritz_vectors = args.number_of_base_ritz_vectors
 
 small_matmul_size = args.small_matmul_size
 
-#save output_dir
-import pathlib
-pathlib.Path(args.output_dir).mkdir(parents=True, exist_ok=True) 
+os.makedirs(args.output_dir, exist_ok=True)
 
 #%%
 A_file_name = args.input_matrix_A_dir
@@ -60,7 +58,7 @@ for i in range(num_ritz_vectors):
         print(i)
     with open(args.ritz_dir+'/'+str(i)+'.npy', 'rb') as f:
         ritz_vectors[i] = np.load(f)
-        
+
 # test ritz vals
 ritz_values_last20 = CG.create_ritz_values(ritz_vectors[num_ritz_vectors-20:num_ritz_vectors])
 ritz_values_first20 = CG.create_ritz_values(ritz_vectors[0:20])
@@ -84,7 +82,7 @@ def mat_mult(A, B):
 #res = mat_mult(A, B)
 
 
-#%% 
+#%%
 import time
 print("numba")
 
@@ -115,7 +113,7 @@ for it in range(0,100):
         b_rhs_temp[i-l_b]=b_rhs_temp[i-l_b]/np.linalg.norm(b_rhs_temp[i-l_b])
         with open(args.output_dir+'/'+str(i)+'.npy', 'wb') as f:
             np.save(f, np.array(b_rhs_temp[i-l_b],dtype=np.float32))
-        
+
     print(norm(b_rhs_temp)**2)
     time_cg_ml = int((time.time() - t0))
     print("data creation at ",it, " took ", time_cg_ml, " seconds.")

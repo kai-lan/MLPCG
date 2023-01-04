@@ -4,7 +4,7 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(1, dir_path+'/../lib/')
 
 import numpy as np
-import tensorflow as tf
+# import tensorflow as tf
 import scipy.sparse as sparse
 from numpy.linalg import norm
 import time
@@ -18,7 +18,7 @@ import helper_functions as hf
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-N", "--resolution", type=int, choices=[64, 128],
-                    help="N or resolution of the training matrix", default = 128)
+                    help="N or resolution of the training matrix", default = 64)
 parser.add_argument("-m", "--number_of_base_ritz_vectors", type=int,
                     help="number of ritz vectors to be used as the base for the dataset", default=10000)
 parser.add_argument("--sample_size", type=int,
@@ -42,13 +42,13 @@ small_matmul_size = args.small_matmul_size
 
 #save output_dir
 import pathlib
-pathlib.Path(args.output_dir).mkdir(parents=True, exist_ok=True) 
+pathlib.Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
 #%% Load the matrix A
 if N == 64:
-    A_file_name = args.dataset_dir + "/original_matA/A_origN"+str(N)+".bin"  
+    A_file_name = args.dataset_dir + "/original_matA/A_origN"+str(N)+".bin"
 elif N == 128:
-    A_file_name = args.dataset_dir + "/original_matA/A_oriN"+str(N)+".bin"  
+    A_file_name = args.dataset_dir + "/original_matA/A_origN"+str(N)+".bin"
 A = hf.readA_sparse(N, A_file_name,'f')
 CG = cg.ConjugateGradientSparse(A)
 rand_vec_x = np.random.normal(0,1, [N**3])
@@ -98,7 +98,7 @@ cut_idx = int(num_ritz_vectors/2)+args.theta
 num_zero_ritz_vals = 0
 while ritz_vals[num_zero_ritz_vals] < 1.0e-8:
     num_zero_ritz_vals = num_zero_ritz_vals + 1
-    
+
 print("Creating Dataset ")
 for it in range(0,for_outside):
     t0=time.time()

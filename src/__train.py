@@ -1,11 +1,11 @@
-#python3 train.py -N 64 --batch_size 1 --gpu_usage 40 --gpu_choice 0 --dataset_dir /data/oak/ML_preconditioner_project/data_newA/MLCG_3D_newA_N64/b_rhs_90_10_V2 --output_dir /home/oak/projects/MLPCG_data/trained_models/data_V2/V101/ --input_matrix_A_dir /home/oak/projects/ML_preconditioner_project/MLCG_3D_newA_N64/data/output3d64_new_tgsl_rotating_fluid/matrixA_1.bin
+#python3 train.py -N 64 --batch_size 1 --gpu_usage 40 --gpu_choice 0 --dataset_dir /data/oak/ML_preconditioner_project/data_newA/MLCG_3D_newA_N64/b_rhs_90_10_V2 --output_dir /home/oak/projects/MLPCG_data/trained_models/data_V2/V101/ --input_matrix_A_dir /home/oak/projects/ML_preconditioner_project/MLCG_3D_newA_N64/data/output3d64_new_tgsl_rotating_fluid/matrixA_1.bin 
 
 import os
 import sys
 import numpy as np
-# from tensorflow import keras
+from tensorflow import keras
 
-# import tensorflow as tf
+import tensorflow as tf 
 #import gc
 #import scipy.sparse as sparse
 import time
@@ -115,13 +115,13 @@ else:
     model = keras.models.model_from_json(loaded_model_json)
     # load weights into new model
     model.load_weights(model_name + "/model.h5")
-    print("Loaded trained model from disk")
-
+    print("Loaded trained model from disk") 
+        
     with open(training_loss_name, 'rb') as f:
         training_loss = list(np.load(f))
     with open(validation_loss_name, 'rb') as f:
         validation_loss = list(np.load(f))
-
+        
     # to not lose data
     training_loss_name_old = args.output_dir + "/training_loss_old.npy"
     validation_loss_name_old =  args.output_dir +"/validation_loss_old.npy"
@@ -135,10 +135,10 @@ else:
     print("training_loss so far \n",training_loss)
     print("validation_loss so far \n", validation_loss)
 
-
-model.compile(optimizer="Adam", loss=custom_loss_function_cnn_1d_fast)
+    
+model.compile(optimizer="Adam", loss=custom_loss_function_cnn_1d_fast) 
 model.optimizer.lr = lr;
-model.summary()
+model.summary() 
 
 
 #%% testing data rhs
@@ -159,45 +159,45 @@ loading_number = round(args.num_training_vectors/args.inner_loop_total)
 #for_loading_number = round(args.num_training_vectors/loading_number)
 b_rhs = np.zeros([loading_number,N2])
 #perm = np.random.permutation(total_data_points)
-with open(args.dataset_dir+'/perm.npy', 'rb') as f:
+with open(args.dataset_dir+'/perm.npy', 'rb') as f:  
     perm = np.load(f)
 
-for i in range(1,args.total_number_of_epochs):
+for i in range(1,args.total_number_of_epochs):    
     print("Training at i = " + str(i+args.start_epoch))
-
+    
     training_loss_inner = []
     validation_loss_inner = []
-    t0=time.time()
+    t0=time.time()    
     for ii in range(args.inner_loop_total):
         print("Sub_training at ",ii,"/",args.inner_loop_total," at training ",i)
 
-
+    
         for j in range(loading_number):
-            with open(args.dataset_dir+'/'+str(perm[loading_number*ii+j])+'.npy', 'rb') as f:
+            with open(args.dataset_dir+'/'+str(perm[loading_number*ii+j])+'.npy', 'rb') as f:  
                 b_rhs[j] = np.load(f)
-
+        
         sub_train_size = round(0.9*loading_number)
         sub_test_size = loading_number - sub_train_size
         iiln = ii*loading_number
-        x_train = tf.convert_to_tensor(b_rhs[0:loading_number].reshape([loading_number,N,N,N,1]),dtype=tf.float32)
-        x_test = tf.convert_to_tensor(b_rhs[sub_train_size:loading_number].reshape([sub_test_size,N,N,N,1]),dtype=tf.float32)
-
+        x_train = tf.convert_to_tensor(b_rhs[0:loading_number].reshape([loading_number,N,N,N,1]),dtype=tf.float32) 
+        x_test = tf.convert_to_tensor(b_rhs[sub_train_size:loading_number].reshape([sub_test_size,N,N,N,1]),dtype=tf.float32)         
+         
         hist = model.fit(x_train,x_train,
                         epochs=args.epoch_save_period,
                         batch_size=args.batch_size,
                         shuffle=True,
                         validation_data=(x_test,x_test))
-
+        
         training_loss_inner = training_loss_inner + hist.history['loss']
-        validation_loss_inner = validation_loss_inner + hist.history['val_loss']
-
+        validation_loss_inner = validation_loss_inner + hist.history['val_loss']  
+    
     time_cg_ml = (time.time() - t0)
     print("Training loss at i = ",sum(training_loss_inner)/args.inner_loop_total)
     print("Validation loss at i = ",sum(training_loss_inner)/args.inner_loop_total)
     print("Time for epoch = ",i," is ", time_cg_ml)
     training_loss = training_loss + [sum(validation_loss_inner)/args.inner_loop_total]
     validation_loss = validation_loss + [sum(validation_loss_inner)/args.inner_loop_total]
-
+    
     model_json_dir = args.output_dir+"/"+str(args.start_epoch +args.epoch_save_period*i)
     os.system("mkdir "+model_json_dir)
     os.system("touch "+model_json_dir+"/model.json")
@@ -206,14 +206,14 @@ for i in range(1,args.total_number_of_epochs):
     with open(model_json_dir+ "/model.json", "w") as json_file:
         json_file.write(model_json)
     model.save_weights(model_json_dir + "/model.h5")
-
+    
     with open(training_loss_name, 'wb') as f:
         np.save(f, np.array(training_loss))
     with open(validation_loss_name, 'wb') as f:
         np.save(f, np.array(validation_loss))
     print(training_loss)
     print(validation_loss)
-
+    
     model_predict = lambda r: model(tf.convert_to_tensor(r.reshape([1,N,N,N]),dtype=tf.float32),training=False).numpy()[0,:,:].reshape([N2]) #first_residual
     max_it=30
     tol=1.0e-12
@@ -230,7 +230,7 @@ for i in range(1,args.total_number_of_epochs):
         A_sparse_scipy_test1 = hf.readA_sparse(N, args.test1_dir+"/matrixA_"+str(args.test_frame)+'.bin','f')
         CG_test1 = cg.ConjugateGradientSparse(A_sparse_scipy_test1)
         #get test matrix:
-        x_sol, res_arr_ml_generated_cg = CG_test1.dcdm(b1, np.zeros(b1.shape), model_predict, max_it,tol, True)
+        x_sol, res_arr_ml_generated_cg = CG_test1.dcdm(b1, np.zeros(b1.shape), model_predict, max_it,tol, True)    
     if args.test2_dir != '':
         b2 = hf.get_frame_from_source(args.test_frame, args.test2_dir)
 

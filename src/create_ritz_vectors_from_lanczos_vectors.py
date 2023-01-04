@@ -4,7 +4,7 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(1, dir_path+'/../lib/')
 
 import numpy as np
-import tensorflow as tf
+# import tensorflow as tf
 import scipy.sparse as sparse
 from numpy.linalg import norm
 import time
@@ -18,7 +18,7 @@ import helper_functions as hf
 #%% Get Arguments from parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-N", "--resolution", type=int, choices=[64, 128],
-                    help="N or resolution of the training matrix", default = 128)
+                    help="N or resolution of the training matrix", default = 64)
 parser.add_argument("-m", "--number_of_base_ritz_vectors", type=int,
                     help="number of ritz vectors to be used as the base for the dataset", default=10000)
 parser.add_argument("--sample_size", type=int,
@@ -42,9 +42,7 @@ num_ritz_vectors = args.number_of_base_ritz_vectors
 
 small_matmul_size = args.small_matmul_size
 
-#save output_dir
-import pathlib
-pathlib.Path(args.output_dir).mkdir(parents=True, exist_ok=True) 
+os.makedirs(args.output_dir, exist_ok=True)
 
 #%%
 A_file_name = args.input_matrix_A_dir
@@ -70,7 +68,7 @@ for i in range(num_ritz_vectors-1):
     Av = A.dot(W[i])
     diagonal[i] = np.dot(W[i],Av)
     sub_diagonal[i] = np.dot(Av,W[i+1])
-    
+
 Av = A.dot(W[num_ritz_vectors-1])
 diagonal[num_ritz_vectors-1] = np.dot(W[num_ritz_vectors-1],Av)
 
@@ -108,7 +106,7 @@ for i in range(100):
     for i in range(ll,rr):
         #with open(project_data_folder3+'ritz_vectors_10000_3D_N'+str(dim-1)+'/'+str(i)+'.npy', 'wb') as f:
         with open(args.output_dir+'/'+str(i)+'.npy', 'wb') as f:
-            np.save(f, np.array(ritz_vectors_temp[i-ll],dtype=np.float32))  
+            np.save(f, np.array(ritz_vectors_temp[i-ll],dtype=np.float32))
 
 
 
