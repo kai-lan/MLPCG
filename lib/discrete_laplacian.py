@@ -17,8 +17,8 @@ from scipy import sparse
 #
 #   output: L1 -- n x n sparse matrix for discrete Laplacian
 #
-def lap1d(n):
-    v  = np.ones(n)
+def lap1d(n, dtype=np.float32):
+    v  = np.ones(n, dtype=dtype)
     L1 = sparse.spdiags([v,-2*v,v],[-1,0,1],n,n)
     return L1
 
@@ -32,12 +32,12 @@ def lap1d(n):
 #
 #   output: L2 -- (nx*ny) x (nx*ny) sparse matrix for discrete Laplacian
 #   L2 = kron(Dxx, I) + kron(I, Dyy)
-def lap2d(nx,ny):
-    Lx=lap1d(nx)
-    Ix = sparse.eye(nx)
+def lap2d(nx,ny, dtype=np.float32):
+    Lx=lap1d(nx, dtype=dtype)
+    Ix = sparse.eye(nx, dtype=dtype)
 
-    Ly=lap1d(ny)
-    Iy=sparse.eye(ny)
+    Ly=lap1d(ny, dtype=dtype)
+    Iy=sparse.eye(ny, dtype=dtype)
 
     L2 = sparse.kron(Iy,Lx) + sparse.kron(Ly,Ix)
 
@@ -52,15 +52,15 @@ def lap2d(nx,ny):
 #
 #   output: L3 -- (nx*ny*nz) x (nx*ny*nz) sparse matrix for discrete Laplacian
 #   L3 = kron(Dxx, I, I) + kron(I, Dyy, I) + kron(I, I, Dzz)
-def lap3d(nx,ny,nz):
-    Lx=lap1d(nx)
-    Ix = sparse.eye(nx)
+def lap3d(nx,ny,nz, dtype=np.float32):
+    Lx=lap1d(nx, dtype=dtype)
+    Ix = sparse.eye(nx, dtype=dtype)
 
-    Ly=lap1d(ny)
-    Iy=sparse.eye(ny)
+    Ly=lap1d(ny, dtype=dtype)
+    Iy=sparse.eye(ny, dtype=dtype)
 
-    Lz=lap1d(nz)
-    Iz=sparse.eye(nz)
+    Lz=lap1d(nz, dtype=dtype)
+    Iz=sparse.eye(nz, dtype=dtype)
 
     L3 = sparse.kron(sparse.kron(Lx, Iy),Iz) + sparse.kron(sparse.kron(Ix, Ly),Iz) + sparse.kron(sparse.kron(Ix, Iy),Lz)
     return L3
@@ -82,7 +82,7 @@ def neighbors(ind, n):
         if ind[1] + 1 < n: nb.append([ind[0], ind[1]+1, ind[-1]])
     return nb
 
-def lap_with_bc(n, dim, solid=[], air=[]):
+def lap_with_bc(n, dim, solid=[], air=[], dtype=np.float32):
     """Generate pressure Laplacian matrix with specified BC
     Args:
         n (int): Number of grids in each dimension.
@@ -94,9 +94,9 @@ def lap_with_bc(n, dim, solid=[], air=[]):
         scipy csr matrix: pressure Laplacian matrix
     """
     if dim == 2:
-        A = lap2d(n, n).tolil()
+        A = lap2d(n, n, dtype=dtype).tolil()
     else:
-        A = lap3d(n, n, n).tolil()
+        A = lap3d(n, n, n, dtype=dtype).tolil()
     if len(solid) > 0:
         solid_inds = flatten_inds(solid, n)
         A[solid_inds] = 0
@@ -114,17 +114,30 @@ def lap_with_bc(n, dim, solid=[], air=[]):
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import sys
+    from write_data import writeA_sparse
+    from read_data import readA_sparse
     n = 64
-    air = []
-    for i in range(n):
-        for j in range(n):
-            air.extend([(i, j, 0), (i, j, n-1), (0, i, j), (n-1, i, j), (i, 0, j), (i, n-1, j)])
-    air = list(set(air))
-    A = lap_with_bc(n, 3, air=air)
-    # A.eliminate_zeros()
-    A.maxprint = np.inf
+    DIM = 2
+    BC = 'solid'
+    bc = []
+    if DIM == 2:
+        for i in range(n):
+            bc.extend([(i, 0), (i, n-1), (0, i), (n-1, i)])
+    else:
+        for i in range(n):
+            for j in range(n):
+                bc.extend([(i, j, 0), (i, j, n-1), (0, i, j), (n-1, i, j), (i, 0, j), (i, n-1, j)])
+    bc = list(set(bc))
+    if BC == 'solid':
+        A = lap_with_bc(n, DIM, solid=bc, dtype=np.float32)
+    if BC == 'air':
+        A = lap_with_bc(n, DIM, air=bc, dtype=np.float32)
+    writeA_sparse(A, f"../dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin", 'f')
+    exit()
+    B = readA_sparse(n, f"../dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin", DIM, 'f')
+    B.maxprint = np.inf
     with open ('matA_test.txt', 'w') as f:
         sys.stdout = f
-        print(A)
+        print(B)
     # plt.spy(A, markersize=2, marker='o')
     # plt.savefig("laplacian_sparsity_2d.png")

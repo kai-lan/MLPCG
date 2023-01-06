@@ -117,7 +117,7 @@ def readA_sparse(dim, filenameA, DIM=2, dtype='f'):
             length = 4
             b = f.read(length)
             outerIdxPtr[i] = struct.unpack('i', b)[0]
-        for i in range(nnz): # Col index
+        for i in range(innS): # Col index
             length = 4
             b = f.read(length)
             cols[i] = struct.unpack('i', b)[0]

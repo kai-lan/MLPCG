@@ -7,7 +7,7 @@ import time
 #import os
 import scipy.sparse as sparse
 import scipy.sparse.linalg
-import helper_functions as hf
+import read_data as hf
 import gc
 import numpy.linalg as LA
 from scipy.sparse.linalg import eigs
@@ -2721,3 +2721,13 @@ class ConjugateGradientSparse:
        return x_sol,res_arr
 
 
+if __name__ == '__main__':
+    A = np.array([[1, 2.2, 3], [4, 4.5, 6.4], [7.6, 8.1, 9.0]])
+    A = A + A.T
+    A = sparse.csr_matrix(A)
+    rand_vec = np.array([1.1, 1.1, 0])
+    cg = ConjugateGradientSparse(A)
+    Q, diag, sub_diag = cg.lanczos_iteration_with_normalization_correction(rand_vec, 4)
+    print(Q)
+    print(diag)
+    print(sub_diag)
