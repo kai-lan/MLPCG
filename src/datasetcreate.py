@@ -11,7 +11,7 @@ import time
 import argparse
 
 import conjugate_gradient as cg
-import helper_functions as hf
+import read_data as hf
 
 #os.environ["CUDA_VISIBLE_DEVICES"]= '' #not necessary
 

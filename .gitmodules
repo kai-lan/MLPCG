@@ -1,3 +1,0 @@
-[submodule "submodules/pylanczos"]
-	path = submodules/pylanczos
-	url = git@github.com:mrcdr/pylanczos.git
