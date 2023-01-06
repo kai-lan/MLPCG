@@ -1,4 +1,5 @@
 dataset_mlpcg
+lib/.DS_Store
 lib/__*
 lib/*.png
 src/__*
