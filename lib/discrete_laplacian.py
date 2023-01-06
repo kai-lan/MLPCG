@@ -82,14 +82,14 @@ def neighbors(ind, n):
         if ind[1] + 1 < n: nb.append([ind[0], ind[1]+1, ind[-1]])
     return nb
 
-def lap_with_bc(n, dim, solid=[], air=[], dtype=np.float32):
+def lap_with_bc(n, dim, solid=[], air=[], spd=True, dtype=np.float32):
     """Generate pressure Laplacian matrix with specified BC
     Args:
         n (int): Number of grids in each dimension.
         dim (int): 2D or 3D
         solid (list, optional): list of indices for solid cells, ie, Neumann. Defaults to [].
         air (list, optional): list of indices for air cells, ie, Dirichlet. Defaults to [].
-
+        spd: negate it to make it SPD.
     Returns:
         scipy csr matrix: pressure Laplacian matrix
     """
@@ -109,11 +109,12 @@ def lap_with_bc(n, dim, solid=[], air=[], dtype=np.float32):
         air_inds = flatten_inds(air, n)
         A[air_inds] = 0
         A[:, air_inds] = 0
-
+    if spd: A *= -1
     return A.tocsr()
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-    import sys
+    import sys, os
+    dir_path = os.path.dirname(os.path.realpath(__file__))
     from write_data import writeA_sparse
     from read_data import readA_sparse
     n = 64
@@ -132,9 +133,9 @@ if __name__ == '__main__':
         A = lap_with_bc(n, DIM, solid=bc, dtype=np.float32)
     if BC == 'air':
         A = lap_with_bc(n, DIM, air=bc, dtype=np.float32)
-    writeA_sparse(A, f"../dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin", 'f')
+    writeA_sparse(A, os.path.join(dir_path, "..", f"dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin"), 'f')
     exit()
-    B = readA_sparse(n, f"../dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin", DIM, 'f')
+    B = readA_sparse(n, os.path.join(dir_path, f"../dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin"), DIM, 'f')
     B.maxprint = np.inf
     with open ('matA_test.txt', 'w') as f:
         sys.stdout = f
