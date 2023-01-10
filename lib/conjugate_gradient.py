@@ -10,7 +10,7 @@ import scipy.sparse.linalg
 import read_data as hf
 import gc
 import numpy.linalg as LA
-from scipy.sparse.linalg import eigs
+from scipy.sparse.linalg import eigs, eigsh
 from scipy.sparse.linalg import inv
 from scipy.sparse import diags
 from scipy.sparse import identity
@@ -2722,12 +2722,14 @@ class ConjugateGradientSparse:
 
 
 if __name__ == '__main__':
-    A = np.array([[1, 2.2, 3], [4, 4.5, 6.4], [7.6, 8.1, 9.0]])
+    A = np.random.rand(4096, 4096)
     A = A + A.T
     A = sparse.csr_matrix(A)
-    rand_vec = np.array([1.1, 1.1, 0])
-    cg = ConjugateGradientSparse(A)
-    Q, diag, sub_diag = cg.lanczos_iteration_with_normalization_correction(rand_vec, 4)
-    print(Q)
-    print(diag)
-    print(sub_diag)
+    # rand_vec = np.array([1.1, 1.1, 0, 0, 0, 0])
+    # cg = ConjugateGradientSparse(A)
+    # Q, diag, sub_diag = cg.lanczos_iteration_with_normalization_correction(rand_vec, 4)
+    # print(Q)
+    # print(diag)
+    # print(sub_diag)
+    w, v = eigsh(A, 4)
+    print(v)

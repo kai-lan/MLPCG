@@ -117,7 +117,7 @@ def readA_sparse(dim, filenameA, DIM=2, dtype='f'):
             length = 4
             b = f.read(length)
             outerIdxPtr[i] = struct.unpack('i', b)[0]
-        for i in range(innS): # Col index
+        for i in range(nnz): # Col index
             length = 4
             b = f.read(length)
             cols[i] = struct.unpack('i', b)[0]
@@ -125,3 +125,17 @@ def readA_sparse(dim, filenameA, DIM=2, dtype='f'):
     for ii in range(num_rows):
         rows[outerIdxPtr[ii]:outerIdxPtr[ii+1]] = [ii]*(outerIdxPtr[ii+1] - outerIdxPtr[ii])
     return sparse.csr_matrix((data, (rows, cols)),[dim2,dim2], dtype=dtype)
+
+if __name__ == '__main__':
+    import sys
+    path = os.path.dirname(os.path.relpath(__file__))
+    file = os.path.join(path,  "..", "dataset_mlpcg", "test_matrices_and_vectors", "N64", "matrixA_orig.bin")
+    file2 = os.path.join(path, "..", "dataset_mlpcg", "train_64_3D", "A_solid.bin")
+    A = readA_sparse(64, file, 3)
+    B = readA_sparse(64, file2, 3)
+    C = A - B
+    print(B.nnz)
+    # with open("matA_test.txt", 'w') as f:
+    #     sys.stdout = f
+    #     A.maxprint = np.inf
+    #     print(A)

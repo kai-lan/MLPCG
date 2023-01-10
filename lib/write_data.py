@@ -26,7 +26,8 @@ def writeA_sparse(A, filenameA, dtype='f'):
     '''
     num_rows, num_cols = A.shape
     nnz = A.nnz
-    outS, innerS = len(A.indptr), len(A.indices)
+    outS = len(A.indptr)
+    innS = outS
     with open(filenameA, 'wb') as f:
         b = struct.pack('i', num_rows)
         f.write(b)
@@ -36,7 +37,7 @@ def writeA_sparse(A, filenameA, dtype='f'):
         f.write(b)
         b = struct.pack('i', outS)
         f.write(b)
-        b = struct.pack('i', innerS)
+        b = struct.pack('i', innS)
         f.write(b)
         for i in range(nnz):
             b = struct.pack(dtype, A.data[i])
@@ -44,6 +45,6 @@ def writeA_sparse(A, filenameA, dtype='f'):
         for i in range(outS): # Index pointer
             b = struct.pack('i', A.indptr[i])
             f.write(b)
-        for i in range(innerS): # Col index
+        for i in range(nnz): # Col index
             b = struct.pack('i', A.indices[i])
             f.write(b)
