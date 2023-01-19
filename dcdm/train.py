@@ -8,7 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 import time
 from tqdm import tqdm
 dir_path = os.path.dirname(os.path.realpath(__file__))
-data_path = os.path.join(dir_path, "../dataset_mlpcg")
+data_path = os.path.join(dir_path, "../data_dcdm")
 sys.path.insert(1, os.path.join(dir_path, '../lib'))
 import conjugate_gradient as cg
 import read_data as hf
@@ -106,7 +106,7 @@ if __name__ == '__main__':
     bc = 'solid'
     dim2 = dim**DIM
     lr = 1.0e-4
-    epoch_num = 10
+    epoch_num = 100
     b_size = 25 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
     total_data_points = 2000
     cuda = torch.device("cuda") # Use CUDA for training
@@ -129,20 +129,12 @@ if __name__ == '__main__':
     coo = A_sparse_scipy.tocoo()
 
     indices = np.mat([coo.row, coo.col])
-    # A_sparse = torch.sparse_coo_tensor(indices, coo.data, coo.shape, dtype=torch.float32, device=cuda)
     A_sparse = torch.sparse_csr_tensor(A_sparse_scipy.indptr, A_sparse_scipy.indices, A_sparse_scipy.data, A_sparse_scipy.shape, dtype=torch.float32, device=cuda)
 
     model = DCDM(DIM)
     model.to(cuda)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     loss_fn = CustomLossCNN1DFast()
-
-    # testing data rhs
-    # rand_vec_x = np.random.normal(0, 1, [dim2])
-    # b_rand = CG.multiply_A_sparse(rand_vec_x)
-
-    # test_folder = data_path +  "/test_matrices_and_vectors/N64/"
-    # b_smoke = hf.get_frame_from_source(10, test_folder + "smoke_passing_bunny")
 
     training_loss = []
     validation_loss = []

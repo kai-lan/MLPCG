@@ -10,6 +10,16 @@ import struct
 import numpy as np
 import scipy.sparse as sparse
 
+def read_flags(file, dtype='int32'):
+    len_size_t = 8
+    if dtype == 'int32': length = 4
+    else: length = 8
+    with open(file, 'rb') as f:
+        N = struct.unpack('N', f.read(len_size_t))[0]  # First 8 bytes stores length of vector
+        b = struct.unpack(f'{N}i', f.read(length * N))
+    b = np.array(b, dtype=dtype)
+    return b
+
 def load_vector(data_folder_name, normalize = False, dtype='double'):
     if(os.path.exists(data_folder_name)):
         r0 = np.fromfile(data_folder_name, dtype=dtype)
@@ -29,9 +39,9 @@ void Serialize(const std::vector<T>& v, const std::string& filename) {
   out.close();
 }
 """
-def readA(dim,filenameA):
-    dim2 = dim*dim;
-    mat_A = np.zeros((dim2,dim2));
+def readA(dim, filenameA, DIM, dtype='d'):
+    N = dim**DIM
+    mat_A = np.zeros((N,N), dtype=dtype)
     with open(filenameA, 'rb') as f:
         length = 8
         b = f.read(length)
@@ -85,7 +95,7 @@ def readA_sparse(dim, filenameA, DIM=2, dtype='f'):
     DIM: 2D or 3D
     dtype: 'd', double (8 bytes); 'f', float (4 bytes)
     '''
-    dim2 = dim**DIM
+    N = dim**DIM
     cols = []
     outerIdxPtr = []
     rows = []
@@ -124,7 +134,7 @@ def readA_sparse(dim, filenameA, DIM=2, dtype='f'):
     outerIdxPtr = outerIdxPtr + [nnz]
     for ii in range(num_rows):
         rows[outerIdxPtr[ii]:outerIdxPtr[ii+1]] = [ii]*(outerIdxPtr[ii+1] - outerIdxPtr[ii])
-    return sparse.csr_matrix((data, (rows, cols)),[dim2,dim2], dtype=dtype)
+    return sparse.csr_matrix((data, (rows, cols)),[N,N], dtype=dtype)
 
 if __name__ == '__main__':
     import sys

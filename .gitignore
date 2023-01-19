@@ -1,5 +1,9 @@
-dataset_mlpcg
+data_dcdm
+data_fluidnet
 lib/.DS_Store
 lib/__*
 lib/*.png
-src/__*
+dcdm/__*
+fluidnet/__*
+fluidnet/lib/__*
+fluidnet/data

@@ -48,3 +48,4 @@ def writeA_sparse(A, filenameA, dtype='f'):
         for i in range(nnz): # Col index
             b = struct.pack('i', A.indices[i])
             f.write(b)
+

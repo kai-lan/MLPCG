@@ -98,19 +98,26 @@ def lap_with_bc(n, dim, solid=[], air=[], spd=True, dtype=np.float32):
     else:
         A = lap3d(n, n, n, dtype=dtype).tolil()
     if len(solid) > 0:
+        solid_neighbor_cells = []
+        for ind in solid: solid_neighbor_cells.extend(neighbors(ind, n))
+        solid_neighbors_inds = flatten_inds(solid_neighbor_cells, n)
+        for i in solid_neighbors_inds: A[i, i] += 1
         solid_inds = flatten_inds(solid, n)
         A[solid_inds] = 0
         A[:, solid_inds] = 0
     if len(air) > 0:
-        air_neighbor_cells = []
-        for ind in air: air_neighbor_cells.extend(neighbors(ind, n))
-        air_neighbors_inds = flatten_inds(air_neighbor_cells, n)
-        for i in air_neighbors_inds: A[i, i] += 1
         air_inds = flatten_inds(air, n)
         A[air_inds] = 0
         A[:, air_inds] = 0
     if spd: A *= -1
     return A.tocsr()
+
+# image: For 2- or 3-dimensional numpy array
+# Mark solid cells (2)
+# TODO air cells
+def image_to_list(image):
+    solid = np.array(np.where(image == 2)).T
+    return solid
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import sys, os
@@ -119,7 +126,7 @@ if __name__ == '__main__':
     from read_data import readA_sparse
     n = 64
     DIM = 2
-    BC = 'solid'
+    BC = 'air'
     bc = []
     if DIM == 2:
         for i in range(n):
@@ -134,11 +141,13 @@ if __name__ == '__main__':
     if BC == 'air':
         A = lap_with_bc(n, DIM, air=bc, dtype=np.float32)
     writeA_sparse(A, os.path.join(dir_path, "..", f"dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin"), 'f')
-    exit()
-    B = readA_sparse(n, os.path.join(dir_path, f"../dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin"), DIM, 'f')
-    B.maxprint = np.inf
-    with open ('matA_test.txt', 'w') as f:
-        sys.stdout = f
-        print(B)
+
+
+    # B = readA_sparse(n, os.path.join(dir_path, f"../dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin"), DIM, 'f')
+    print(A)
+    # B.maxprint = np.inf
+    # with open ('matA_test.txt', 'w') as f:
+    #     sys.stdout = f
+    #     print(B)
     # plt.spy(A, markersize=2, marker='o')
     # plt.savefig("laplacian_sparsity_2d.png")
