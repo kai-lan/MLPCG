@@ -89,7 +89,7 @@ void Serialize(SparseMatrix<T, OptionsBitFlag, Index>& m, const std::string& fil
   }
 }
 """
-def readA_sparse(dim, filenameA, DIM=2, dtype='f'):
+def readA_sparse(dim, filenameA, DIM=2, dtype='d'):
     '''
     dim: grid points in each dimenstion
     DIM: 2D or 3D
@@ -137,14 +137,22 @@ def readA_sparse(dim, filenameA, DIM=2, dtype='f'):
     return sparse.csr_matrix((data, (rows, cols)),[N,N], dtype=dtype)
 
 if __name__ == '__main__':
-    import sys
     path = os.path.dirname(os.path.relpath(__file__))
-    file = os.path.join(path,  "..", "dataset_mlpcg", "test_matrices_and_vectors", "N64", "matrixA_orig.bin")
-    file2 = os.path.join(path, "..", "dataset_mlpcg", "train_64_3D", "A_solid.bin")
-    A = readA_sparse(64, file, 3)
-    B = readA_sparse(64, file2, 3)
-    C = A - B
-    print(B.nnz)
+    frame = 700
+    file_A = os.path.join(path,  "..", "data_fluidnet", "dambreak_2D_64", f"A_{frame}.bin")
+    file_rhs = os.path.join(path,  "..", "data_fluidnet", "dambreak_2D_64", f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(path,  "..", "data_fluidnet", "dambreak_2D_64", f"pressure_{frame}.bin")
+    file_flags = os.path.join(path,  "..", "data_fluidnet", "dambreak_2D_64", f"flags_{frame}.bin")
+    A = readA_sparse(64, file_A, DIM=2)
+    rhs = load_vector(file_rhs)
+    sol = load_vector(file_sol)
+    flags = read_flags(file_flags)
+    r = rhs - A @ sol
+    print(np.linalg.norm(r))
+
+    # file = os.path.join(path,  "..", "data_dcdm", "train_2D_64", f"A_solid.bin")
+    # A = readA_sparse(64, file, DIM=2, dtype='f')
+    # print(A)
     # with open("matA_test.txt", 'w') as f:
     #     sys.stdout = f
     #     A.maxprint = np.inf

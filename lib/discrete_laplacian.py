@@ -118,6 +118,7 @@ def lap_with_bc(n, dim, solid=[], air=[], spd=True, dtype=np.float32):
 def image_to_list(image):
     solid = np.array(np.where(image == 2)).T
     return solid
+
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import sys, os

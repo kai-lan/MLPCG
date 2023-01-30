@@ -106,7 +106,7 @@ if __name__ == '__main__':
     bc = 'solid'
     dim2 = dim**DIM
     lr = 1.0e-4
-    epoch_num = 100
+    epoch_num = 10
     b_size = 25 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
     total_data_points = 2000
     cuda = torch.device("cuda") # Use CUDA for training
@@ -121,7 +121,7 @@ if __name__ == '__main__':
     info += log("batch size", b_size)
     info += log("Tot data points", total_data_points)
 
-    name_sparse_matrix = os.path.join(data_path, f"train_{dim}_{DIM}D/A_{bc}.bin")
+    name_sparse_matrix = os.path.join(data_path, f"train_{DIM}D_{dim}/A_{bc}.bin")
     A_sparse_scipy = hf.readA_sparse(dim, name_sparse_matrix, DIM, 'f')
 
     CG = cg.ConjugateGradientSparse(A_sparse_scipy)
@@ -141,8 +141,8 @@ if __name__ == '__main__':
     time_history = []
     perm = np.random.permutation(total_data_points)
     train_size = round(0.8 * total_data_points)
-    train_set = MyDataset(os.path.join(data_path, f"train_{dim}_{DIM}D"), perm[:train_size], bc, dim=dim, DIM=DIM)
-    validation_set = MyDataset(os.path.join(data_path, f"train_{dim}_{DIM}D"), perm[train_size:], bc, dim=dim, DIM=DIM)
+    train_set = MyDataset(os.path.join(data_path, f"train_{DIM}D_{dim}"), perm[:train_size], bc, dim=dim, DIM=DIM)
+    validation_set = MyDataset(os.path.join(data_path, f"train_{DIM}D_{dim}"), perm[train_size:], bc, dim=dim, DIM=DIM)
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=True)
     validation_loader = DataLoader(validation_set, batch_size=b_size, shuffle=False)
 
@@ -174,7 +174,7 @@ if __name__ == '__main__':
         time_history.append(time.time())
         print(training_loss[-1], validation_loss[-1])
 
-    outdir = os.path.join(data_path, f"output_{dim}_{DIM}D")
+    outdir = os.path.join(data_path, f"output_{DIM}D_{dim}")
     suffix = time.ctime().replace(' ', '-')
     logging.basicConfig(filename=os.path.join(outdir, f"settings_{suffix}.log"), filemode='w', format='%(asctime)s %(message)s', level=logging.INFO)
     logging.info(info)

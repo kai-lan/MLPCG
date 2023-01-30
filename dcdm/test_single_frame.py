@@ -5,12 +5,11 @@ import numpy as np
 import torch
 from torch.nn.functional import normalize
 dir_path = os.path.dirname(os.path.relpath(__file__))
-data_path = os.path.join(dir_path, "..", "dataset_mlpcg")
+data_path = os.path.join(dir_path, "..", "data_dcdm")
 sys.path.insert(1, os.path.join(dir_path, "..", "lib"))
 import conjugate_gradient as cg
 import read_data as hf
 from train import DCDM
-from scipy.sparse.linalg import cg as sscg, LinearOperator
 
 N = 64
 DIM = 3
@@ -19,7 +18,7 @@ max_it = 30
 tol = 1e-4
 print("Loading model from disk.")
 model = DCDM(DIM)
-model_file = os.path.join(data_path, f"output_{N}_{DIM}D", "model_Mon-Jan--9-01:52:28-2023.pth")
+model_file = os.path.join(data_path, f"output_{DIM}D_{N}", "model_Mon-Jan--9-01:52:28-2023.pth")
 model.load_state_dict(torch.load(model_file))
 model.eval()
 print("Loaded trained model from disk")

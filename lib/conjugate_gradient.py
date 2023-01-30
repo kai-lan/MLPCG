@@ -835,9 +835,8 @@ class ConjugateGradientSparse:
         if A_sparse.shape[0] != A_sparse.shape[1]:
             print("A is not a square matrix!")
         self.n = A_sparse.shape[0]
-        self.machine_tol = 1.0e-17;
-        A_sp = A_sparse.copy()
-        self.A_sparse = A_sp.astype(np.float32)
+        self.machine_tol = 1.0e-17
+        self.A_sparse = A_sparse.copy()
 
     # here x is np.array with dimension n
     def multiply_A(self,x):

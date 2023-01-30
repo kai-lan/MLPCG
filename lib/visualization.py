@@ -1,18 +1,16 @@
 import matplotlib.pyplot as plt
-from read_data import read_flags, load_vector
+from read_data import read_flags, load_vector, readA_sparse
 import os
+import numpy as np
 
 path = os.path.dirname(os.path.relpath(__file__))
-N = 64
-DIM = 2
-example_folder = os.path.join(path,  "..", "data_fluidnet", f"dambreak_{DIM}D_{N}")
 
 def vis_flags(frame):
     file_flags = os.path.join(example_folder, f"flags_{frame}.bin")
     flags = read_flags(file_flags)
     plt.imshow(flags.reshape((N,)*DIM).T, origin='lower')
     plt.colorbar()
-    plt.savefig(f"flags_{DIM}d_{N}.png")
+    plt.savefig(f"{path}/flags_{DIM}d_{N}.png", bbox_inches="tight")
     plt.close()
     return flags
 
@@ -22,7 +20,7 @@ def vis_div_v(frame, masked=False):
     if masked: rhs = abs(rhs) > 1e-16
     plt.imshow(rhs.reshape((N,)*DIM).T, origin='lower')
     plt.colorbar()
-    plt.savefig(f"div_v_star_{DIM}d_{N}.png")
+    plt.savefig(f"{path}/div_v_star_{DIM}d_{N}.png", bbox_inches="tight")
     plt.close()
     return rhs
 
@@ -32,12 +30,39 @@ def vis_pressure(frame, masked=False):
     if masked: sol = abs(sol) > 1e-16
     plt.imshow(sol.reshape((N,)*DIM).T, origin='lower')
     plt.colorbar()
-    plt.savefig(f"pressure_{DIM}d_{N}.png")
+    plt.savefig(f"{path}/pressure_{DIM}d_{N}.png", bbox_inches="tight")
     plt.close()
     return sol
 
+def vis_A(frame, masked=False):
+    file_A = os.path.join(example_folder, f"A_{frame}.bin")
+    A = readA_sparse(N, file_A, DIM=DIM)
+    print(A)
+    # plt.spy(A)
+    # plt.savefig(f"A_{DIM}d_{N}.png")
+    # plt.close()
+
+def plot_loss(data_path, suffix):
+    loss_train = np.load(data_path + f"/training_loss_{suffix}.npy")
+    loss_test = np.load(data_path + f"/validation_loss_{suffix}.npy")
+    fig, axes = plt.subplots(2, 1)
+    axes[0].plot(loss_train, label="train")
+    axes[1].plot(loss_test, label="validation")
+    plt.xlabel("Epoch")
+    axes[0].set_ylabel("Loss")
+    axes[1].set_ylabel("Loss")
+    axes[0].set_title("Training")
+    axes[1].set_title("Validation")
+    plt.savefig(f"{path}/loss.png", bbox_inches="tight")
+
 if __name__ == '__main__':
-    frame = 200
-    vis_flags(frame)
-    rhs = vis_div_v(frame, masked=True)
-    sol = vis_pressure(frame, masked=False)
+    N = 64
+    DIM = 2
+    # example_folder = os.path.join(path,  "..", "data_fluidnet", f"dambreak_{DIM}D_{N}")
+    # frame = 10
+    # vis_flags(frame)
+    # rhs = vis_div_v(frame, masked=False)
+    # sol = vis_pressure(frame, masked=False)
+    # vis_A(frame)
+    data_path = os.path.join(path, "..", "data_fluidnet", f"output_{DIM}D_{N}")
+    plot_loss(data_path, "Sun-Jan-29-22:25:46-2023")
