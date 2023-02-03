@@ -10,7 +10,7 @@ from model import FluidNet
 dir_path = os.path.dirname(os.path.realpath(__file__))
 data_path = os.path.join(dir_path, "../data_fluidnet")
 sys.path.insert(1, os.path.join(dir_path, '../lib'))
-from read_data import read_flags, load_vector, readA_sparse
+
 # import conjugate_gradient as cg
 # import read_data as hf
 class MyDataset(Dataset):
@@ -36,11 +36,10 @@ class CustomLossCNN1DFast(nn.Module):
         super(CustomLossCNN1DFast, self).__init__()
     def forward(self, x, y, A):
         bs = x.shape[0]
-        r = 0.0
+        r = torch.zeros(1)
         for i in range(bs):
-            r += (y[i] - A[i] @ x[i]).square().sum()
-        r /= bs
-        return r
+            r += (y[i] - A[i] @ x[i]).norm() / y[i].norm()
+        return r / bs
 
 if __name__ == '__main__':
     import logging

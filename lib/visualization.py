@@ -58,11 +58,11 @@ def plot_loss(data_path, suffix):
 if __name__ == '__main__':
     N = 64
     DIM = 2
-    # example_folder = os.path.join(path,  "..", "data_fluidnet", f"dambreak_{DIM}D_{N}")
-    # frame = 10
-    # vis_flags(frame)
-    # rhs = vis_div_v(frame, masked=False)
-    # sol = vis_pressure(frame, masked=False)
+    example_folder = os.path.join(path,  "..", "data_fluidnet", f"dambreak_{DIM}D_{N}")
+    frame = 10
+    vis_flags(frame)
+    rhs = vis_div_v(frame, masked=False)
+    sol = vis_pressure(frame, masked=False)
     # vis_A(frame)
     data_path = os.path.join(path, "..", "data_fluidnet", f"output_{DIM}D_{N}")
-    plot_loss(data_path, "Sun-Jan-29-22:25:46-2023")
+    plot_loss(data_path, "Thu-Feb--2-21:24:25-2023")

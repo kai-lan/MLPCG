@@ -138,7 +138,7 @@ def readA_sparse(dim, filenameA, DIM=2, dtype='d'):
 
 if __name__ == '__main__':
     path = os.path.dirname(os.path.relpath(__file__))
-    frame = 700
+    frame = 800
     file_A = os.path.join(path,  "..", "data_fluidnet", "dambreak_2D_64", f"A_{frame}.bin")
     file_rhs = os.path.join(path,  "..", "data_fluidnet", "dambreak_2D_64", f"div_v_star_{frame}.bin")
     file_sol = os.path.join(path,  "..", "data_fluidnet", "dambreak_2D_64", f"pressure_{frame}.bin")
@@ -147,9 +147,15 @@ if __name__ == '__main__':
     rhs = load_vector(file_rhs)
     sol = load_vector(file_sol)
     flags = read_flags(file_flags)
-    r = rhs - A @ sol
-    print(np.linalg.norm(r))
-
+    # print(A.shape, rhs.shape, sol.shape, flags.shape)
+    import torch
+    x_gt = torch.tensor(sol)
+    b = torch.tensor(rhs)
+    A = A.tocoo()
+    A = torch.sparse_coo_tensor(np.array([A.row, A.col]), A.data, A.shape)
+    r = b - A @ x_gt
+    print(r.norm()/b.norm())
+    # print(flags.max(), flags.min())
     # file = os.path.join(path,  "..", "data_dcdm", "train_2D_64", f"A_solid.bin")
     # A = readA_sparse(64, file, DIM=2, dtype='f')
     # print(A)
