@@ -1,11 +1,10 @@
+# Create approximated eigenvectors for DCDM training
 import os
 import sys
 dir_path = os.path.dirname(os.path.realpath(__file__))
-sys.path.insert(1, dir_path+'/../lib/')
 
 import numpy as np
 import scipy
-from numpy.linalg import norm
 import time
 import argparse
 

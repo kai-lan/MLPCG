@@ -1,0 +1,156 @@
+'''
+File: model.py
+File Created: Tuesday, 10th January 2023 12:51:41 am
+
+Author: Kai Lan (kai.weixian.lan@gmail.com)
+--------------
+'''
+from math import inf
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torchsummary import summary
+
+
+class FluidNet(nn.Module):
+    # For now, only 2D model. Add 2D/3D option. Only known from data!
+    # Also, build model with MSE of pressure as loss func, therefore input is velocity
+    # and output is pressure, to be compared to target pressure.
+    def __init__(self):
+        super(FluidNet, self).__init__()
+        self.normalizeInputThreshold=0.00001
+        self.conv1 = nn.Conv2d(2, 8, kernel_size=3, padding='same', padding_mode='replicate')
+        self.conv2 = nn.Conv2d(8, 8, kernel_size=3, padding='same', padding_mode='replicate')
+        self.conv3 = nn.Conv2d(8, 8, kernel_size=3, padding='same', padding_mode='replicate')
+        self.conv4 = nn.Conv2d(8, 8, kernel_size=1, padding='same', padding_mode='replicate')
+        self.conv5 = nn.Conv2d(8, 1, kernel_size=1, padding='same', padding_mode='replicate')
+        self.down11 = nn.Conv2d(8, 8, kernel_size=3, padding='same', padding_mode='replicate')
+        self.down12 = nn.Conv2d(8, 8, kernel_size=3, padding='same', padding_mode='replicate')
+        self.down21 = nn.Conv2d(8, 8, kernel_size=3, padding='same', padding_mode='replicate')
+        self.down22 = nn.Conv2d(8, 8, kernel_size=3, padding='same', padding_mode='replicate')
+        self.downsample = nn.AvgPool2d(2)
+        self.updample = nn.Upsample(scale_factor=2)
+    def forward(self, x_in):
+        # Input: x = [bs, 2, Nx, Ny]
+        # Normalization might improve invariance of scaling for the network because y = Ax <=> sy = A(sx)
+        # Also spead out values to both positive and negative, otherwise relu zero out all negative values
+        x = x_in.clone() # Do not modify x
+        std = torch.std(x[:, 0:1], dim=(2, 3), keepdim=True)
+        scale = torch.clamp(std, self.normalizeInputThreshold, inf)
+        x[:, 0:1] /= scale
+
+        x = F.relu(self.conv1(x))
+        x1 = self.downsample(x)
+        x2 = self.downsample(x1)
+
+        x = F.relu(self.conv2(x))
+        x1 = F.relu(self.down11(x1))
+        x2 = F.relu(self.down21(x2))
+
+        x = F.relu(self.conv3(x))
+        x1 = F.relu(self.down12(x1))
+        x2 = F.relu(self.down22(x2))
+        x = x + self.updample(x1 + self.updample(x2))
+
+        x = F.relu(self.conv4(x))
+        x = self.conv5(x)
+        x = x * scale # In-place operation like x *= 2 or x[:]= ... is not allowed for x that requires auto grad
+        ## zero out entries in null space (non-fluid)
+        x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0) # 2 is fluid cell
+        return x
+    def loss(self, x, y, A):
+        bs = x.shape[0]
+        r = torch.zeros(1).to(x.device)
+        for i in range(bs):
+            r += (y[i] - A[i] @ x[i]).norm() / y[i].norm()
+        return r / bs
+    def move_to(self, device):
+        self.device = device
+        self.to(device)
+
+class DCDM(nn.Module):
+    def __init__(self, DIM):
+        super(DCDM, self).__init__()
+        self.DIM = DIM
+        Conv = eval(f"nn.Conv{DIM}d")
+        AvgPool = eval(f"nn.AvgPool{DIM}d")
+        self.cnn1 = Conv(1, 16, kernel_size=3, padding='same')
+        self.cnn2 = Conv(16, 16, kernel_size=3, padding='same')
+        self.cnn3 = Conv(16, 16, kernel_size=3, padding='same')
+        self.cnn4 = Conv(16, 16, kernel_size=3, padding='same')
+        self.cnn5 = Conv(16, 16, kernel_size=3, padding='same')
+
+        self.downsample = AvgPool(2)
+        self.down1 = Conv(16, 16, kernel_size=3, padding='same')
+        self.down2 = Conv(16, 16, kernel_size=3, padding='same')
+        self.down3 = Conv(16, 16, kernel_size=3, padding='same')
+        self.down4 = Conv(16, 16, kernel_size=3, padding='same')
+        self.down5 = Conv(16, 16, kernel_size=3, padding='same')
+        self.down6 = Conv(16, 16, kernel_size=3, padding='same')
+        self.upsample = nn.Upsample(scale_factor=2)
+
+        self.cnn6 = Conv(16, 16, kernel_size=3, padding='same')
+        self.cnn7 = Conv(16, 16, kernel_size=3, padding='same')
+        self.cnn8 = Conv(16, 16, kernel_size=3, padding='same')
+        self.cnn9 = Conv(16, 16, kernel_size=3, padding='same')
+        self.linear = Conv(16, 1, kernel_size=1) # this acts as a linear layer across channels
+    def forward(self, x): # shape: bs x nc x dim x dim (x dim)
+        first_layer = self.cnn1(x)
+        la = F.relu(self.cnn2(first_layer))
+        lb = F.relu(self.cnn3(la))
+        la = F.relu(self.cnn4(lb) + la)
+        lb = F.relu(self.cnn5(la))
+
+        apa = self.downsample(lb)
+        apb = F.relu(self.down1(apa))
+        apa = F.relu(self.down2(apb) + apa)
+        apb = F.relu(self.down3(apa))
+        apa = F.relu(self.down4(apb) + apa)
+        apb = F.relu(self.down5(apa))
+        apa = F.relu(self.down6(apb) + apa)
+
+        upa = self.upsample(apa) + lb
+        upb = F.relu(self.cnn6(upa))
+        upa = F.relu(self.cnn7(upb) + upa)
+        upb = F.relu(self.cnn8(upa))
+        upa = F.relu(self.cnn9(upb) + upa)
+        last_layer = self.linear(upa)
+        return last_layer
+    def loss(self, y_pred, y_true, A_sparse): # bs x dim x dim (x dim)
+        ''' y_true: r, (bs, N)
+        y_pred: A_hat^-1 r, (bs, N)
+        '''
+        y_pred = y_pred.flatten(1) # Keep bs
+        y_true = y_true.flatten(1)
+        YhatY = (y_true * y_pred).sum(dim=1) # Y^hat * Y, (bs,)
+        YhatAt = (A_sparse @ y_pred.T).T # y_pred @ A_sparse.T not working, Y^hat A^T, (bs, N)
+        YhatYhatAt = (y_pred * YhatAt).sum(dim=1) # Y^hat * (Yhat A^T), (bs,)
+        return (y_true - torch.diag(YhatY/YhatYhatAt) @ YhatAt).square().sum(dim=1).mean() # /bs / N
+    def move_to(self, device):
+        self.device = device
+        self.to(device)
+
+if __name__ == '__main__':
+    import os, sys
+    path = os.path.dirname(os.path.realpath(__file__))
+    sys.path.append(path + "/lib")
+    from read_data import read_flags, load_vector
+    import matplotlib.pyplot as plt
+
+    frame = 100
+    # file_A = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"A_{frame}.bin")
+    file_rhs = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"pressure_{frame}.bin")
+    file_flags = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"flags_{frame}.bin")
+    # A = readA_sparse(64, file_A, DIM=2)
+    rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32).reshape(1, 64, 64)
+    flags = torch.tensor(read_flags(file_flags), dtype=torch.float32).reshape(1, 64, 64)
+    sol = torch.tensor(load_vector(file_sol), dtype=torch.float32).reshape(64, 64)
+
+    model = FluidNet()
+    # model = DCDM(2)
+    model.eval()
+    torch.set_grad_enabled(False) # disable autograd globally
+    model.to(torch.device("cuda"))
+
+    summary(model, (2, 64, 64))

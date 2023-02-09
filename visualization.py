@@ -1,9 +1,18 @@
 import matplotlib.pyplot as plt
-from read_data import read_flags, load_vector, readA_sparse
+from lib.read_data import read_flags, load_vector, readA_sparse, compute_weight
 import os
 import numpy as np
 
-path = os.path.dirname(os.path.relpath(__file__))
+path = os.path.dirname(os.path.realpath(__file__))
+
+def vis_weight(frame):
+    file_flags = os.path.join(example_folder, f"flags_{frame}.bin")
+    weight = compute_weight(file_flags, N, DIM)
+    plt.imshow(weight.reshape((N,)*DIM, order='F'), origin='lower')
+    plt.colorbar()
+    plt.savefig(f"{path}/weight_{DIM}d_{N}.png", bbox_inches="tight")
+    plt.close()
+    return weight
 
 def vis_flags(frame):
     file_flags = os.path.join(example_folder, f"flags_{frame}.bin")
@@ -58,11 +67,14 @@ def plot_loss(data_path, suffix):
 if __name__ == '__main__':
     N = 64
     DIM = 2
-    example_folder = os.path.join(path,  "..", "data_fluidnet", f"dambreak_{DIM}D_{N}")
-    frame = 10
-    vis_flags(frame)
+    example_folder = os.path.join(path,  "data_fluidnet", f"dambreak_{DIM}D_{N}")
+    frame =10
+    flags = vis_flags(frame)
     rhs = vis_div_v(frame, masked=False)
     sol = vis_pressure(frame, masked=False)
-    # vis_A(frame)
-    data_path = os.path.join(path, "..", "data_fluidnet", f"output_{DIM}D_{N}")
-    plot_loss(data_path, "Thu-Feb--2-21:24:25-2023")
+
+    weight = vis_weight(frame)
+
+    fluids = np.where(flags == 2)
+    print(fluids)
+

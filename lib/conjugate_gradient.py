@@ -1,8 +1,6 @@
 
 import numpy as np
 # import tensorflow as tf
-import scipy
-import QR
 import time
 #import os
 import scipy.sparse as sparse

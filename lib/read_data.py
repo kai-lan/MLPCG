@@ -10,6 +10,25 @@ import struct
 import numpy as np
 import scipy.sparse as sparse
 
+def compute_weight(file_flags, N, DIM):
+    flags = read_flags(file_flags)
+    flags = flags.reshape((N,)*DIM, order='F')
+    fluids = np.array(np.where(flags==2)).T
+    top_bound = []
+    right_bound = []
+    for i in range(N):
+        top = [fluids[j][0] for j in range(len(fluids)) if fluids[j][1] == i]
+        right = [fluids[j][1] for j in range(len(fluids)) if fluids[j][0] == i]
+        if len(top) > 0: top_bound.append(np.max(top))
+        else:            top_bound.append(0.0)
+        if len(right) > 0: right_bound.append(np.max(right))
+        else:              right_bound.append(0.0)
+
+    weight = np.zeros((N,)*DIM)
+    for (i, j) in fluids:
+        weight[i, j] = 1 / (np.min([j, right_bound[i]-j, i, top_bound[j]-i]) + 0.5)
+    return weight.ravel(order='F')
+
 def read_flags(file, dtype='int32'):
     len_size_t = 8
     if dtype == 'int32': length = 4
@@ -89,13 +108,12 @@ void Serialize(SparseMatrix<T, OptionsBitFlag, Index>& m, const std::string& fil
   }
 }
 """
-def readA_sparse(dim, filenameA, DIM=2, dtype='d'):
+def readA_sparse(filenameA, dtype='d'):
     '''
     dim: grid points in each dimenstion
     DIM: 2D or 3D
     dtype: 'd', double (8 bytes); 'f', float (4 bytes)
     '''
-    N = dim**DIM
     cols = []
     outerIdxPtr = []
     rows = []
@@ -134,19 +152,22 @@ def readA_sparse(dim, filenameA, DIM=2, dtype='d'):
     outerIdxPtr = outerIdxPtr + [nnz]
     for ii in range(num_rows):
         rows[outerIdxPtr[ii]:outerIdxPtr[ii+1]] = [ii]*(outerIdxPtr[ii+1] - outerIdxPtr[ii])
-    return sparse.csr_matrix((data, (rows, cols)),[N,N], dtype=dtype)
+    return sparse.csr_matrix((data, (rows, cols)),[num_rows, num_cols], dtype=dtype)
 
 if __name__ == '__main__':
     path = os.path.dirname(os.path.relpath(__file__))
-    frame = 800
-    file_A = os.path.join(path,  "..", "data_fluidnet", "dambreak_2D_64", f"A_{frame}.bin")
-    file_rhs = os.path.join(path,  "..", "data_fluidnet", "dambreak_2D_64", f"div_v_star_{frame}.bin")
-    file_sol = os.path.join(path,  "..", "data_fluidnet", "dambreak_2D_64", f"pressure_{frame}.bin")
-    file_flags = os.path.join(path,  "..", "data_fluidnet", "dambreak_2D_64", f"flags_{frame}.bin")
-    A = readA_sparse(64, file_A, DIM=2)
+    frame = 666
+    N = 64
+    file_A = os.path.join(path,  "..", "data_fluidnet", f"smoke_2D_{N}", f"A_{frame}.bin")
+    file_rhs = os.path.join(path,  "..", "data_fluidnet", f"smoke_2D_{N}", f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(path,  "..", "data_fluidnet", f"smoke_2D_{N}", f"pressure_{frame}.bin")
+    file_flags = os.path.join(path,  "..", "data_fluidnet", f"smoke_2D_{N}", f"flags_{frame}.bin")
+    A = readA_sparse(file_A)
     rhs = load_vector(file_rhs)
     sol = load_vector(file_sol)
+
     flags = read_flags(file_flags)
+    weight = compute_weight(file_flags, N, 2)
     # print(A.shape, rhs.shape, sol.shape, flags.shape)
     import torch
     x_gt = torch.tensor(sol)

@@ -7,3 +7,5 @@ dcdm/__*
 fluidnet/__*
 fluidnet/lib/__*
 fluidnet/data
+*.png
+__*

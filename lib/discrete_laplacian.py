@@ -141,11 +141,16 @@ if __name__ == '__main__':
         A = lap_with_bc(n, DIM, solid=bc, dtype=np.float32)
     if BC == 'air':
         A = lap_with_bc(n, DIM, air=bc, dtype=np.float32)
-    writeA_sparse(A, os.path.join(dir_path, "..", f"dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin"), 'f')
+    writeA_sparse(A, os.path.join(dir_path, "..", f"data_dcdm/train_{DIM}D_{n}/A_{BC}.bin"), 'f')
 
 
     # B = readA_sparse(n, os.path.join(dir_path, f"../dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin"), DIM, 'f')
-    print(A)
+    A = lap2d(n, n).tocsc()
+    A_inv = sparse.linalg.inv(A)
+    plt.imshow(A_inv.todense())
+    plt.colorbar()
+    print(A_inv)
+    plt.savefig("A_inv.png")
     # B.maxprint = np.inf
     # with open ('matA_test.txt', 'w') as f:
     #     sys.stdout = f

@@ -32,11 +32,11 @@ max_cg_iter = 1000
 
 tol = 1.0e-4
 
-verbose_dcdm = False
+verbose_dcdm = True
 
 verbose_icpcg = False
 
-data_path = os.path.join(dir_path, "..", "dataset_mlpcg")
+data_path = os.path.join(dir_path, "..", "data_dcdm")
 
 # if matrix does not change in the example, use the matrix for the first frame.
 if example_name in ["rotating_fluid", "smoke_passing_bunny"]:
@@ -48,7 +48,7 @@ else:
 # Smoke
 test_smoke_path = os.path.join(data_path, "test_matrices_and_vectors", "N64", "smoke_passing_bunny")
 b_smoke = hf.load_vector(os.path.join(test_smoke_path, "div_v_star1.bin"), dtype='d').astype(np.float32)
-A_smoke = hf.readA_sparse(64, os.path.join(test_smoke_path, "matrixA_1.bin"), DIM=3)
+A_smoke = hf.readA_sparse(64, os.path.join(test_smoke_path, "matrixA_1.bin"), DIM=3, dtype='f')
 CG_smoke = cg.ConjugateGradientSparse(A_smoke)
 
 # test_rotate_path = os.path.join(data_path, "test_matrices_and_vectors", "N128", "rotating_fluid")
@@ -60,7 +60,7 @@ CG_smoke = cg.ConjugateGradientSparse(A_smoke)
 if 1:
     print("Loading model from disk.")
     model = DCDM(DIM)
-    model_file = os.path.join(data_path, f"output_{N}_{DIM}D", "model_Mon-Jan--9-01:52:28-2023.pth")
+    model_file = os.path.join(data_path, f"output_{DIM}D_{N}", "model_Mon-Jan--9-01:52:28-2023.pth")
     model.load_state_dict(torch.load(model_file))
     model.eval()
     print("Loaded trained model from disk")
