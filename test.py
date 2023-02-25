@@ -8,6 +8,8 @@ from model import *
 from lib.read_data import *
 from torch.nn.functional import normalize
 
+# test in single or double precision
+torch.set_default_dtype(torch.float32)
 N = 64
 DIM = 2
 frame = 800 # 1 - 1000
@@ -16,8 +18,8 @@ prefix = "_" if include_bd else ''
 
 # Dambreak
 dambreak_path = os.path.join(fluidnet_data_path, f"{prefix}dambreak_{DIM}D_{N}")
-A_sp = readA_sparse(os.path.join(dambreak_path, f"A_{frame}.bin"))
-rhs_sp = load_vector(os.path.join(dambreak_path, f"div_v_star_{frame}.bin"))
+A_sp = readA_sparse(os.path.join(dambreak_path, f"A_{frame}.bin")).astype(np.float32)
+rhs_sp = load_vector(os.path.join(dambreak_path, f"div_v_star_{frame}.bin")).astype(np.float32)
 A = torch.load(os.path.join(dambreak_path, "preprocessed", f"A_{frame}.pt"))
 x = torch.load(os.path.join(dambreak_path, "preprocessed", f"x_{frame}.pt"))
 rhs, flags = x[0], x[1]
@@ -64,7 +66,8 @@ dcdm_model_file = os.path.join(dcdm_data_path, f"{prefix}output_{DIM}D_{N}", f"{
 dcdm_model = DCDM(DIM)
 dcdm_model.load_state_dict(torch.load(dcdm_model_file))
 
-max_iter = 100
+max_iter = 50
+
 x_cg, res_cg = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), max_iter)
 
 def dcdm_predict(dcdm_model):
@@ -88,7 +91,7 @@ def fluidnet_predict(fluidnet_model):
     return predict
 
 x_dcdm, res_dcdm = dcdm(rhs, A, torch.zeros_like(rhs), dcdm_predict(dcdm_model), max_iter)
-x_fluidnet_eigs, res_fluidnet_eigs = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(fluidnet_model_eigs), max_iter)
+x_fluidnet_eigs, res_fluidnet_eigs = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(fluidnet_model_eigs), max_iter, tol=1e-14)
 x_fluidnet_cano, res_fluidnet_cano = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(fluidnet_model_cano), max_iter)
 x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(fluidnet_model_res), max_iter)
 x_fluidnet_empty, res_fluidnet_empty = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(fluidnet_model_empty), max_iter)

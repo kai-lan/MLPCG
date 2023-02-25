@@ -52,7 +52,7 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, verbose=True):
             print(f"Iter {i+1}, residual {norm_r/norm_b}")
         if norm_r < tol:
             print("DCDM converged in ", i+1, " iterations to residual ", norm_r)
-            return x_sol
+            return x_sol, res_history
     return x_sol, res_history
 ###################
 # CG

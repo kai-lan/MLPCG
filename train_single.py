@@ -131,11 +131,13 @@ def test(model_file, N, DIM, A, flags, rhs, dcdm_iters=0):
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import scipy.sparse.linalg as slin
-    N = 256
+    # train in single or double precision
+    torch.set_default_dtype(torch.float32)
+    N = 64
     DIM = 2
     dim2 = N**DIM
     lr = 0.001
-    epoch_num = 50
+    epoch_num = 100
     cuda = torch.device("cuda") # Use CUDA for training
 
     frame = 800
@@ -144,10 +146,10 @@ if __name__ == '__main__':
     gt = torch.tensor(load_vector(os.path.join(data_path, f"dambreak_{DIM}D_{N}", f"pressure_{frame}.bin")))
     flags = x[1]
 
-    num_rhs = 150
+    num_rhs = 256
     perm = np.random.permutation(range(num_rhs))
-    training_set = ResidualDataset(os.path.join(dir_path, "data_dcdm", f"train_{DIM}D_{N}"), (N,)*DIM, flags, A, perm)
-    # training_set = RitzDataset(os.path.join(dir_path, "data_dcdm", f"train_{DIM}D_{N}"), (N,)*DIM, flags, A, perm)
+    # training_set = ResidualDataset(os.path.join(dir_path, "data_dcdm", f"train_{DIM}D_{N}"), (N,)*DIM, flags, A, perm)
+    training_set = RitzDataset(os.path.join(dir_path, "data_dcdm", f"train_{DIM}D_{N}"), (N,)*DIM, flags, A, perm)
     # training_set = RandomDataset((N,)*DIM, flags, A)
     # training_set = StandardDataset((N,)*DIM, flags, A)
     # training_set = RHSDataset(x.reshape((2,)+(N,)*DIM), A)
@@ -157,14 +159,13 @@ if __name__ == '__main__':
 
     outdir = os.path.join(dir_path, "data_fluidnet", f"output_single_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
-    suffix = f"frame_{frame}_res"
-    training_loss, validation_loss, time_history = train(outdir, suffix, lr, epoch_num, 25, training_set, validation_set)
+    suffix = f"frame_{frame}_eigs"
+    training_loss, validation_loss, time_history = train(outdir, suffix, lr, epoch_num, 10, training_set, validation_set)
 
 
     # xx = np.load(os.path.join(dir_path, "data_dcdm", f"train_{DIM}D_{N}", f"b_dambreak_800_11.npy"))
     # xx = torch.from_numpy(xx)
     # xx = torch.stack([xx, flags])
-
 
 
     from cg_tests import dcdm, CG
@@ -176,7 +177,7 @@ if __name__ == '__main__':
 
     A = hf.readA_sparse(os.path.join(data_path, f"dambreak_{DIM}D_{N}", f"A_{frame}.bin")).astype(np.float32)
     # rhs = data_set.get_rhs(10).numpy()
-    rhs = hf.load_vector(os.path.join(data_path, f"dambreak_{DIM}D_{N}", f"div_v_star_{frame}.bin"))
+    rhs = hf.load_vector(os.path.join(data_path, f"dambreak_{DIM}D_{N}", f"div_v_star_{frame}.bin")).astype(np.float32)
     x, res_history = CG(rhs, A, np.zeros_like(rhs), max_it=1000, tol=1e-5, verbose=False)
     r = rhs - A @ x
     print(f"CG residual after {len(res_history)} iterations", np.linalg.norm(r)/np.linalg.norm(rhs))
