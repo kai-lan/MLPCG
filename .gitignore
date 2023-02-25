@@ -1,5 +1,4 @@
-data_dcdm
-data_fluidnet
+data_*
 lib/.DS_Store
 lib/__*
 lib/*.png

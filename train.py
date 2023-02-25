@@ -13,7 +13,7 @@ fluidnet_data_path = os.path.join(dir_path, "data_fluidnet")
 # sys.path.insert(1, os.path.join(dir_path, 'lib'))
 import lib.read_data as hf
 from lib.write_log import LoggingWriter
-from lib.dataset import MyDataset
+from lib.dataset import *
 from model import DCDM, FluidNet
 
 # Fluidnet
@@ -54,101 +54,51 @@ def train_(epoch_num, train_loader, validation_loader, model, optimizer):
         time_history.append(time.time() - t0)
         print(training_loss[-1], validation_loss[-1])
     return training_loss, validation_loss, time_history
-# DCDM
-def train(epoch_num, train_loader, validation_loader, model, optimizer):
-    training_loss = []
-    validation_loss = []
-    time_history = []
-    t0 = time.time()
-    for i in range(1, epoch_num+1):
-        print(f"Training at {i} / {epoch_num}")
-        t0 = time.time()
-        tot_loss_train, tot_loss_val = 0, 0
-        # Training
-        for ii, (x, *_) in enumerate(tqdm(train_loader), 1):# x: (bs, dim, dim, dim)
-            x = x.to(model.device)
-            y_pred = model(x) # input: (bs, 1, dim, dim, dim)
-            loss = model.loss(y_pred, x, A_sparse)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-        # Validation
-        with torch.no_grad():
-            for x, *_ in train_loader:
-                x = x.to(model.device)
-                y_pred = model(x) # input: (bs, 1, dim, dim, dim)
-                tot_loss_train += model.loss(y_pred, x, A_sparse).item()
-            for x, *_ in validation_loader:
-                x = x.to(model.device)
-                y_pred = model(x) # input: (bs, 1, dim, dim, dim)
-                tot_loss_val += model.loss(y_pred, x, A_sparse).item()
-        training_loss.append(tot_loss_train)
-        validation_loss.append(tot_loss_val)
-        time_history.append(time.time() - t0)
-        print(training_loss[-1], validation_loss[-1])
-    return training_loss, validation_loss, time_history
+
 
 if __name__ == '__main__':
     # command variables
-    N = 64
+    N = 256
     DIM = 2
-    bc = 'solid'
     lr = 1.0e-4
-    epoch_num = 10
+    bc = 'dambreak'
+    include_bd = False
+    epoch_num = 200
     b_size = 25 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
-    total_data_points = 1000
+    total_data_points = 950 # number of images: 1000 total, leaving 50 for testing later
     cuda = torch.device("cuda") # Use CUDA for training
-
+    prefix = '_' if include_bd else ''
     log = LoggingWriter()
     log.record({"N": N,
                 "DIM": DIM,
                 "bc": bc,
+                "include bd": include_bd,
                 "lr": lr,
                 "Epoches": epoch_num,
                 "batch size": b_size,
                 "Tot data points": total_data_points})
 
-    dcdm = False
-    fluidnet = True
+    resume = False
 
-    if dcdm:
-        name_sparse_matrix = os.path.join(dcdm_data_path, f"train_{DIM}D_{N}/A_{bc}.bin")
-        A_sparse_scipy = hf.readA_sparse(name_sparse_matrix, 'f')
-        A_sparse = torch.sparse_csr_tensor(A_sparse_scipy.indptr, A_sparse_scipy.indices, A_sparse_scipy.data, A_sparse_scipy.shape, dtype=torch.float32, device=cuda)
+    model = FluidNet()
+    model.move_to(cuda)
+    if resume:
+        model.load_state_dict(torch.load(os.path.join(fluidnet_data_path, f"{prefix}output_{DIM}D_{N}", f"model_{bc}.pth")))
+    optimizer = optim.Adam(model.parameters(), lr=lr)
 
-        model = DCDM(DIM)
-        model.move_to(cuda)
-        optimizer = optim.Adam(model.parameters(), lr=lr)
+    perm = np.random.permutation(total_data_points) + 1
+    train_size = round(0.8 * total_data_points)
+    train_set = MyDataset(os.path.join(fluidnet_data_path, f"{prefix}{bc}_{DIM}D_{N}/preprocessed"), ['x_*.pt', 'A_*.pt'], perm[:train_size], (2,)+(N,)*DIM)
+    validation_set = MyDataset(os.path.join(fluidnet_data_path, f"{prefix}{bc}_{DIM}D_{N}/preprocessed"), ['x_*.pt', 'A_*.pt'],perm[train_size:], (2,)+(N,)*DIM)
 
-        perm = np.random.permutation(total_data_points)
-        train_size = round(0.8 * total_data_points)
-        train_set = MyDataset(os.path.join(dcdm_data_path, f"train_{DIM}D_{N}"), [f"b_{bc}_*.npy"], perm[:train_size], (1,)+(N,)*DIM)
-        validation_set = MyDataset(os.path.join(dcdm_data_path, f"train_{DIM}D_{N}"), [f"b_{bc}_*.npy"], perm[train_size:], (1,)+(N,)*DIM)
 
-        outdir = os.path.join(dcdm_data_path, f"output_{DIM}D_{N}")
-        # suffix = time.ctime().replace(' ', '-')
-        suffix = ''
-
-    elif fluidnet:
-        model = FluidNet()
-        model.move_to(cuda)
-        optimizer = optim.Adam(model.parameters(), lr=lr)
-
-        perm = np.random.permutation(total_data_points) + 1
-        train_size = round(0.8 * total_data_points)
-        train_set = MyDataset(os.path.join(fluidnet_data_path, f"dambreak_{DIM}D_{N}/preprocessed"), ['x_*.pt', 'A_*.pt'], perm[:train_size], (2,)+(N,)*DIM)
-        validation_set = MyDataset(os.path.join(fluidnet_data_path, f"dambreak_{DIM}D_{N}/preprocessed"), ['x_*.pt', 'A_*.pt'],perm[train_size:], (2,)+(N,)*DIM)
-
-        outdir = os.path.join(fluidnet_data_path, f"output_{DIM}D_{N}")
-        suffix = ''
+    outdir = os.path.join(fluidnet_data_path, f"{prefix}output_{DIM}D_{N}")
+    suffix = bc + str(epoch_num)
 
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     validation_loader = DataLoader(validation_set, batch_size=b_size, shuffle=False)
 
-    if dcdm:
-        training_loss, validation_loss, time_history = train(epoch_num, train_loader, validation_loader, model, optimizer)
-    elif fluidnet:
-        training_loss, validation_loss, time_history = train_(epoch_num, train_loader, validation_loader, model, optimizer)
+    training_loss, validation_loss, time_history = train_(epoch_num, train_loader, validation_loader, model, optimizer)
 
     os.makedirs(outdir, exist_ok=True)
     log.write(os.path.join(outdir, f"settings_{suffix}.log"))
@@ -162,4 +112,4 @@ if __name__ == '__main__':
     fig, axes = plt.subplots(2)
     axes[0].plot(training_loss, label='training')
     axes[1].plot(validation_loss, label='validation')
-    plt.savefig("loss.png", bbox_inches='tight')
+    plt.savefig(f"loss_{bc}.png", bbox_inches='tight')

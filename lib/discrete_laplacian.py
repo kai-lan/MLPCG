@@ -65,11 +65,20 @@ def lap3d(nx,ny,nz, dtype=np.float32):
     L3 = sparse.kron(sparse.kron(Lx, Iy),Iz) + sparse.kron(sparse.kron(Ix, Ly),Iz) + sparse.kron(sparse.kron(Ix, Iy),Lz)
     return L3
 
-def flatten_inds(inds, n):
+def flatten_inds(inds, n, include_bd=True):
     inds = np.asarray(inds)
     dim = inds.shape[1]
-    if dim == 2: return inds[:, 0] * n + inds[:, 1]
-    return inds[:, 0] * n**2 + inds[:, 1] * n + inds[:, 2]
+    if include_bd:
+        if dim == 2: return inds[:, 0] * n + inds[:, 1]
+        return inds[:, 0] * n**2 + inds[:, 1] * n + inds[:, 2]
+    # remove points on the boundary
+    rows = ((inds > 0) & (inds < n-1)).prod(axis=1, dtype=bool)
+    inds = inds[rows, :]
+    if dim == 2:
+        if dim == 2:
+            return (inds[:, 0] - 1) * (n - 2) + (inds[:, 1] - 1)
+        return (inds[:, 0] - 1) * (n - 2)**2 + (inds[:, 1] - 1) * (n - 2) + (inds[:, 2] - 1)
+
 def neighbors(ind, n):
     nb = []
     dim = len(ind)
@@ -82,7 +91,7 @@ def neighbors(ind, n):
         if ind[1] + 1 < n: nb.append([ind[0], ind[1]+1, ind[-1]])
     return nb
 
-def lap_with_bc(n, dim, solid=[], air=[], spd=True, dtype=np.float32):
+def lap_with_bc(n, dim, solid=[], air=[], bd=[], spd=True, include_bd=True, dtype=np.float32):
     """Generate pressure Laplacian matrix with specified BC
     Args:
         n (int): Number of grids in each dimension.
@@ -93,10 +102,20 @@ def lap_with_bc(n, dim, solid=[], air=[], spd=True, dtype=np.float32):
     Returns:
         scipy csr matrix: pressure Laplacian matrix
     """
+    m = n if include_bd else n-2
     if dim == 2:
-        A = lap2d(n, n, dtype=dtype).tolil()
+        A = lap2d(m, m, dtype=dtype).tolil()
     else:
-        A = lap3d(n, n, n, dtype=dtype).tolil()
+        A = lap3d(m, m, m, dtype=dtype).tolil()
+    if len(bd) > 0:
+        bd_neighbor_cells = []
+        for ind in bd: bd_neighbor_cells.extend(neighbors(ind, n))
+        bd_neighbors_inds = flatten_inds(bd_neighbor_cells, n, include_bd)
+        for i in bd_neighbors_inds: A[i, i] += 1
+        if include_bd:
+            bd_inds = flatten_inds(bd, n)
+            A[bd_inds] = 0
+            A[:, bd_inds] = 0
     if len(solid) > 0:
         solid_neighbor_cells = []
         for ind in solid: solid_neighbor_cells.extend(neighbors(ind, n))
@@ -125,32 +144,26 @@ if __name__ == '__main__':
     dir_path = os.path.dirname(os.path.realpath(__file__))
     from write_data import writeA_sparse
     from read_data import readA_sparse
-    n = 64
+    N = 64
     DIM = 2
-    BC = 'air'
-    bc = []
+    BC = 'empty'
+    include_bd = False
+    prefix = '_' if include_bd else ''
+    n = N if include_bd else N+2
+    bd = []
     if DIM == 2:
         for i in range(n):
-            bc.extend([(i, 0), (i, n-1), (0, i), (n-1, i)])
+            bd.extend([(i, 0), (i, n-1), (0, i), (n-1, i)])
     else:
         for i in range(n):
             for j in range(n):
-                bc.extend([(i, j, 0), (i, j, n-1), (0, i, j), (n-1, i, j), (i, 0, j), (i, n-1, j)])
-    bc = list(set(bc))
-    if BC == 'solid':
-        A = lap_with_bc(n, DIM, solid=bc, dtype=np.float32)
-    if BC == 'air':
-        A = lap_with_bc(n, DIM, air=bc, dtype=np.float32)
-    writeA_sparse(A, os.path.join(dir_path, "..", f"data_dcdm/train_{DIM}D_{n}/A_{BC}.bin"), 'f')
+                bd.extend([(i, j, 0), (i, j, n-1), (0, i, j), (n-1, i, j), (i, 0, j), (i, n-1, j)])
+    bd = list(set(bd))
 
+    A = lap_with_bc(n, DIM, bd=bd, include_bd=include_bd, dtype=np.float32)
+    writeA_sparse(A, os.path.join(dir_path, "..", f"data_dcdm/{prefix}train_{DIM}D_{N}/A_{BC}.bin"), 'f')
 
     # B = readA_sparse(n, os.path.join(dir_path, f"../dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin"), DIM, 'f')
-    A = lap2d(n, n).tocsc()
-    A_inv = sparse.linalg.inv(A)
-    plt.imshow(A_inv.todense())
-    plt.colorbar()
-    print(A_inv)
-    plt.savefig("A_inv.png")
     # B.maxprint = np.inf
     # with open ('matA_test.txt', 'w') as f:
     #     sys.stdout = f

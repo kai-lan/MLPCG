@@ -11,7 +11,29 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchsummary import summary
 
-
+class SimpleModel(nn.Module):
+    def __init__(self) -> None:
+        super(SimpleModel, self).__init__()
+        self.conv1 = nn.Conv2d(2, 8, kernel_size=3, padding='same')
+        self.conv2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.conv3 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.last  = nn.Conv2d(8, 1, kernel_size=1, padding='same')
+    def forward(self, x):
+        x = F.normalize(x, dim=0)
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = self.last(x)
+        return x
+    def loss(self, x, y, A):
+        bs = x.shape[0]
+        r = torch.zeros(1).to(x.device)
+        for i in range(bs):
+            r += (y[i] - A[i] @ x[i]).norm() / y[i].norm()
+        return r / bs
+    def move_to(self, device):
+        self.device = device
+        self.to(device)
 class FluidNet(nn.Module):
     # For now, only 2D model. Add 2D/3D option. Only known from data!
     # Also, build model with MSE of pressure as loss func, therefore input is velocity
@@ -19,15 +41,21 @@ class FluidNet(nn.Module):
     def __init__(self):
         super(FluidNet, self).__init__()
         self.normalizeInputThreshold=0.00001
-        self.conv1 = nn.Conv2d(2, 8, kernel_size=3, padding='same', padding_mode='replicate')
-        self.conv2 = nn.Conv2d(8, 8, kernel_size=3, padding='same', padding_mode='replicate')
-        self.conv3 = nn.Conv2d(8, 8, kernel_size=3, padding='same', padding_mode='replicate')
-        self.conv4 = nn.Conv2d(8, 8, kernel_size=1, padding='same', padding_mode='replicate')
-        self.conv5 = nn.Conv2d(8, 1, kernel_size=1, padding='same', padding_mode='replicate')
-        self.down11 = nn.Conv2d(8, 8, kernel_size=3, padding='same', padding_mode='replicate')
-        self.down12 = nn.Conv2d(8, 8, kernel_size=3, padding='same', padding_mode='replicate')
-        self.down21 = nn.Conv2d(8, 8, kernel_size=3, padding='same', padding_mode='replicate')
-        self.down22 = nn.Conv2d(8, 8, kernel_size=3, padding='same', padding_mode='replicate')
+        self.conv1 = nn.Conv2d(2, 16, kernel_size=3, padding='same', padding_mode='zeros')
+        self.conv2 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
+        self.conv3 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
+
+        self.conv4 = nn.Conv2d(16, 16, kernel_size=1, padding='same', padding_mode='zeros')
+        self.conv5 = nn.Conv2d(16, 16, kernel_size=1, padding='same', padding_mode='zeros')
+        self.conv6 = nn.Conv2d(16, 1, kernel_size=1, padding='same', padding_mode='zeros')
+
+        self.down11 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
+        self.down12 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
+        self.down13 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
+
+        self.down21 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
+        self.down22 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
+        self.down23 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
         self.downsample = nn.AvgPool2d(2)
         self.updample = nn.Upsample(scale_factor=2)
     def forward(self, x_in):
@@ -50,10 +78,14 @@ class FluidNet(nn.Module):
         x = F.relu(self.conv3(x))
         x1 = F.relu(self.down12(x1))
         x2 = F.relu(self.down22(x2))
-        x = x + self.updample(x1 + self.updample(x2))
 
         x = F.relu(self.conv4(x))
-        x = self.conv5(x)
+        x1 = F.relu(self.down13(x1))
+        x2 = F.relu(self.down23(x2))
+        x = x + self.updample(x1 + self.updample(x2))
+
+        x = F.relu(self.conv5(x))
+        x = self.conv6(x)
         x = x * scale # In-place operation like x *= 2 or x[:]= ... is not allowed for x that requires auto grad
         ## zero out entries in null space (non-fluid)
         x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0) # 2 is fluid cell

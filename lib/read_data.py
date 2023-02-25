@@ -158,16 +158,18 @@ if __name__ == '__main__':
     path = os.path.dirname(os.path.relpath(__file__))
     frame = 666
     N = 64
-    file_A = os.path.join(path,  "..", "data_fluidnet", f"smoke_2D_{N}", f"A_{frame}.bin")
-    file_rhs = os.path.join(path,  "..", "data_fluidnet", f"smoke_2D_{N}", f"div_v_star_{frame}.bin")
-    file_sol = os.path.join(path,  "..", "data_fluidnet", f"smoke_2D_{N}", f"pressure_{frame}.bin")
-    file_flags = os.path.join(path,  "..", "data_fluidnet", f"smoke_2D_{N}", f"flags_{frame}.bin")
+    prefix = ''
+    bc = 'largedambreak'
+    file_A = os.path.join(path,  "..", "data_fluidnet", f"{prefix}{bc}_2D_{N}", f"A_{frame}.bin")
+    file_rhs = os.path.join(path,  "..", "data_fluidnet", f"{prefix}{bc}_2D_{N}", f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(path,  "..", "data_fluidnet", f"{prefix}{bc}_2D_{N}", f"pressure_{frame}.bin")
+    file_flags = os.path.join(path,  "..", "data_fluidnet", f"{prefix}{bc}_2D_{N}", f"flags_{frame}.bin")
     A = readA_sparse(file_A)
     rhs = load_vector(file_rhs)
     sol = load_vector(file_sol)
 
     flags = read_flags(file_flags)
-    weight = compute_weight(file_flags, N, 2)
+    # weight = compute_weight(file_flags, N, 2)
     # print(A.shape, rhs.shape, sol.shape, flags.shape)
     import torch
     x_gt = torch.tensor(sol)

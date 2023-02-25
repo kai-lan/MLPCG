@@ -332,7 +332,7 @@ class ConjugateGradientSparse:
             diagonal[it] = np.dot(Q[it],Q[it+1])
             v = Q[it+1] - diagonal[it]*Q[it]-sub_diagonal[it-1]*Q[it-1]
             for j in range(it-1):
-                v = v - Q[j]*self.dot(v, Q[j])
+                v = v - Q[j]*v.dot(Q[j])
             Q[it+1] = v.copy()
             sub_diagonal[it] = self.norm(Q[it+1])
             Q[it+1] = Q[it+1]/sub_diagonal[it]

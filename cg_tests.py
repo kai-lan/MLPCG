@@ -15,47 +15,12 @@ import torch
 import torch.nn.functional as F
 import scipy.sparse.linalg as slin
 import matplotlib.pyplot as plt
-from read_data import compute_weight
+from lib.read_data import compute_weight
 
 torch.set_grad_enabled(False) # disable autograd globally
 
 ###################
-# FluidNet
-###################
-def fluidnet_dcdm(b, A, flags, x_init, model, max_it, tol=1e-10, verbose=True):
-    N = math.isqrt(len(b))
-    assert N**2 == len(b), "RHS vector dimension is incorrect"
-    norm_b = b.norm().item()
-    r = b - A @ x_init
-    norm_r = r.norm().item()
-    res_history = [norm_r/norm_b]
-    if verbose:
-        print(f"Iter {0}, residual {norm_r/norm_b}")
-    p0 = torch.zeros_like(b)
-    p1 = torch.zeros_like(b)
-    Ap0 = torch.zeros_like(b)
-    Ap1 = torch.zeros_like(b)
-    alpha0, alpha1 = 1.0, 1.0
-    x_sol = torch.clone(x_init)
-    for i in range(max_it):
-        q = model(torch.stack([r, flags]).view(1, 2, N, N)).flatten() # r_normalized =r / norm_r. approximate A^-1 r
-        q -= q.dot(Ap1)/alpha1 * p1 + q.dot(Ap0)/alpha0 * p0
-        p0, p1 = p1, q
-        Ap0, Ap1 = Ap1, A @ q
-        alpha0, alpha1 = alpha1, p1.dot(Ap1)
-        beta = p1.dot(r)/alpha1
-        x_sol += p1 * beta
-        r = b - A @ x_sol
-        norm_r = r.norm().item()
-        res_history.append(norm_r/norm_b)
-        if verbose:
-            print(f"Iter {i+1}, residual {norm_r/norm_b}")
-        if norm_r < tol:
-            print("DCDM converged in ", i+1, " iterations to residual ", norm_r)
-            return x_sol
-    return x_sol, res_history
-###################
-# DCDM
+# FluidNet / DCDM
 ###################
 def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, verbose=True):
     N = math.isqrt(len(b))
@@ -73,8 +38,8 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, verbose=True):
     alpha0, alpha1 = 1.0, 1.0
     x_sol = torch.clone(x_init)
     for i in range(max_it):
-        q = model_predict(r).flatten() # r_normalized =r / norm_r. approximate A^-1 r
-        q = q - q.dot(Ap1)/alpha1 * p1 - q.dot(Ap0)/alpha0 * p0
+        q = model_predict(r) # r_normalized =r / norm_r. approximate A^-1 r
+        q -= q.dot(Ap1)/alpha1 * p1 + q.dot(Ap0)/alpha0 * p0
         p0, p1 = p1, q
         Ap0, Ap1 = Ap1, A @ q
         alpha0, alpha1 = alpha1, p1.dot(Ap1)
