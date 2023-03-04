@@ -22,15 +22,16 @@ torch.set_grad_enabled(False) # disable autograd globally
 ###################
 # FluidNet / DCDM
 ###################
-def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, verbose=True):
+def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, verbose=True, norm_type='l2'):
     N = math.isqrt(len(b))
     assert N**2 == len(b), "RHS vector dimension is incorrect"
     norm_b = b.norm().item()
     r = b - A @ x_init
-    norm_r = r.norm().item()
-    res_history = [norm_r/norm_b]
+    if norm_type == 'l2': norm = r.norm().item() / norm_b
+    else: norm = x_init.dot(A @ x_init).item() / 2 - x_init.dot(b)
+    res_history = [norm]
     if verbose:
-        print(f"Iter {0}, residual {norm_r/norm_b}")
+        print(f"Iter {0}, residual {res_history[-1]}")
     p0 = torch.zeros_like(b)
     p1 = torch.zeros_like(b)
     Ap0 = torch.zeros_like(b)
@@ -46,30 +47,30 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, verbose=True):
         beta = p1.dot(r)/alpha1
         x_sol += p1 * beta
         r = b - A @ x_sol
-        norm_r = r.norm().item()
-        res_history.append(norm_r/norm_b)
+        if norm_type == 'l2': norm = r.norm().item() / norm_b
+        else: norm = x_sol.dot(A @ x_sol).item() / 2 - x_sol.dot(b)
+        res_history.append(norm)
         if verbose:
-            print(f"Iter {i+1}, residual {norm_r/norm_b}")
-        if norm_r < tol:
-            print("DCDM converged in ", i+1, " iterations to residual ", norm_r)
-            return x_sol, res_history
+            print(f"Iter {i+1}, residual {res_history[-1]}")
     return x_sol, res_history
 ###################
 # CG
 ###################
-def CG(b, A, x_init, max_it, tol=1e-10, verbose=True):
+def CG(b, A, x_init, max_it, tol=1e-10, verbose=True, norm_type='l2'):
     count = 0
     norm_b = np.linalg.norm(b)
-    norm_r = np.linalg.norm(b - A @ x_init)
-    res_history = [norm_r/norm_b]
+    if norm_type == 'l2': norm = np.linalg.norm(b - A @ x_init) / norm_b
+    else: norm = x_init.dot(A @ x_init) / 2 - x_init.dot(b)
+    res_history = [norm]
     if verbose:
-        print(f"Iter {count}, residual {norm_r/norm_b}")
+        print(f"Iter {count}, residual {res_history[-1]}")
     def callback(x):
         nonlocal count
         count += 1
-        norm_r = np.linalg.norm(b - A @ x)
-        res_history.append(norm_r/norm_b)
+        if norm_type == 'l2': norm = np.linalg.norm(b - A @ x) / norm_b
+        else: norm = x.dot(A @ x) / 2 - x.dot(b)
+        res_history.append(norm)
         if verbose:
-            print(f"Iter {count}, residual {norm_r/norm_b}")
+            print(f"Iter {count}, residual {res_history[-1]}")
     x, info = slin.cg(A, b, x0=x_init, tol=tol, maxiter=max_it, callback=callback)
     return x, res_history

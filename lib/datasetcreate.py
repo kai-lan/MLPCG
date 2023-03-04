@@ -1,8 +1,5 @@
 # Create approximated eigenvectors for DCDM training
-import os
-import sys
-dir_path = os.path.dirname(os.path.realpath(__file__))
-
+from GLOBAL_VARS import *
 import numpy as np
 import scipy
 import time
@@ -12,7 +9,7 @@ import read_data as hf
 import scipy.sparse.linalg as slin
 
 
-def createRitzVec(DIM, N, A):
+def createRitzVec(DIM, N, A, outdir):
     sample_size = 2000
     num_ritz_vectors = 1000 # 256
     small_matmul_size = 200 # Small mat size for temp data
@@ -31,8 +28,7 @@ def createRitzVec(DIM, N, A):
     # Calculating eigenvectors of the tridiagonal matrix: only return eigvals > 1e-8
     print("Calculating eigenvectors of the tridiagonal matrix")
     ritz_vals, Q0 = scipy.linalg.eigh_tridiagonal(diagonal, sub_diagonal, select='v', select_range=(1.0e-8, np.inf))
-    print(ritz_vals)
-    print(len(ritz_vals))
+
     ritz_vectors = np.matmul(W.transpose(), Q0).transpose()
 
     for_outside = int(sample_size/small_matmul_size)
@@ -52,7 +48,7 @@ def createRitzVec(DIM, N, A):
 
         for i in range(l_b,r_b):
             b_rhs_temp[i-l_b] = b_rhs_temp[i-l_b]/np.linalg.norm(b_rhs_temp[i-l_b])
-            with open(f"{outdir}/b_{bc}_{i}.npy", 'wb') as f:
+            with open(f"{outdir}/b_{i}.npy", 'wb') as f:
                 np.save(f, np.array(b_rhs_temp[i-l_b], dtype=np.float32))
     print("Training Dataset is created.")
     print("Took", time.time()-t0, 's')
@@ -78,17 +74,16 @@ def createResVec(A, b, tol=1e-20, max_it=300, verbose=False):
             print(f"Iter {count}, residual {norm_r/norm_b}")
     x, info = slin.cg(A, b, x0=x_init, tol=tol, maxiter=max_it, callback=callback)
     return x, res_history
-if __name__ == '__main__':
-    N = 256
-    DIM = 2
-    include_bd = False
-    prefix = '_' if include_bd else ''
-    outdir = dir_path + f"/../data_dcdm/{prefix}train_{DIM}D_{N}"
-    os.makedirs(outdir, exist_ok=True)
-    bc = "dambreak_800"
-    A_file_name = f"{dir_path}/../data_fluidnet/dambreak_{DIM}D_{N}/A_800.bin"
-    A = hf.readA_sparse(A_file_name, dtype='d')
-    createRitzVec(DIM, N, A)
 
-    rhs = hf.load_vector(os.path.join(dir_path, f"../data_fluidnet/dambreak_{DIM}D_{N}", f"div_v_star_800.bin"))
-    # createResVec(A, rhs, verbose=True)
+if __name__ == '__main__':
+    N = 64
+    DIM = 2
+    outdir = f"{DATA_PATH}/largedambreak_{DIM}D_{N}/preprocessed"
+    os.makedirs(outdir, exist_ok=True)
+    for i in range(1, 1001):
+        out = f"{outdir}/{i}"
+        os.makedirs(out, exist_ok=True)
+        A = hf.readA_sparse(f"{DATA_PATH}/largedambreak_{DIM}D_{N}/A_{i}.bin", dtype='d')
+        createRitzVec(DIM, N, A, out)
+        # rhs = hf.load_vector(f"{DATA_PATH}/dambreak_{DIM}D_{N}/div_v_star_{i}.bin", dtype='d')
+        # createResVec(A, rhs, verbose=True)

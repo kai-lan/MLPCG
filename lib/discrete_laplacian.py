@@ -65,10 +65,11 @@ def lap3d(nx,ny,nz, dtype=np.float32):
     L3 = sparse.kron(sparse.kron(Lx, Iy),Iz) + sparse.kron(sparse.kron(Ix, Ly),Iz) + sparse.kron(sparse.kron(Ix, Iy),Lz)
     return L3
 
-def flatten_inds(inds, n, include_bd=True):
+def flatten_inds(inds, n, bd_padding=True):
     inds = np.asarray(inds)
+    if len(inds.shape) == 1: return inds
     dim = inds.shape[1]
-    if include_bd:
+    if bd_padding:
         if dim == 2: return inds[:, 0] * n + inds[:, 1]
         return inds[:, 0] * n**2 + inds[:, 1] * n + inds[:, 2]
     # remove points on the boundary
@@ -91,7 +92,7 @@ def neighbors(ind, n):
         if ind[1] + 1 < n: nb.append([ind[0], ind[1]+1, ind[-1]])
     return nb
 
-def lap_with_bc(n, dim, solid=[], air=[], bd=[], spd=True, include_bd=True, dtype=np.float32):
+def lap_with_bc(n, dim, solid=[], air=[], bd=[], spd=True, bd_padding=True, dtype=np.float32):
     """Generate pressure Laplacian matrix with specified BC
     Args:
         n (int): Number of grids in each dimension.
@@ -102,7 +103,7 @@ def lap_with_bc(n, dim, solid=[], air=[], bd=[], spd=True, include_bd=True, dtyp
     Returns:
         scipy csr matrix: pressure Laplacian matrix
     """
-    m = n if include_bd else n-2
+    m = n if bd_padding else n-2
     if dim == 2:
         A = lap2d(m, m, dtype=dtype).tolil()
     else:
@@ -110,9 +111,9 @@ def lap_with_bc(n, dim, solid=[], air=[], bd=[], spd=True, include_bd=True, dtyp
     if len(bd) > 0:
         bd_neighbor_cells = []
         for ind in bd: bd_neighbor_cells.extend(neighbors(ind, n))
-        bd_neighbors_inds = flatten_inds(bd_neighbor_cells, n, include_bd)
+        bd_neighbors_inds = flatten_inds(bd_neighbor_cells, n, bd_padding)
         for i in bd_neighbors_inds: A[i, i] += 1
-        if include_bd:
+        if bd_padding:
             bd_inds = flatten_inds(bd, n)
             A[bd_inds] = 0
             A[:, bd_inds] = 0
@@ -131,12 +132,17 @@ def lap_with_bc(n, dim, solid=[], air=[], bd=[], spd=True, include_bd=True, dtyp
     if spd: A *= -1
     return A.tocsr()
 
-# image: For 2- or 3-dimensional numpy array
-# Mark solid cells (2)
-# TODO air cells
-def image_to_list(image):
-    solid = np.array(np.where(image == 2)).T
-    return solid
+def box_bd(n, DIM):
+    bd = []
+    if DIM == 2:
+        for i in range(n):
+            bd.extend([(i, 0), (i, n-1), (0, i), (n-1, i)])
+    else:
+        for i in range(n):
+            for j in range(n):
+                bd.extend([(i, j, 0), (i, j, n-1), (0, i, j), (n-1, i, j), (i, 0, j), (i, n-1, j)])
+    bd = list(set(bd))
+    return bd
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -147,21 +153,14 @@ if __name__ == '__main__':
     N = 64
     DIM = 2
     BC = 'empty'
-    include_bd = False
-    prefix = '_' if include_bd else ''
-    n = N if include_bd else N+2
-    bd = []
-    if DIM == 2:
-        for i in range(n):
-            bd.extend([(i, 0), (i, n-1), (0, i), (n-1, i)])
-    else:
-        for i in range(n):
-            for j in range(n):
-                bd.extend([(i, j, 0), (i, j, n-1), (0, i, j), (n-1, i, j), (i, 0, j), (i, n-1, j)])
-    bd = list(set(bd))
+    bd_padding = False
+    prefix = '_' if bd_padding else ''
+    n = N if bd_padding else N+2
 
-    A = lap_with_bc(n, DIM, bd=bd, include_bd=include_bd, dtype=np.float32)
-    writeA_sparse(A, os.path.join(dir_path, "..", f"data_dcdm/{prefix}train_{DIM}D_{N}/A_{BC}.bin"), 'f')
+    bd = box_bd(n, DIM)
+    A = lap_with_bc(n, DIM, bd=bd, bd_padding=bd_padding, dtype=np.float32)
+    print(A)
+    # writeA_sparse(A, os.path.join(dir_path, "..", f"data_dcdm/{prefix}train_{DIM}D_{N}/A_{BC}.bin"), 'f')
 
     # B = readA_sparse(n, os.path.join(dir_path, f"../dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin"), DIM, 'f')
     # B.maxprint = np.inf

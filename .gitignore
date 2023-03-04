@@ -1,4 +1,5 @@
-data_*
+data*
+output*
 lib/.DS_Store
 lib/__*
 lib/*.png

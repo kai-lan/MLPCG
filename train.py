@@ -1,4 +1,5 @@
 import os, sys
+sys.path.insert(1, 'lib')
 import numpy as np
 import torch
 from torch import nn
@@ -7,14 +8,11 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import time
 from tqdm import tqdm
-dir_path = os.path.dirname(os.path.realpath(__file__))
-dcdm_data_path = os.path.join(dir_path, "data_dcdm")
-fluidnet_data_path = os.path.join(dir_path, "data_fluidnet")
-# sys.path.insert(1, os.path.join(dir_path, 'lib'))
-import lib.read_data as hf
 from lib.write_log import LoggingWriter
 from lib.dataset import *
+from lib.GLOBAL_VARS import *
 from model import DCDM, FluidNet
+
 
 # Fluidnet
 def train_(epoch_num, train_loader, validation_loader, model, optimizer):
@@ -27,7 +25,7 @@ def train_(epoch_num, train_loader, validation_loader, model, optimizer):
         t0 = time.time()
         # Training
         los = 0.0
-        for ii, (data, A) in enumerate(tqdm(train_loader), 1):# x: (bs, dim, dim, dim)
+        for ii, (data, A) in enumerate(train_loader, 1):# x: (bs, dim, dim, dim)
             data = data.to(model.device)
             A = A.to(model.device)
             x_pred = model(data) # (bs, 2, N, N)
@@ -57,59 +55,72 @@ def train_(epoch_num, train_loader, validation_loader, model, optimizer):
 
 
 if __name__ == '__main__':
-    # command variables
-    N = 256
+    N = 64
     DIM = 2
     lr = 1.0e-4
-    bc = 'dambreak'
-    include_bd = False
-    epoch_num = 200
+    epoch_num_per_matrix = 2
+    epoch_num = 50
+    bc = 'largedambreak'
     b_size = 25 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
-    total_data_points = 950 # number of images: 1000 total, leaving 50 for testing later
+    total_matrices = 900 # number of matrices chosen for training
+    num_ritz_vecs = 1000 # number of ritz vectors for training for each matrix
     cuda = torch.device("cuda") # Use CUDA for training
-    prefix = '_' if include_bd else ''
     log = LoggingWriter()
     log.record({"N": N,
                 "DIM": DIM,
                 "bc": bc,
-                "include bd": include_bd,
                 "lr": lr,
+                "Epoches per matrix": epoch_num_per_matrix,
                 "Epoches": epoch_num,
                 "batch size": b_size,
-                "Tot data points": total_data_points})
+                "Num matrices": total_matrices,
+                "Num Ritz Vectors": num_ritz_vecs})
 
     resume = False
 
     model = FluidNet()
     model.move_to(cuda)
     if resume:
-        model.load_state_dict(torch.load(os.path.join(fluidnet_data_path, f"{prefix}output_{DIM}D_{N}", f"model_{bc}.pth")))
+        model.load_state_dict(torch.load(os.path.join(OUT_PATH, f"output_{DIM}D_{N}", f"model_{bc}_{total_matrices}mat.pth")))
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
-    perm = np.random.permutation(total_data_points) + 1
-    train_size = round(0.8 * total_data_points)
-    train_set = MyDataset(os.path.join(fluidnet_data_path, f"{prefix}{bc}_{DIM}D_{N}/preprocessed"), ['x_*.pt', 'A_*.pt'], perm[:train_size], (2,)+(N,)*DIM)
-    validation_set = MyDataset(os.path.join(fluidnet_data_path, f"{prefix}{bc}_{DIM}D_{N}/preprocessed"), ['x_*.pt', 'A_*.pt'],perm[train_size:], (2,)+(N,)*DIM)
-
-
-    outdir = os.path.join(fluidnet_data_path, f"{prefix}output_{DIM}D_{N}")
-    suffix = bc + str(epoch_num)
-
+    train_size = round(0.8 * num_ritz_vecs)
+    perm = np.random.permutation(num_ritz_vecs)
+    train_set = MyDataset(None, ['x_*.pt', 'A.pt'], perm[:train_size], (2,)+(N,)*DIM)
+    valid_set = MyDataset(None, ['x_*.pt', 'A.pt'], perm[train_size:], (2,)+(N,)*DIM)
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
-    validation_loader = DataLoader(validation_set, batch_size=b_size, shuffle=False)
+    valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
+    # matrices = np.random.permutation(range(1, 1001))[:total_matrices]
+    matrices = range(1, total_matrices+1)
+    train_loss, valid_loss, time_history = [], [], []
+    start_time = time.time()
+    for i in range(1, epoch_num+1):
+        tl, vl = 0.0, 0.0
+        for j in matrices:
+            print('Matrix', j)
+            train_set.data_folder = os.path.join(DATA_PATH, f"{bc}_{DIM}D_{N}/preprocessed/{j}")
+            valid_set.data_folder = os.path.join(DATA_PATH, f"{bc}_{DIM}D_{N}/preprocessed/{j}")
+            _training_loss, _validation_loss, _= train_(epoch_num_per_matrix, train_loader, valid_loader, model, optimizer)
+            tl += np.sum(_training_loss)
+            vl += np.sum(_validation_loss)
+        train_loss.append(tl)
+        valid_loss.append(vl)
+        time_history.append(time.time() - start_time)
 
-    training_loss, validation_loss, time_history = train_(epoch_num, train_loader, validation_loader, model, optimizer)
+    outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
+    suffix = bc
+
 
     os.makedirs(outdir, exist_ok=True)
     log.write(os.path.join(outdir, f"settings_{suffix}.log"))
-    np.save(os.path.join(outdir, f"training_loss_{suffix}.npy"), training_loss)
-    np.save(os.path.join(outdir, f"validation_loss_{suffix}.npy"), validation_loss)
+    np.save(os.path.join(outdir, f"training_loss_{suffix}.npy"), train_loss)
+    np.save(os.path.join(outdir, f"validation_loss_{suffix}.npy"), valid_loss)
     np.save(os.path.join(outdir, f"time_{suffix}.npy"), time_history)
     # Save model
     torch.save(model.state_dict(), os.path.join(outdir, f"model_{suffix}.pth"))
 
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(2)
-    axes[0].plot(training_loss, label='training')
-    axes[1].plot(validation_loss, label='validation')
+    axes[0].plot(train_loss, label='training')
+    axes[1].plot(valid_loss, label='validation')
     plt.savefig(f"loss_{bc}.png", bbox_inches='tight')

@@ -1,6 +1,7 @@
+import os, sys
+sys.path.insert(1, 'lib')
 import matplotlib.pyplot as plt
-from lib.read_data import read_flags, load_vector, readA_sparse, compute_weight
-import os
+from lib.read_data import *
 import numpy as np
 
 path = os.path.dirname(os.path.realpath(__file__))
@@ -17,7 +18,9 @@ def vis_weight(frame):
 def vis_flags(frame):
     file_flags = os.path.join(example_folder, f"flags_{frame}.bin")
     flags = read_flags(file_flags)
-    plt.imshow(flags.reshape((N,)*DIM).T, origin='lower', cmap='jet')
+    flags = flags.reshape((N,)*DIM)
+    # flags = np.flipud(flags)
+    plt.imshow(flags.T, origin='lower', cmap='jet')
     plt.colorbar()
     plt.savefig(f"{path}/flags_{DIM}d_{N}.png", bbox_inches="tight")
     plt.close()
@@ -67,17 +70,16 @@ def plot_loss(data_path, suffix):
 if __name__ == '__main__':
     N = 64
     DIM = 2
-    # example_folder = os.path.join(path,  "data_fluidnet", f"dambreak_{DIM}D_{N}")
-    example_folder = os.path.join(path, "data_dcdm", f"train_{DIM}D_{N}")
-    # frame =800
-    # flags = vis_flags(frame)
-    # rhs = vis_div_v(frame, masked=False)
-    # sol = vis_pressure(frame, masked=False)
-    res = np.load(example_folder + "/b_res_60.npy")
+    example_folder = os.path.join(DATA_PATH, f"largedambreak_{DIM}D_{N}")
+    frame = 996
+    flags = vis_flags(frame)
+    rhs = vis_div_v(frame, masked=False)
+    sol = vis_pressure(frame, masked=False)
+    # res = np.load(example_folder + "/b_res_60.npy")
     # weight = vis_weight(frame)
-    plt.imshow(res.reshape((N,)*DIM, order='F'), origin='lower', cmap='jet')
-    plt.colorbar()
-    plt.savefig("res.png")
+    # plt.imshow(res.reshape((N,)*DIM, order='F'), origin='lower', cmap='jet')
+    # plt.colorbar()
+    # plt.savefig("res.png")
     # fluids = np.where(flags == 2)
     # print(fluids)
 
