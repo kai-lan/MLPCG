@@ -21,7 +21,6 @@ def train_(epoch_num, train_loader, validation_loader, model, optimizer):
     time_history = []
     t0 = time.time()
     for i in range(1, epoch_num+1):
-        print(f"Training at {i} / {epoch_num}")
         t0 = time.time()
         # Training
         los = 0.0
@@ -29,7 +28,7 @@ def train_(epoch_num, train_loader, validation_loader, model, optimizer):
             data = data.to(model.device)
             A = A.to(model.device)
             x_pred = model(data) # (bs, 2, N, N)
-            loss = model.loss(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
+            loss = model.direction_loss(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -41,47 +40,59 @@ def train_(epoch_num, train_loader, validation_loader, model, optimizer):
                 data = data.to(model.device)
                 A = A.to(model.device)
                 x_pred = model(data) # input: (bs, 1, dim, dim)
-                tot_loss_train += model.loss(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
+                tot_loss_train += model.direction_loss(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
             for data, A in validation_loader:
                 data = data.to(model.device)
                 A = A.to(model.device)
                 x_pred = model(data) # input: (bs, 1, dim, dim)
-                tot_loss_val += model.loss(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
+                tot_loss_val += model.direction_loss(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
         training_loss.append(tot_loss_train)
         validation_loss.append(tot_loss_val)
         time_history.append(time.time() - t0)
-        print(training_loss[-1], validation_loss[-1])
+        print(training_loss[-1], validation_loss[-1], f"({i} / {epoch_num})")
     return training_loss, validation_loss, time_history
 
-
-if __name__ == '__main__':
-    N = 64
-    DIM = 2
-    lr = 1.0e-4
-    epoch_num_per_matrix = 2
-    epoch_num = 50
-    bc = 'largedambreak'
-    b_size = 25 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
-    total_matrices = 900 # number of matrices chosen for training
-    num_ritz_vecs = 1000 # number of ritz vectors for training for each matrix
-    cuda = torch.device("cuda") # Use CUDA for training
-    log = LoggingWriter()
+def saveData(epoch, log, outdir, suffix, train_loss, valid_loss, time_history):
     log.record({"N": N,
                 "DIM": DIM,
                 "bc": bc,
                 "lr": lr,
                 "Epoches per matrix": epoch_num_per_matrix,
-                "Epoches": epoch_num,
+                "Epoches": epoch,
                 "batch size": b_size,
                 "Num matrices": total_matrices,
                 "Num Ritz Vectors": num_ritz_vecs})
+    log.write(os.path.join(outdir, f"settings_{suffix}.log"))
+    np.save(os.path.join(outdir, f"training_loss_{suffix}.npy"), train_loss)
+    np.save(os.path.join(outdir, f"validation_loss_{suffix}.npy"), valid_loss)
+    np.save(os.path.join(outdir, f"time_{suffix}.npy"), time_history)
+    torch.save(model.state_dict(), os.path.join(outdir, f"model_{suffix}.pth"))
+
+if __name__ == '__main__':
+    np.random.seed(2) # same random seed for debug
+    N = 128
+    DIM = 2
+    lr = 1.0e-4
+    epoch_num_per_matrix = 2
+    epoch_num = 10
+    bc = 'dambreak'
+    b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
+    total_matrices = 400 # number of matrices chosen for training
+    num_ritz_vecs = 50 # number of ritz vectors for training for each matrix
+    cuda = torch.device("cuda") # Use CUDA for training
+    log = LoggingWriter()
+
 
     resume = False
+    # suffix = bc
+    suffix = bc+'_direction'
+    outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
+    os.makedirs(outdir, exist_ok=True)
 
     model = FluidNet()
     model.move_to(cuda)
     if resume:
-        model.load_state_dict(torch.load(os.path.join(OUT_PATH, f"output_{DIM}D_{N}", f"model_{bc}_{total_matrices}mat.pth")))
+        model.load_state_dict(torch.load(os.path.join(OUT_PATH, f"output_{DIM}D_{N}", f"model_{suffix}.pth")))
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     train_size = round(0.8 * num_ritz_vecs)
@@ -90,11 +101,13 @@ if __name__ == '__main__':
     valid_set = MyDataset(None, ['x_*.pt', 'A.pt'], perm[train_size:], (2,)+(N,)*DIM)
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
-    # matrices = np.random.permutation(range(1, 1001))[:total_matrices]
-    matrices = range(1, total_matrices+1)
+    matrices = np.random.permutation(range(1, 1001))[:total_matrices]
+    np.save(f"{outdir}/matrices_trained.npy", matrices)
+    # matrices = range(1, total_matrices+1)
     train_loss, valid_loss, time_history = [], [], []
     start_time = time.time()
     for i in range(1, epoch_num+1):
+        print(f"Epoch: {i}/{epoch_num}")
         tl, vl = 0.0, 0.0
         for j in matrices:
             print('Matrix', j)
@@ -106,18 +119,9 @@ if __name__ == '__main__':
         train_loss.append(tl)
         valid_loss.append(vl)
         time_history.append(time.time() - start_time)
-
-    outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
-    suffix = bc
-
-
-    os.makedirs(outdir, exist_ok=True)
-    log.write(os.path.join(outdir, f"settings_{suffix}.log"))
-    np.save(os.path.join(outdir, f"training_loss_{suffix}.npy"), train_loss)
-    np.save(os.path.join(outdir, f"validation_loss_{suffix}.npy"), valid_loss)
-    np.save(os.path.join(outdir, f"time_{suffix}.npy"), time_history)
-    # Save model
-    torch.save(model.state_dict(), os.path.join(outdir, f"model_{suffix}.pth"))
+        saveData(i, log, outdir, suffix, train_loss, valid_loss, time_history)
+    end_time = time.time()
+    print("Took", end_time-start_time, 's')
 
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(2)

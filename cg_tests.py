@@ -52,6 +52,7 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, verbose=True, norm_type
         res_history.append(norm)
         if verbose:
             print(f"Iter {i+1}, residual {res_history[-1]}")
+        if norm < tol: return x_sol, res_history
     return x_sol, res_history
 ###################
 # CG

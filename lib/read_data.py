@@ -155,6 +155,19 @@ def readA_sparse(filenameA, dtype='d'):
         rows[outerIdxPtr[ii]:outerIdxPtr[ii+1]] = [ii]*(outerIdxPtr[ii+1] - outerIdxPtr[ii])
     return sparse.csr_matrix((data, (rows, cols)),[num_rows, num_cols], dtype=dtype)
 
+def compressedMat(A, flags):
+    selection = np.where(flags.ravel() == 2)[0]
+    return A.tolil()[selection][:, selection].tocsr()
+def compressedVec(b, flags):
+    selection = np.where(flags.ravel() == 2)[0]
+    return b[selection]
+def expandVec(b, flags):
+    flags = flags.ravel()
+    selection = np.where(flags == 2)[0]
+    v = np.zeros(flags.shape, b.dtype)
+    v[selection] = b
+    return v
+
 if __name__ == '__main__':
     path = os.path.dirname(os.path.relpath(__file__))
     frame = 666

@@ -49,10 +49,10 @@ def vis_pressure(frame, masked=False):
 def vis_A(frame, masked=False):
     file_A = os.path.join(example_folder, f"A_{frame}.bin")
     A = readA_sparse(file_A)
-    print(A)
-    # plt.spy(A)
-    # plt.savefig(f"A_{DIM}d_{N}.png")
-    # plt.close()
+
+    plt.spy(A)
+    plt.savefig(f"A_{DIM}d_{N}.png")
+    plt.close()
 
 def plot_loss(data_path, suffix):
     loss_train = np.load(data_path + f"/training_loss_{suffix}.npy")
@@ -67,14 +67,22 @@ def plot_loss(data_path, suffix):
     axes[1].set_title("Validation")
     plt.savefig(f"{path}/loss.png", bbox_inches="tight")
 
+def visualize_frame_by_frame():
+    import time
+    time.sleep(1)
+    for i in range(1, 1000):
+        frame = i
+        vis_flags(frame)
+        time.sleep(0.1)
+
 if __name__ == '__main__':
-    N = 64
+    N = 256
     DIM = 2
-    example_folder = os.path.join(DATA_PATH, f"largedambreak_{DIM}D_{N}")
-    frame = 996
-    flags = vis_flags(frame)
+    example_folder = os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}")
+
     rhs = vis_div_v(frame, masked=False)
     sol = vis_pressure(frame, masked=False)
+
     # res = np.load(example_folder + "/b_res_60.npy")
     # weight = vis_weight(frame)
     # plt.imshow(res.reshape((N,)*DIM, order='F'), origin='lower', cmap='jet')

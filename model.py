@@ -90,12 +90,28 @@ class FluidNet(nn.Module):
         ## zero out entries in null space (non-fluid)
         x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0) # 2 is fluid cell
         return x
+    # Residual loss
     def loss(self, x, y, A):
         bs = x.shape[0]
         r = torch.zeros(1).to(x.device)
         for i in range(bs):
             r += (y[i] - A[i] @ x[i]).norm() / y[i].norm()
         return r / bs
+    # Direction loss
+    def direction_loss(self, y_pred, y_true, A_sparse): # bs x dim x dim (x dim)
+        bs = y_pred.shape[0]
+        result = torch.zeros(1, dtype=y_pred.dtype, device=y_pred.device)
+        for i in range(bs):
+            A = A_sparse[i]
+            y_hat = y_pred[i]
+            y = y_true[i]
+            r = (y - y_hat.dot(y) / y_hat.dot(A @ y_hat)).norm()
+            result += r
+        # YhatY = (y_true * y_pred).sum(dim=1) # Y^hat * Y, (bs,)
+        # YhatAt = (A_sparse @ y_pred.unsqueeze(-1)) # y_pred @ A_sparse.T not working, Y^hat A^T, (bs, N)
+        # YhatYhatAt = (y_pred * YhatAt).sum(dim=1) # Y^hat * (Yhat A^T), (bs,)
+        result /= bs
+        return result
     def move_to(self, device):
         self.device = device
         self.to(device)
