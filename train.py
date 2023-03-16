@@ -1,5 +1,6 @@
 import os, sys
 sys.path.insert(1, 'lib')
+os.environ['OMP_NUM_THREADS'] = '4'
 import numpy as np
 import torch
 from torch import nn
@@ -15,7 +16,7 @@ from model import DCDM, FluidNet
 
 
 # Fluidnet
-def train_(epoch_num, train_loader, validation_loader, model, optimizer):
+def train_(epoch_num, train_loader, validation_loader, model, optimizer, loss_fn):
     training_loss = []
     validation_loss = []
     time_history = []
@@ -28,7 +29,7 @@ def train_(epoch_num, train_loader, validation_loader, model, optimizer):
             data = data.to(model.device)
             A = A.to(model.device)
             x_pred = model(data) # (bs, 2, N, N)
-            loss = model.direction_loss(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
+            loss = loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -40,12 +41,12 @@ def train_(epoch_num, train_loader, validation_loader, model, optimizer):
                 data = data.to(model.device)
                 A = A.to(model.device)
                 x_pred = model(data) # input: (bs, 1, dim, dim)
-                tot_loss_train += model.direction_loss(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
+                tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
             for data, A in validation_loader:
                 data = data.to(model.device)
                 A = A.to(model.device)
                 x_pred = model(data) # input: (bs, 1, dim, dim)
-                tot_loss_val += model.direction_loss(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
+                tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
         training_loss.append(tot_loss_train)
         validation_loss.append(tot_loss_val)
         time_history.append(time.time() - t0)
@@ -70,35 +71,39 @@ def saveData(epoch, log, outdir, suffix, train_loss, valid_loss, time_history):
 
 if __name__ == '__main__':
     np.random.seed(2) # same random seed for debug
-    N = 128
+    N = 64
     DIM = 2
-    lr = 1.0e-4
-    epoch_num_per_matrix = 2
-    epoch_num = 10
+    lr = 1.0e-3
+    epoch_num_per_matrix = 5
+    epoch_num = 20
     bc = 'dambreak'
     b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
-    total_matrices = 400 # number of matrices chosen for training
-    num_ritz_vecs = 50 # number of ritz vectors for training for each matrix
+    total_matrices = 100 # number of matrices chosen for training
+    num_ritz_vecs = 500 # number of ritz vectors for training for each matrix
     cuda = torch.device("cuda") # Use CUDA for training
     log = LoggingWriter()
 
 
     resume = False
-    # suffix = bc
-    suffix = bc+'_direction'
+    suffix = bc
+    # suffix = bc+'_direction'
+    suffix = bc+'_rhs_init'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 
     model = FluidNet()
     model.move_to(cuda)
+    loss_fn = model.loss
+    # loss_fn = model.direction_loss
+
     if resume:
         model.load_state_dict(torch.load(os.path.join(OUT_PATH, f"output_{DIM}D_{N}", f"model_{suffix}.pth")))
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     train_size = round(0.8 * num_ritz_vecs)
     perm = np.random.permutation(num_ritz_vecs)
-    train_set = MyDataset(None, ['x_*.pt', 'A.pt'], perm[:train_size], (2,)+(N,)*DIM)
-    valid_set = MyDataset(None, ['x_*.pt', 'A.pt'], perm[train_size:], (2,)+(N,)*DIM)
+    train_set = MyDataset(None, ['x_*_new.pt', 'A.pt'], perm[:train_size], (2,)+(N,)*DIM)
+    valid_set = MyDataset(None, ['x_*_new.pt', 'A.pt'], perm[train_size:], (2,)+(N,)*DIM)
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
     matrices = np.random.permutation(range(1, 1001))[:total_matrices]
@@ -113,7 +118,7 @@ if __name__ == '__main__':
             print('Matrix', j)
             train_set.data_folder = os.path.join(DATA_PATH, f"{bc}_{DIM}D_{N}/preprocessed/{j}")
             valid_set.data_folder = os.path.join(DATA_PATH, f"{bc}_{DIM}D_{N}/preprocessed/{j}")
-            _training_loss, _validation_loss, _= train_(epoch_num_per_matrix, train_loader, valid_loader, model, optimizer)
+            _training_loss, _validation_loss, _= train_(epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
             tl += np.sum(_training_loss)
             vl += np.sum(_validation_loss)
         train_loss.append(tl)
