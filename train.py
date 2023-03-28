@@ -12,11 +12,12 @@ from tqdm import tqdm
 from lib.write_log import LoggingWriter
 from lib.dataset import *
 from lib.GLOBAL_VARS import *
-from model import DCDM, FluidNet
+from model import *
 
 
 # Fluidnet
-def train_(epoch_num, train_loader, validation_loader, model, optimizer, loss_fn):
+def train_(A, epoch_num, train_loader, validation_loader, model, optimizer, loss_fn):
+    A = A.to(model.device)
     training_loss = []
     validation_loss = []
     time_history = []
@@ -25,9 +26,8 @@ def train_(epoch_num, train_loader, validation_loader, model, optimizer, loss_fn
         t0 = time.time()
         # Training
         los = 0.0
-        for ii, (data, A) in enumerate(train_loader, 1):# x: (bs, dim, dim, dim)
+        for ii, data in enumerate(train_loader, 1):# x: (bs, dim, dim, dim)
             data = data.to(model.device)
-            A = A.to(model.device)
             x_pred = model(data) # (bs, 2, N, N)
             loss = loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
             optimizer.zero_grad()
@@ -37,14 +37,12 @@ def train_(epoch_num, train_loader, validation_loader, model, optimizer, loss_fn
         # Validation
         tot_loss_train, tot_loss_val = 0, 0
         with torch.no_grad():
-            for data, A in train_loader:
+            for data in train_loader:
                 data = data.to(model.device)
-                A = A.to(model.device)
                 x_pred = model(data) # input: (bs, 1, dim, dim)
                 tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
-            for data, A in validation_loader:
+            for data in validation_loader:
                 data = data.to(model.device)
-                A = A.to(model.device)
                 x_pred = model(data) # input: (bs, 1, dim, dim)
                 tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
         training_loss.append(tot_loss_train)
@@ -62,7 +60,7 @@ def saveData(epoch, log, outdir, suffix, train_loss, valid_loss, time_history):
                 "Epoches": epoch,
                 "batch size": b_size,
                 "Num matrices": total_matrices,
-                "Num Ritz Vectors": num_ritz_vecs})
+                "Num RHS": num_rhs})
     log.write(os.path.join(outdir, f"settings_{suffix}.log"))
     np.save(os.path.join(outdir, f"training_loss_{suffix}.npy"), train_loss)
     np.save(os.path.join(outdir, f"validation_loss_{suffix}.npy"), valid_loss)
@@ -71,43 +69,47 @@ def saveData(epoch, log, outdir, suffix, train_loss, valid_loss, time_history):
 
 if __name__ == '__main__':
     np.random.seed(2) # same random seed for debug
-    N = 64
+    N = 256
     DIM = 2
     lr = 1.0e-3
     epoch_num_per_matrix = 5
     epoch_num = 20
     bc = 'dambreak'
     b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
-    total_matrices = 100 # number of matrices chosen for training
-    num_ritz_vecs = 500 # number of ritz vectors for training for each matrix
+    total_matrices = 50 # number of matrices chosen for training
+    num_rhs = 600 # number of ritz vectors for training for each matrix
     cuda = torch.device("cuda") # Use CUDA for training
+
     log = LoggingWriter()
 
 
     resume = False
-    suffix = bc
+    suffix = f'{bc}_M{total_matrices}_ritz1000_rhs{num_rhs}_res'
     # suffix = bc+'_direction'
-    suffix = bc+'_rhs_init'
+    # suffix = bc+'_1000ritz'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
+    inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")
 
-    model = FluidNet()
+    model = FluidNet(N, N)
     model.move_to(cuda)
-    loss_fn = model.loss
-    # loss_fn = model.direction_loss
+    loss_fn = model.residual_loss
+    # loss_fn = model.energy_loss
+    # loss_fn = model.scaled_loss_2
+    # loss_fn = model.scaled_loss_A
 
     if resume:
-        model.load_state_dict(torch.load(os.path.join(OUT_PATH, f"output_{DIM}D_{N}", f"model_{suffix}.pth")))
+        model.load_state_dict(torch.load(os.path.join(outdir, f"model_{suffix}.pth")))
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
-    train_size = round(0.8 * num_ritz_vecs)
-    perm = np.random.permutation(num_ritz_vecs)
-    train_set = MyDataset(None, ['x_*_new.pt', 'A.pt'], perm[:train_size], (2,)+(N,)*DIM)
-    valid_set = MyDataset(None, ['x_*_new.pt', 'A.pt'], perm[train_size:], (2,)+(N,)*DIM)
+    train_size = round(0.8 * num_rhs)
+    perm = np.random.permutation(num_rhs)
+    train_set = MyDataset(None, perm[:train_size], (2,)+(N,)*DIM)
+    valid_set = MyDataset(None, perm[train_size:], (2,)+(N,)*DIM)
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
-    matrices = np.random.permutation(range(1, 1001))[:total_matrices]
-    np.save(f"{outdir}/matrices_trained.npy", matrices)
+    matrices = np.random.permutation(range(1, 201))[:total_matrices]
+    np.save(f"{outdir}/matrices_trained_{total_matrices}.npy", matrices)
     # matrices = range(1, total_matrices+1)
     train_loss, valid_loss, time_history = [], [], []
     start_time = time.time()
@@ -116,9 +118,10 @@ if __name__ == '__main__':
         tl, vl = 0.0, 0.0
         for j in matrices:
             print('Matrix', j)
-            train_set.data_folder = os.path.join(DATA_PATH, f"{bc}_{DIM}D_{N}/preprocessed/{j}")
-            valid_set.data_folder = os.path.join(DATA_PATH, f"{bc}_{DIM}D_{N}/preprocessed/{j}")
-            _training_loss, _validation_loss, _= train_(epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
+            train_set.data_folder = os.path.join(f"{inpdir}/{j}")
+            valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
+            A = torch.load(f"{train_set.data_folder}/A.pt")
+            _training_loss, _validation_loss, _= train_(A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
             tl += np.sum(_training_loss)
             vl += np.sum(_validation_loss)
         train_loss.append(tl)

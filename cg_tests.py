@@ -40,7 +40,9 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, verbose=True, norm_type
     x_sol = torch.clone(x_init)
     for i in range(max_it):
         q = model_predict(r) # r_normalized =r / norm_r. approximate A^-1 r
-        q -= q.dot(Ap1)/alpha1 * p1 + q.dot(Ap0)/alpha0 * p0
+        # a1, a0 = q.dot(Ap1)/alpha1, q.dot(Ap0)/alpha0
+        # print(a1, a0)
+        q = q - q.dot(Ap1)/alpha1 * p1 - q.dot(Ap0)/alpha0 * p0
         p0, p1 = p1, q
         Ap0, Ap1 = Ap1, A @ q
         alpha0, alpha1 = alpha1, p1.dot(Ap1)

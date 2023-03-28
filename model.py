@@ -5,18 +5,66 @@ File Created: Tuesday, 10th January 2023 12:51:41 am
 Author: Kai Lan (kai.weixian.lan@gmail.com)
 --------------
 '''
-from math import inf
+from math import inf, log2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchsummary import summary
 
-class SimpleModel(nn.Module):
+class BaseModel(nn.Module):
+    def __init__(self):
+        super(BaseModel, self).__init__()
+    def move_to(self, device):
+        self.device = device
+        self.to(device)
+        # Residual loss
+    def residual_loss(self, x, y, A):
+        bs = x.shape[0]
+        r = torch.zeros(1).to(x.device)
+        for i in range(bs):
+            r += (y[i] - A @ x[i]).norm() / y[i].norm()
+        return r / bs
+    # Energy loss: negative decreasing
+    def energy_loss(self, x, b, A):
+        bs = x.shape[0]
+        r = torch.zeros(1).to(x.device)
+        for i in range(bs):
+            r += 0.5 * x[i].dot(A @ x[i]) - x[i].dot(b[i])
+        return r / bs
+    # Inv Energy loss: positive decreasing
+    def inv_energy_loss(self, x, b, A):
+        bs = x.shape[0]
+        r = torch.zeros(1).to(x.device)
+        for i in range(bs):
+            r += -1/(0.5 * x[i].dot(A @ x[i]) - x[i].dot(b[i]))
+        return r / bs
+    # Scaled loss in 2-norm
+    def scaled_loss_2(self, x, y, A): # bs x dim x dim (x dim)
+        bs = x.shape[0]
+        result = torch.zeros(1, dtype=x.dtype, device=x.device)
+        for i in range(bs):
+            Ax = A @ x[i]
+            alpha = x[i].dot(y[i]) / x[i].dot(Ax)
+            r = (y[i] - alpha * Ax).square().sum()
+            result += r
+        return result / bs
+    def scaled_loss_A(self, x, y, A): # bs x dim x dim (x dim)
+        bs = x.shape[0]
+        result = torch.zeros(1, dtype=x.dtype, device=x.device)
+        for i in range(bs):
+            Ax = A @ x[i]
+            alpha = x[i].dot(y[i]) / x[i].dot(Ax)
+            r = y[i] - alpha * Ax
+            result += r.dot(A @ r)
+        return result / bs
+
+class SimpleModel(BaseModel):
     def __init__(self) -> None:
         super(SimpleModel, self).__init__()
-        self.conv1 = nn.Conv2d(2, 8, kernel_size=3, padding='same')
-        self.conv2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
-        self.conv3 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.init = nn.Conv2d(2, 8, kernel_size=3, padding='same')
+        self.top = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.down1 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        # self.down2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
         self.last  = nn.Conv2d(8, 1, kernel_size=1, padding='same')
     def forward(self, x):
         x = F.normalize(x, dim=0)
@@ -31,33 +79,34 @@ class SimpleModel(nn.Module):
         for i in range(bs):
             r += (y[i] - A[i] @ x[i]).norm() / y[i].norm()
         return r / bs
-    def move_to(self, device):
-        self.device = device
-        self.to(device)
-class FluidNet(nn.Module):
+
+class FluidNet(BaseModel):
     # For now, only 2D model. Add 2D/3D option. Only known from data!
     # Also, build model with MSE of pressure as loss func, therefore input is velocity
     # and output is pressure, to be compared to target pressure.
-    def __init__(self):
+    def __init__(self, train_dim, test_dim):
         super(FluidNet, self).__init__()
+        ks = 3
+        # self.num_upsamples = log2()
         self.normalizeInputThreshold=0.00001
-        self.conv1 = nn.Conv2d(2, 16, kernel_size=3, padding='same', padding_mode='zeros')
-        self.conv2 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
-        self.conv3 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
+        self.conv1 = nn.Conv2d(2, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.conv2 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.conv3 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
 
-        self.conv4 = nn.Conv2d(16, 16, kernel_size=1, padding='same', padding_mode='zeros')
+        self.conv4 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
         self.conv5 = nn.Conv2d(16, 16, kernel_size=1, padding='same', padding_mode='zeros')
         self.conv6 = nn.Conv2d(16, 1, kernel_size=1, padding='same', padding_mode='zeros')
 
-        self.down11 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
-        self.down12 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
-        self.down13 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
+        self.down11 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.down12 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.down13 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
 
-        self.down21 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
-        self.down22 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
-        self.down23 = nn.Conv2d(16, 16, kernel_size=3, padding='same', padding_mode='zeros')
+        self.down21 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.down22 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.down23 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
         self.downsample = nn.AvgPool2d(2)
-        self.updample = nn.Upsample(scale_factor=2)
+        self.upsample = nn.Upsample(scale_factor=2)
+        # print('num of upsample', self.num_upsamples)
     def forward(self, x_in):
         # Input: x = [bs, 2, Nx, Ny]
         # Normalization might improve invariance of scaling for the network because y = Ax <=> sy = A(sx)
@@ -66,7 +115,8 @@ class FluidNet(nn.Module):
         std = torch.std(x[:, 0:1], dim=(2, 3), keepdim=True)
         scale = torch.clamp(std, self.normalizeInputThreshold, inf)
         x[:, 0:1] /= scale
-
+        # for _ in range(self.num_upsamples):
+        #     x = self.upsample(x)
         x = F.relu(self.conv1(x))
         x1 = self.downsample(x)
         x2 = self.downsample(x1)
@@ -82,40 +132,82 @@ class FluidNet(nn.Module):
         x = F.relu(self.conv4(x))
         x1 = F.relu(self.down13(x1))
         x2 = F.relu(self.down23(x2))
-        x = x + self.updample(x1 + self.updample(x2))
+        x = x + self.upsample(x1 + self.upsample(x2))
 
         x = F.relu(self.conv5(x))
         x = self.conv6(x)
+
+        # for _ in range(self.num_upsamples):
+        #     x = self.downsample(x)
         x = x * scale # In-place operation like x *= 2 or x[:]= ... is not allowed for x that requires auto grad
         ## zero out entries in null space (non-fluid)
         x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0) # 2 is fluid cell
         return x
-    # Residual loss
-    def loss(self, x, y, A):
-        bs = x.shape[0]
-        r = torch.zeros(1).to(x.device)
-        for i in range(bs):
-            r += (y[i] - A[i] @ x[i]).norm() / y[i].norm()
-        return r / bs
-    # Direction loss
-    def direction_loss(self, y_pred, y_true, A_sparse): # bs x dim x dim (x dim)
-        bs = y_pred.shape[0]
-        result = torch.zeros(1, dtype=y_pred.dtype, device=y_pred.device)
-        for i in range(bs):
-            A = A_sparse[i]
-            y_hat = y_pred[i]
-            y = y_true[i]
-            r = (y - y_hat.dot(y) / y_hat.dot(A @ y_hat)).norm()
-            result += r
-        # YhatY = (y_true * y_pred).sum(dim=1) # Y^hat * Y, (bs,)
-        # YhatAt = (A_sparse @ y_pred.unsqueeze(-1)) # y_pred @ A_sparse.T not working, Y^hat A^T, (bs, N)
-        # YhatYhatAt = (y_pred * YhatAt).sum(dim=1) # Y^hat * (Yhat A^T), (bs,)
-        result /= bs
-        return result
-    def move_to(self, device):
-        self.device = device
-        self.to(device)
 
+class NewModel(FluidNet): # Made downsampling and upsampling learnable
+    def __init__(self, train_dim, test_dim):
+        super(NewModel, self).__init__(train_dim, test_dim)
+        self.downsample = nn.Conv2d(16, 16, kernel_size=3, padding=1)
+        self.upsample = nn.ConvTranspose2d(16, 16, kernel_size=3, padding=1)
+
+class NewModel1(FluidNet): # increase num of channels as we downsample
+    def __init__(self, train_dim, test_dim):
+        super(NewModel1, self).__init__(train_dim, test_dim)
+        ks = 3 * int(test_dim/train_dim)
+        self.conv1 = nn.Conv2d(2, 8, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.conv2 = nn.Conv2d(8, 8, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.conv3 = nn.Conv2d(8, 8, kernel_size=ks, padding='same', padding_mode='zeros')
+
+        self.conv4 = nn.Conv2d(8, 8, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.conv5 = nn.Conv2d(8, 8, kernel_size=1, padding='same', padding_mode='zeros')
+        self.conv6 = nn.Conv2d(8, 1, kernel_size=1, padding='same', padding_mode='zeros')
+
+        self.down11 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.down12 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.down13 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+
+        self.down21 = nn.Conv2d(32, 32, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.down22 = nn.Conv2d(32, 32, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.down23 = nn.Conv2d(32, 32, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.downsample1 = nn.Conv2d(8, 16, kernel_size=3, padding=1)
+        self.downsample2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
+        self.upsample1 = nn.ConvTranspose2d(16, 8, kernel_size=3, padding=1)
+        self.upsample2 = nn.ConvTranspose2d(32, 16, kernel_size=3, padding=1)
+    def forward(self, x_in):
+        x = x_in.clone()
+        std = torch.std(x[:, 0:1], dim=(2, 3), keepdim=True)
+        scale = torch.clamp(std, self.normalizeInputThreshold, inf)
+        x[:, 0:1] /= scale
+
+        x = F.relu(self.conv1(x))
+        x1 = self.downsample1(x)
+        x2 = self.downsample2(x1)
+
+        x = F.relu(self.conv2(x))
+        x1 = F.relu(self.down11(x1))
+        x2 = F.relu(self.down21(x2))
+
+        x = F.relu(self.conv3(x))
+        x1 = F.relu(self.down12(x1))
+        x2 = F.relu(self.down22(x2))
+
+        x = F.relu(self.conv4(x))
+        x1 = F.relu(self.down13(x1))
+        x2 = F.relu(self.down23(x2))
+        x = x + self.upsample1(x1 + self.upsample2(x2))
+
+        x = F.relu(self.conv5(x))
+        x = self.conv6(x)
+        x = x * scale
+        x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0)
+        return x
+class NewModel2(NewModel1): # increase num of channels as we downsample
+    def __init__(self, train_dim, test_dim):
+        super(NewModel2, self).__init__(train_dim, test_dim)
+        self.downsample1 = nn.Conv2d(8, 16, kernel_size=5, padding=2)
+        self.downsample2 = nn.Conv2d(16, 32, kernel_size=5, padding=2)
+        self.upsample1 = nn.ConvTranspose2d(16, 8, kernel_size=5, padding=2)
+        self.upsample2 = nn.ConvTranspose2d(32, 16, kernel_size=5, padding=2)
 class DCDM(nn.Module):
     def __init__(self, DIM):
         super(DCDM, self).__init__()
@@ -182,7 +274,7 @@ if __name__ == '__main__':
     import os, sys
     path = os.path.dirname(os.path.realpath(__file__))
     sys.path.append(path + "/lib")
-    from read_data import read_flags, load_vector
+    from lib.read_data import read_flags, load_vector
     import matplotlib.pyplot as plt
 
     frame = 100

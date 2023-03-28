@@ -7,29 +7,14 @@ from torch.utils.data import Dataset, DataLoader
 import time
 from tqdm import tqdm
 from model import *
-from train import train_
-from lib.read_data import load_vector
+from train import train_, saveData
+from lib.read_data import *
 from lib.dataset import MyDataset
+from lib.write_log import LoggingWriter
 dir_path = os.path.dirname(os.path.realpath(__file__))
 data_path = os.path.join(dir_path, "data_fluidnet")
 sys.path.insert(1, os.path.join(dir_path, 'lib'))
-import read_data as hf
 
-class ResidualDataset(Dataset):
-    def __init__(self, path, shape, flags, A, perm):
-        self.path = path
-        self.shape = shape
-        self.flags = flags
-        self.A = A
-        self.perm = perm
-    def __getitem__(self, index):
-        index = self.perm[index]
-        x = np.load(self.path + f"/b_res_{index}.npy")
-        x = torch.from_numpy(x)
-        x = torch.stack([x, self.flags])
-        return x.reshape((2,) + self.shape), self.A
-    def __len__(self):
-        return len(self.perm)
 
 class RitzDataset(Dataset):
     def __init__(self, path, shape, flags, A, perm):
@@ -41,44 +26,13 @@ class RitzDataset(Dataset):
         self.perm = perm
     def __getitem__(self, index):
         index = self.perm[index]
-        x = np.load(self.path + f"/b_dambreak_800_{index}.npy")
-        x = torch.from_numpy(x)
-        x = torch.stack([x, self.flags])
+        # x = np.load(self.path + f"/b_{index}_new.npy")
+        # x = torch.from_numpy(x)
+        x = torch.load(self.path + f"/x_{index}.pt")
+        # x = torch.stack([x, self.flags])
         return x.reshape((2,) + self.shape), self.A
     def __len__(self):
         return len(self.perm)
-
-class RandomDataset(Dataset):
-    def __init__(self, shape, flags, A):
-        self.shape = shape
-        self.flags = flags
-        self.dim2 = np.prod(shape)
-        self.A = A
-        self.valid_inds = torch.where(flags == 2)[0].numpy()
-    def __getitem__(self, index):
-        xx = torch.rand(self.dim2, dtype=torch.float32)
-        xx[~self.valid_inds] = 0
-        xx = torch.stack([xx, self.flags])
-        return xx.reshape((2,) + self.shape), self.A
-    def __len__(self):
-        return len(self.valid_inds)
-
-class StandardDataset(Dataset):
-    def __init__(self, shape, flags, A):
-        self.shape = shape
-        self.flags = flags
-        self.dim2 = np.prod(shape)
-        self.A = A
-        self.valid_inds = torch.where(flags == 2)[0].numpy()
-        self.perm = np.random.permutation(self.valid_inds)
-    def __getitem__(self, index):
-        index = self.perm[index]
-        xx = torch.zeros(self.dim2, dtype=torch.float32)
-        xx[index] = 1
-        xx = torch.stack([xx, self.flags])
-        return xx.reshape((2,) + self.shape), self.A
-    def __len__(self):
-        return len(self.valid_inds)
 
 class RHSDataset(Dataset):
     def __init__(self, x, A):
@@ -95,22 +49,21 @@ def train(outdir, suffix, lr, epoch_num, bs, train_set, test_set):
 
     model = FluidNet()
     model.move_to(cuda)
-
+    loss_fn = model.inv_energy_loss
+    # loss_fn = model.residual_loss
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
-    training_loss, validation_loss, time_history = train_(epoch_num, train_loader, test_loader, model, optimizer)
-
+    training_loss, validation_loss, time_history = train_(epoch_num, train_loader, test_loader, model, optimizer, loss_fn)
 
     os.makedirs(outdir, exist_ok=True)
+    log = LoggingWriter()
     np.save(os.path.join(outdir, f"training_loss_{suffix}.npy"), training_loss)
     np.save(os.path.join(outdir, f"validation_loss_{suffix}.npy"), validation_loss)
     np.save(os.path.join(outdir, f"time_{suffix}.npy"), time_history)
     torch.save(model.state_dict(), os.path.join(outdir, f"model_{suffix}.pth"))
     return training_loss, validation_loss, time_history
 
-def test(model_file, N, DIM, A, flags, rhs, dcdm_iters=0):
-    model = FluidNet()
-    model.load_state_dict(torch.load(model_file))
+def test(model, N, DIM, A, flags, rhs, dcdm_iters=0):
     def fluidnet_predict(r):
         nonlocal model, flags
         with torch.no_grad():
@@ -137,53 +90,46 @@ if __name__ == '__main__':
     DIM = 2
     dim2 = N**DIM
     lr = 0.001
-    epoch_num = 100
+    epoch_num = 200
     cuda = torch.device("cuda") # Use CUDA for training
 
     frame = 800
-    A = torch.load(os.path.join(data_path, f"dambreak_{DIM}D_{N}", "preprocessed", f"A_{frame}.pt"))
-    x = torch.load(os.path.join(data_path, f"dambreak_{DIM}D_{N}", "preprocessed", f"x_{frame}.pt"))
-    gt = torch.tensor(load_vector(os.path.join(data_path, f"dambreak_{DIM}D_{N}", f"pressure_{frame}.bin")))
-    flags = x[1]
+    A = torch.load(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"preprocessed/{frame}/A.pt"))
+    rhs = torch.load(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"preprocessed/{frame}/rhs.pt"))
+    flags = torch.load(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"preprocessed/{frame}/flags.pt"))
+    gt = torch.tensor(load_vector(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"pressure_{frame}.bin")))
 
-    num_rhs = 256
+    num_rhs = 500
     perm = np.random.permutation(range(num_rhs))
-    # training_set = ResidualDataset(os.path.join(dir_path, "data_dcdm", f"train_{DIM}D_{N}"), (N,)*DIM, flags, A, perm)
-    training_set = RitzDataset(os.path.join(dir_path, "data_dcdm", f"train_{DIM}D_{N}"), (N,)*DIM, flags, A, perm)
-    # training_set = RandomDataset((N,)*DIM, flags, A)
-    # training_set = StandardDataset((N,)*DIM, flags, A)
-    # training_set = RHSDataset(x.reshape((2,)+(N,)*DIM), A)
 
-    # validation_set = RitzDataset(os.path.join(dir_path, "data_dcdm", f"train_{DIM}D_{N}"), (N,)*DIM, flags, A, perm[256:])
-    validation_set = RHSDataset(x.reshape((2,)+(N,)*DIM), A)
+    training_set = RitzDataset(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}/preprocessed/{frame}"), (N,)*DIM, flags, A, perm)
 
-    outdir = os.path.join(dir_path, "data_fluidnet", f"output_single_{DIM}D_{N}")
+    validation_set = RHSDataset(torch.stack([rhs, flags]).reshape((2,)+(N,)*DIM), A)
+
+    outdir = os.path.join(OUT_PATH, f"output_single_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
-    suffix = f"frame_{frame}_eigs"
-    training_loss, validation_loss, time_history = train(outdir, suffix, lr, epoch_num, 10, training_set, validation_set)
-
-
-    # xx = np.load(os.path.join(dir_path, "data_dcdm", f"train_{DIM}D_{N}", f"b_dambreak_800_11.npy"))
-    # xx = torch.from_numpy(xx)
-    # xx = torch.stack([xx, flags])
+    suffix = f"frame_{frame}_downsample"
+    #### Train
+    # training_loss, validation_loss, time_history = train(outdir, suffix, lr, epoch_num, 10, training_set, validation_set)
 
 
     from cg_tests import dcdm, CG
+    # outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
+    suffix = f"frame_{frame}_downsample"
+    #### Test
+    model = NewModel()
+    model.load_state_dict(torch.load(os.path.join(outdir, f"model_{suffix}.pth")))
+    x_, r_ = test(model, N, DIM, A, flags, rhs, dcdm_iters=20)
+    print("Fluidnet", r_.norm().item()/rhs.norm().item())
 
-    rhs = x[0]
-    x_, r_ = test(os.path.join(outdir, f"model_{suffix}.pth"),
-             N, DIM, A, flags, rhs, dcdm_iters=20)
-    print("Simple model residual", r_.norm().item()/rhs.norm().item())
-
-    A = hf.readA_sparse(os.path.join(data_path, f"dambreak_{DIM}D_{N}", f"A_{frame}.bin")).astype(np.float32)
-    # rhs = data_set.get_rhs(10).numpy()
-    rhs = hf.load_vector(os.path.join(data_path, f"dambreak_{DIM}D_{N}", f"div_v_star_{frame}.bin")).astype(np.float32)
+    A = readA_sparse(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"A_{frame}.bin")).astype(np.float32)
+    rhs = load_vector(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"div_v_star_{frame}.bin")).astype(np.float32)
     x, res_history = CG(rhs, A, np.zeros_like(rhs), max_it=1000, tol=1e-5, verbose=False)
     r = rhs - A @ x
     print(f"CG residual after {len(res_history)} iterations", np.linalg.norm(r)/np.linalg.norm(rhs))
 
 
-    fig, axes = plt.subplots(2)
-    axes[0].plot(training_loss, label='training')
-    axes[1].plot(validation_loss, label='validation')
-    plt.savefig("loss.png", bbox_inches='tight')
+    # fig, axes = plt.subplots(2)
+    # axes[0].plot(training_loss, label='training')
+    # axes[1].plot(validation_loss, label='validation')
+    # plt.savefig("loss.png", bbox_inches='tight')

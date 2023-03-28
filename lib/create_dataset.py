@@ -23,21 +23,19 @@ import time
 import read_data as hf
 import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
-# from numba import njit, prange
 from tqdm import tqdm
 
 
 # Given A n x n, return V, T with A = VTV^T
 # @njit(parallel=True)
-def _lanczos_algorithm(A, num_ritz_vec, orthogonalize=0, cut_off_tol=1e-10):
+def _lanczos_algorithm(A, rhs, num_ritz_vec, orthogonalize=0, cut_off_tol=1e-10):
     assert A.shape[0] == A.shape[1], "A is not square"
     n = A.shape[0]
     m = min(num_ritz_vec, n)  # Generate 1.5 times number of ritz vectors of the desired
     V = np.zeros((m, n)) # Store orthonormal vectors v0, v1, ... as row vectors (Numpy array is row-major, so accessing row is faster
     alpha = np.zeros(m) # Diagonal of T
     beta = np.zeros(m-1) # Super- and sub-diagonal of T
-    V[0] = A @ np.random.normal(0, 1, n) # ramdomly initialized v0 in span(A)
-    V[0] /= np.linalg.norm(V[0])
+    V[0] = rhs / np.linalg.norm(rhs) # initialize wit rhs
     # Initial step: find v1
     V[1] = A @ V[0]
     alpha[0] = V[1].dot(V[0])
@@ -61,7 +59,6 @@ def _lanczos_algorithm(A, num_ritz_vec, orthogonalize=0, cut_off_tol=1e-10):
             print("Cut off at", j)
             return V[:j], alpha[:j], beta[:j-1] # Only keep previous entries
         V[j] = v / beta[j-1]
-
     return V, alpha, beta
 
 def _test_lanczos_algorithm(A, num_ritz_vec, orthogonal):
@@ -73,52 +70,32 @@ def _test_lanczos_algorithm(A, num_ritz_vec, orthogonal):
     Es.append(np.linalg.norm(E))
     print(np.linalg.norm(E))
 
-def createRitzVec(A, flags, outdir, num_ritz_vectors, sample_size):
-    small_matmul_size = 100 # Small mat size for temp data
-    theta = 50 # j < m/2 + theta low frequency spectrum
-
+def createRitzVec(A, rhs, num_ritz_vectors):
     # Creating Lanczos Vectors:
     print("Lanczos Iteration is running...")
     start = time.time()
-    W, diagonal, sub_diagonal = _lanczos_algorithm(A, num_ritz_vectors, 1000)
+    W, diagonal, sub_diagonal = _lanczos_algorithm(A, rhs, num_ritz_vectors, 1000)
     print("Lanczos Iteration took", time.time() - start, 's')
     # Calculating eigenvectors of the tridiagonal matrix: only return eigvals > 1e-8
     print("Calculating eigenvectors of the tridiagonal matrix")
     start = time.time()
     ritz_vals, Q = scipy.linalg.eigh_tridiagonal(diagonal, sub_diagonal, select='v', select_range=(1.0e-8, np.inf))
     # print(ritz_vals.shape, Q.shape)
-
     print("Calculating eigenvectors took", time.time() - start, 's')
-
     ritz_vectors = (W.T @ Q).T # m x n
+    return ritz_vals, ritz_vectors
 
-    selection = np.where(flags == 2)[0]
-    # print(ritz_vectors.shape, Q.shape)
-    for_outside = int(sample_size/small_matmul_size)
-    b_rhs_temp = np.zeros([small_matmul_size, A.shape[0]])
-    cut_idx = int(num_ritz_vectors/2) + theta
-    sample_size = small_matmul_size
-    coef_matrix = np.zeros([len(ritz_vals), sample_size])
-
-    print("Creating Dataset ")
-    t0=time.time()
-    for it in range(for_outside):
-        coef_matrix[:] = np.random.normal(0, 1, [len(ritz_vals), sample_size])
-        coef_matrix[0:cut_idx] *= 9
-        b_rhs_temp[:] = coef_matrix.T @ ritz_vectors
-        l_b = small_matmul_size * it
-        r_b = small_matmul_size * (it+1)
-        for i in range(l_b,r_b):
-            b_rhs_temp[i-l_b] = b_rhs_temp[i-l_b]/np.linalg.norm(b_rhs_temp[i-l_b])
-            s = sparse.coo_matrix((b_rhs_temp[i-l_b], (selection, np.zeros_like(selection))), shape=flags.shape+(1,), dtype=np.float32)
-            # s = sparse.coo_array(b_rhs_temp[i-l_b].ravel(), dtype=np.float32)
-            with open(f"{outdir}/b_{i}.npz", 'wb') as f:
-                sparse.save_npz(f, s)
-                # np.save(f, np.array(b_rhs_temp[i-l_b], dtype=np.float32))
-    print("Creating training Dataset took", time.time() - t0, 's')
+def createRawData(ritz_vectors, sample_size, flags, outdir):
+    if len(ritz_vectors) < sample_size: raise Exception("Given ritz vectors are less than sample size")
+    ritz_vectors = ritz_vectors[:sample_size] # Take the lower spectrum
+    padding = np.where(flags == 2)[0]
+    for i in range(sample_size):
+        s = sparse.coo_matrix((ritz_vectors[i], (padding, np.zeros_like(padding))), shape=flags.shape+(1,), dtype=np.float32)
+        with open(f"{outdir}/b_{i}.npz", 'wb') as f:
+            sparse.save_npz(f, s)
 
 
-def createResVec(A, b, tol=1e-20, max_it=300, verbose=False):
+def createResVec(A, b, tol=1e-20, max_it=300, verbose=False, outdir=None):
     x_init = np.zeros_like(b)
     count = 0
     norm_b = np.linalg.norm(b)
@@ -142,25 +119,35 @@ def createResVec(A, b, tol=1e-20, max_it=300, verbose=False):
 
 if __name__ == '__main__':
     np.random.seed(2)
-    N = 128
+    N = 256
     DIM = 2
-    outdir = f"{DATA_PATH}/dambreak_{DIM}D_{N}/preprocessed"
-    os.makedirs(outdir, exist_ok=True)
-    sample_size = 200
-    num_ritz_vectors = 100 # 256
+    dir = f"{DATA_PATH}/dambreak_N{N}_200"
+    os.makedirs(dir, exist_ok=True)
+    sample_size = 600
+    num_ritz_vectors = 1000
+    num_frames = 200
+    # Ds, Es = [], []
+    create_ritz = False
 
-    Ds, Es = [], []
-    for i in tqdm(range(1, 1001)):
+    for i in tqdm(range(1, num_frames+1)):
         print('Matrix', i)
-        out = f"{outdir}/{i}"
+        out = f"{dir}/preprocessed/{i}"
         os.makedirs(out, exist_ok=True)
-        A = hf.readA_sparse(f"{DATA_PATH}/dambreak_{DIM}D_{N}/A_{i}.bin", dtype='d')
-        flags = hf.read_flags(f"{DATA_PATH}/dambreak_{DIM}D_{N}/flags_{i}.bin")
-        rhs = hf.load_vector(f"{DATA_PATH}/dambreak_{DIM}D_{N}/div_v_star_{i}.bin", dtype='d')
-        sol = hf.load_vector(f"{DATA_PATH}/dambreak_{DIM}D_{N}/pressure_{i}.bin", dtype='d')
+        A = hf.readA_sparse(f"{dir}/A_{i}.bin", dtype='d')
+        flags = hf.read_flags(f"{dir}/flags_{i}.bin")
+        rhs = hf.load_vector(f"{dir}/div_v_star_{i}.bin", dtype='d')
+        sol = hf.load_vector(f"{dir}/pressure_{i}.bin", dtype='d')
         A = hf.compressedMat(A, flags)
-        createRitzVec(A, flags, out, num_ritz_vectors, sample_size)
-        # b = sparse.load_npz(f"{DATA_PATH}/dambreak_{DIM}D_{N}/preprocessed/1/b_1.npz")
+        rhs = hf.compressedVec(rhs, flags)
+        if create_ritz:
+            ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors)
+            fp = np.memmap(f"{out}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='w+', shape=ritz_vec.shape)
+            fp[:] = ritz_vec
+            fp.flush()
+        else:
+            cols = len(np.argwhere(flags==2))
+            ritz_vec = np.memmap(f"{out}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='r').reshape(999, cols)
+            createTrainingData(ritz_vec, sample_size, flags, out)
 
         # _test_lanczos_algorithm(A, num_ritz_vectors, or)
         # createResVec(A, rhs, verbose=True)

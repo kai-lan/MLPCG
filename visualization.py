@@ -67,22 +67,22 @@ def plot_loss(data_path, suffix):
     axes[1].set_title("Validation")
     plt.savefig(f"{path}/loss.png", bbox_inches="tight")
 
-def visualize_frame_by_frame():
+def visualize_frame_by_frame(num_frames):
     import time
     time.sleep(1)
-    for i in range(1, 1000):
-        frame = i
-        vis_flags(frame)
+    for i in range(1, num_frames+1):
+        vis_flags(i)
         time.sleep(0.1)
 
 if __name__ == '__main__':
     N = 256
     DIM = 2
-    example_folder = os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}")
-
-    rhs = vis_div_v(frame, masked=False)
-    sol = vis_pressure(frame, masked=False)
-
+    example_folder = os.path.join(DATA_PATH, f"circlepool_N{N}_200")
+    # vis_flags(164)
+    plot_loss(f"{OUT_PATH}/output_{DIM}D_256", "dambreak_M50_ritz1000_rhs200_eng")
+    # rhs = vis_div_v(frame, masked=False)
+    # sol = vis_pressure(frame, masked=False)
+    # visualize_frame_by_frame(200)
     # res = np.load(example_folder + "/b_res_60.npy")
     # weight = vis_weight(frame)
     # plt.imshow(res.reshape((N,)*DIM, order='F'), origin='lower', cmap='jet')
