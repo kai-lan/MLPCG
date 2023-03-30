@@ -14,6 +14,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import scipy.sparse.linalg as slin
+import cupy as cp
+import cupyx.scipy.sparse.linalg as gslin # https://docs.cupy.dev/en/stable/reference/scipy_sparse_linalg.html#module-cupyx.scipy.sparse.linalg
 import matplotlib.pyplot as plt
 from lib.read_data import compute_weight
 
@@ -76,4 +78,26 @@ def CG(b, A, x_init, max_it, tol=1e-10, verbose=True, norm_type='l2'):
         if verbose:
             print(f"Iter {count}, residual {res_history[-1]}")
     x, info = slin.cg(A, b, x0=x_init, tol=tol, maxiter=max_it, callback=callback)
+    return x, res_history
+
+###################
+# CG on GPU
+###################
+def CG_GPU(b, A, x_init, max_it, tol=1e-10, verbose=True, norm_type='l2'):
+    count = 0
+    norm_b = cp.linalg.norm(b)
+    if norm_type == 'l2': norm = cp.linalg.norm(b - A @ x_init) / norm_b
+    else: norm = x_init.dot(A @ x_init) / 2 - x_init.dot(b)
+    res_history = [norm]
+    if verbose:
+        print(f"Iter {count}, residual {res_history[-1]}")
+    def callback(x):
+        nonlocal count
+        count += 1
+        if norm_type == 'l2': norm = cp.linalg.norm(b - A @ x) / norm_b
+        else: norm = x.dot(A @ x) / 2 - x.dot(b)
+        res_history.append(norm)
+        if verbose:
+            print(f"Iter {count}, residual {res_history[-1]}")
+    x, info = gslin.cg(A, b, x0=x_init, tol=tol, maxiter=max_it, callback=callback)
     return x, res_history

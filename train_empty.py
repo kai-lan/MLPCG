@@ -17,43 +17,8 @@ from lib.dataset import *
 from model import DCDM, FluidNet
 
 # Fluidnet
-def train_(epoch_num, train_loader, validation_loader, model, optimizer):
-    training_loss = []
-    validation_loss = []
-    time_history = []
-    t0 = time.time()
-    for i in range(1, epoch_num+1):
-        print(f"Training at {i} / {epoch_num}")
-        t0 = time.time()
-        # Training
-        los = 0.0
-        for ii, (data, A) in enumerate(tqdm(train_loader), 1):# x: (bs, dim, dim, dim)
-            data = data.to(model.device)
-            A = A.to(model.device)
-            x_pred = model(data) # (bs, 2, N, N)
-            loss = model.loss(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            los += loss.item()
-        # Validation
-        tot_loss_train, tot_loss_val = 0, 0
-        with torch.no_grad():
-            for data, A in train_loader:
-                data = data.to(model.device)
-                A = A.to(model.device)
-                x_pred = model(data) # input: (bs, 1, dim, dim)
-                tot_loss_train += model.loss(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
-            for data, A in validation_loader:
-                data = data.to(model.device)
-                A = A.to(model.device)
-                x_pred = model(data) # input: (bs, 1, dim, dim)
-                tot_loss_val += model.loss(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
-        training_loss.append(tot_loss_train)
-        validation_loss.append(tot_loss_val)
-        time_history.append(time.time() - t0)
-        print(training_loss[-1], validation_loss[-1])
-    return training_loss, validation_loss, time_history
+from train import train_
+
 # DCDM
 def train(epoch_num, train_loader, validation_loader, model, optimizer):
     training_loss = []

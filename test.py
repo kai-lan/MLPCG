@@ -1,6 +1,9 @@
 import os
 import torch
 from cg_tests import *
+import cupyx.scipy.sparse as cpsp
+from cupyx.profiler import benchmark as cuda_benchmark
+import torch.utils.benchmark as torch_benchmark
 from model import *
 from lib.read_data import *
 from lib.discrete_laplacian import *
@@ -20,15 +23,14 @@ def flip_data(rhs, flags):
     flipped_A = lap_with_bc(n, DIM, bd=bd, air=empty_cells, bd_padding=False, dtype=np.float32)
     return flipped_rhs, flipped_flags, flipped_A
 
-N = 64
+N = 256
 DIM = 2
-frame = 988 # 1 - 1000
 norm_type = 'l2'
 
 train_matrices = set(np.load(f"{OUT_PATH}/output_2D_256/matrices_trained_50.npy"))
 frames = set(np.arange(1, 1001)) - train_matrices
-# frame = list(frames)[15] # Randome frame
-frame = list(train_matrices)[40]
+frame = list(frames)[136] # Random frame
+# frame = list(train_matrices)[40]
 # frame = 164
 scene = 'dambreak'
 print("Testing frame", frame, "scene", scene)
@@ -45,32 +47,51 @@ A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dt
 rhs = torch.tensor(rhs_sp, dtype=torch.float32, device=device)
 flags = torch.tensor(flags_sp, dtype=torch.float32, device=device)
 
-fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_2D_256", f"model_dambreak_M50_ritz1000_rhs400_res.pth")
+NN = 64
+num_mat = 100
+num_ritz = 100
+num_rhs = 100
+fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"model_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res.pth")
 fluidnet_model_res = FluidNet(64, 64)
 fluidnet_model_res.move_to(device)
 fluidnet_model_res.load_state_dict(torch.load(fluidnet_model_res_file))
 
-fluidnet_model_eng_file = os.path.join(OUT_PATH, f"output_2D_256", f"model_dambreak_M50_ritz1000_rhs400_eng.pth")
+fluidnet_model_eng_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"model_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_eng.pth")
 fluidnet_model_eng = FluidNet(64, 64)
 fluidnet_model_eng.load_state_dict(torch.load(fluidnet_model_eng_file))
 fluidnet_model_eng.move_to(device)
 
-fluidnet_model_scale2_file = os.path.join(OUT_PATH, f"output_2D_256", f"model_dambreak_M50_ritz1000_rhs400_scaled2.pth")
-fluidnet_model_scale2 = FluidNet(64, 64)
-fluidnet_model_scale2.move_to(device)
-fluidnet_model_scale2.load_state_dict(torch.load(fluidnet_model_scale2_file))
+fluidnet_model_scaled2_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"model_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_scaled2.pth")
+fluidnet_model_scaled2 = FluidNet(64, 64)
+fluidnet_model_scaled2.move_to(device)
+fluidnet_model_scaled2.load_state_dict(torch.load(fluidnet_model_scaled2_file))
 
-fluidnet_model_scaleA_file = os.path.join(OUT_PATH, f"output_2D_256", f"model_dambreak_M50_ritz1000_rhs400_scaledA.pth")
-fluidnet_model_scaleA = FluidNet(64, 64)
-fluidnet_model_scaleA.move_to(device)
-fluidnet_model_scaleA.load_state_dict(torch.load(fluidnet_model_eng_file))
+fluidnet_model_scaledA_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"model_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_scaledA.pth")
+fluidnet_model_scaledA = FluidNet(64, 64)
+fluidnet_model_scaledA.move_to(device)
+fluidnet_model_scaledA.load_state_dict(torch.load(fluidnet_model_scaledA_file))
 
+################
+# CG
+################
 verbose = False
-max_iter = 5000
+max_iter = 500
 tol = 1e-4
-t0 = time.time()
+t0 = timeit.default_timer()
 x_cg, res_cg = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
-print("CG took", time.time()-t0, 's after', len(res_cg), 'iterations')
+print("CG took", timeit.default_timer()-t0, 's after', len(res_cg), 'iterations')
+
+###############
+# CG GPU
+###############
+rhs_cp, A_cp = cp.array(rhs_sp, dtype=np.float32), cpsp.csr_matrix(A_sp, dtype=np.float32)
+x_cg_cp, res_cg_cp = None, None
+def cuda_benchmark_cg():
+    global x_cg_cp, res_cg_cp
+    x_cg_cp, res_cg_cp = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
+result = cuda_benchmark(cuda_benchmark_cg, n_repeat=1)
+print("CUDA CG took", result.gpu_times[0][0], 's after', len(res_cg_cp), 'iterations')
+
 
 def dcdm_predict(dcdm_model):
     global flags
@@ -92,23 +113,45 @@ def fluidnet_predict(fluidnet_model):
         return x
     return predict
 
-x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(fluidnet_model_res), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
 
-t0 = timeit.default_timer()
-x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(fluidnet_model_res), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
-print("FluidNet residual took", timeit.default_timer()-t0, 's after', len(res_fluidnet_res), 'iterations')
+x_fluidnet_res, res_fluidnet_res = None, None
+x_fluidnet_eng, res_fluidnet_eng = None, None
+x_fluidnet_scale2, res_fluidnet_scale2 = None, None
+x_fluidnet_scaleA, res_fluidnet_scaleA = None, None
 
-t0 = timeit.default_timer()
-x_fluidnet_eng, res_fluidnet_eng = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(fluidnet_model_eng), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
-print("FluidNet energy took", timeit.default_timer()-t0, 's after', len(res_fluidnet_eng), 'iterations')
+def torch_benchmark_dcdm_res(model):
+    global x_fluidnet_res, res_fluidnet_res
+    x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
+def torch_benchmark_dcdm_eng(model):
+    global x_fluidnet_eng, res_fluidnet_eng
+    x_fluidnet_eng, res_fluidnet_eng = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
+def torch_benchmark_dcdm_scaled2(model):
+    global x_fluidnet_scale2, res_fluidnet_scale2
+    x_fluidnet_scale2, res_fluidnet_scale2 = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
+def torch_benchmark_dcdm_scaledA(model):
+    global x_fluidnet_scaleA, res_fluidnet_scaleA
+    x_fluidnet_scaleA, res_fluidnet_scaleA = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
+def torch_timer(loss):
+    return torch_benchmark.Timer(
+    stmt=f'torch_benchmark_dcdm_{loss}(model)',
+    setup=f'from __main__ import torch_benchmark_dcdm_{loss}',
+    globals={'model':eval(f"fluidnet_model_{loss}")})
 
-t0 = timeit.default_timer()
-x_fluidnet_scale2, res_fluidnet_scale2 = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(fluidnet_model_scale2), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
-print("FluidNet scale2 took", timeit.default_timer()-t0, 's after', len(res_fluidnet_scale2), 'iterations')
+timer_res = torch_timer('res')
+result_res = timer_res.timeit(1)
+print("FluidNet residual took", result_res.times[0], 's after', len(res_fluidnet_res), 'iterations')
 
-t0 = timeit.default_timer()
-x_fluidnet_scaleA, res_fluidnet_scaleA = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(fluidnet_model_scaleA), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
-print("FluidNet scaleA took", timeit.default_timer()-t0, 's after', len(res_fluidnet_scaleA), 'iterations')
+timer_eng = torch_timer('eng')
+result_eng = timer_eng.timeit(1)
+print("FluidNet energy took", result_eng.times[0], 's after', len(res_fluidnet_eng), 'iterations')
+
+timer_scaled2 = torch_timer('scaled2')
+result_scaled2 = timer_scaled2.timeit(1)
+print("FluidNet scaled2 took", result_scaled2.times[0], 's after', len(res_fluidnet_scale2), 'iterations')
+
+timer_scaledA = torch_timer('scaledA')
+result_scaledA = timer_scaledA.timeit(1)
+print("FluidNet scaledA took", result_scaledA.times[0], 's after', len(res_fluidnet_scaleA), 'iterations')
 
 import matplotlib.pyplot as plt
 

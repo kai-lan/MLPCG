@@ -69,22 +69,37 @@ def saveData(epoch, log, outdir, suffix, train_loss, valid_loss, time_history):
 
 if __name__ == '__main__':
     np.random.seed(2) # same random seed for debug
-    N = 256
+    N = 64
     DIM = 2
     lr = 1.0e-3
     epoch_num_per_matrix = 5
     epoch_num = 20
     bc = 'dambreak'
     b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
-    total_matrices = 50 # number of matrices chosen for training
-    num_rhs = 600 # number of ritz vectors for training for each matrix
+    total_matrices = 100 # number of matrices chosen for training
+    num_rhs = 200 # number of ritz vectors for training for each matrix
     cuda = torch.device("cuda") # Use CUDA for training
 
     log = LoggingWriter()
 
 
     resume = False
-    suffix = f'{bc}_M{total_matrices}_ritz1000_rhs{num_rhs}_res'
+    loss_type = 'res'
+    if loss_type == 'res':
+        suffix = f'{bc}_M{total_matrices}_ritz100_rhs{num_rhs}_res'
+        loss_fn = "model.residual_loss"
+    elif loss_type == 'eng':
+        suffix = f'{bc}_M{total_matrices}_ritz100_rhs{num_rhs}_eng'
+        loss_fn = "model.energy_loss"
+    elif loss_type == 'scaled2':
+        suffix = f'{bc}_M{total_matrices}_ritz100_rhs{num_rhs}_scaled2'
+        loss_fn = "model.scaled_loss_2"
+    elif loss_type == 'scaledA':
+        suffix = f'{bc}_M{total_matrices}_ritz100_rhs{num_rhs}_scaledA'
+        loss_fn = "model.scaled_loss_A"
+    else:
+        raise Exception("No such loss type")
+
     # suffix = bc+'_direction'
     # suffix = bc+'_1000ritz'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
@@ -93,10 +108,7 @@ if __name__ == '__main__':
 
     model = FluidNet(N, N)
     model.move_to(cuda)
-    loss_fn = model.residual_loss
-    # loss_fn = model.energy_loss
-    # loss_fn = model.scaled_loss_2
-    # loss_fn = model.scaled_loss_A
+    loss_fn = eval(loss_fn)
 
     if resume:
         model.load_state_dict(torch.load(os.path.join(outdir, f"model_{suffix}.pth")))

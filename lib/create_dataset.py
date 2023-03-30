@@ -27,8 +27,7 @@ from tqdm import tqdm
 
 
 # Given A n x n, return V, T with A = VTV^T
-# @njit(parallel=True)
-def _lanczos_algorithm(A, rhs, num_ritz_vec, orthogonalize=0, cut_off_tol=1e-10):
+def _lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
     assert A.shape[0] == A.shape[1], "A is not square"
     n = A.shape[0]
     m = min(num_ritz_vec, n)  # Generate 1.5 times number of ritz vectors of the desired
@@ -50,10 +49,9 @@ def _lanczos_algorithm(A, rhs, num_ritz_vec, orthogonalize=0, cut_off_tol=1e-10)
         v = A @ V[j-1]
         alpha[j-1] = np.dot(v, V[j-1])
         v = v - alpha[j-1] * V[j-1] - beta[j-2] * V[j-2]
-        if orthogonalize:
-            it = min(j-2, orthogonalize)
-            for k in reversed(range(it)):
-                v = v - V[k].dot(v) * V[k]
+        it = min(j-2, ortho_iters)
+        for k in reversed(range(it)):
+            v = v - V[k].dot(v) * V[k]
         beta[j-1] = np.linalg.norm(v)
         if beta[j-1] < cut_off_tol: # cut off if lower than some tolerance
             print("Cut off at", j)
@@ -74,7 +72,7 @@ def createRitzVec(A, rhs, num_ritz_vectors):
     # Creating Lanczos Vectors:
     print("Lanczos Iteration is running...")
     start = time.time()
-    W, diagonal, sub_diagonal = _lanczos_algorithm(A, rhs, num_ritz_vectors, 1000)
+    W, diagonal, sub_diagonal = _lanczos_algorithm(A, rhs, num_ritz_vectors, np.inf)
     print("Lanczos Iteration took", time.time() - start, 's')
     # Calculating eigenvectors of the tridiagonal matrix: only return eigvals > 1e-8
     print("Calculating eigenvectors of the tridiagonal matrix")
@@ -119,15 +117,14 @@ def createResVec(A, b, tol=1e-20, max_it=300, verbose=False, outdir=None):
 
 if __name__ == '__main__':
     np.random.seed(2)
-    N = 256
+    N = 64
     DIM = 2
     dir = f"{DATA_PATH}/dambreak_N{N}_200"
     os.makedirs(dir, exist_ok=True)
-    sample_size = 600
-    num_ritz_vectors = 1000
+    num_ritz_vectors = 100
     num_frames = 200
     # Ds, Es = [], []
-    create_ritz = False
+
 
     for i in tqdm(range(1, num_frames+1)):
         print('Matrix', i)
@@ -139,15 +136,10 @@ if __name__ == '__main__':
         sol = hf.load_vector(f"{dir}/pressure_{i}.bin", dtype='d')
         A = hf.compressedMat(A, flags)
         rhs = hf.compressedVec(rhs, flags)
-        if create_ritz:
-            ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors)
-            fp = np.memmap(f"{out}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='w+', shape=ritz_vec.shape)
-            fp[:] = ritz_vec
-            fp.flush()
-        else:
-            cols = len(np.argwhere(flags==2))
-            ritz_vec = np.memmap(f"{out}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='r').reshape(999, cols)
-            createTrainingData(ritz_vec, sample_size, flags, out)
+        ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors)
+        fp = np.memmap(f"{out}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='w+', shape=ritz_vec.shape)
+        fp[:] = ritz_vec
+        fp.flush()
 
         # _test_lanczos_algorithm(A, num_ritz_vectors, or)
         # createResVec(A, rhs, verbose=True)

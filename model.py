@@ -22,7 +22,7 @@ class BaseModel(nn.Module):
         bs = x.shape[0]
         r = torch.zeros(1).to(x.device)
         for i in range(bs):
-            r += (y[i] - A @ x[i]).norm() / y[i].norm()
+            r += (y[i] - A @ x[i]).norm() # No need to compute relative residual because inputs are all unit vectors
         return r / bs
     # Energy loss: negative decreasing
     def energy_loss(self, x, b, A):

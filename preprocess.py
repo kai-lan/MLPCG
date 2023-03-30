@@ -7,13 +7,13 @@ from multiprocessing import Process
 import time
 
 DIM = 2
-N = 256
+N = 64
 data_folder = os.path.join(DATA_PATH, f"dambreak_N{N}_200")
 
 start = 1
 end = 201
-num_rhs = 600
-num_ritz_vectors = 1000
+num_rhs = 200
+num_ritz_vectors = 100
 
 def createTrainingData(ritz_vectors, sample_size, fluid_cells, outdir):
     # small_matmul_size = 100 # Small mat size for temp data
@@ -70,7 +70,7 @@ def worker(indices):
         rhs = torch.tensor(rhs, dtype=torch.float32)
         torch.save(rhs, os.path.join(out_folder, f"rhs.pt"))
 
-        ritz_vec = np.memmap(f"{out_folder}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='r').reshape(999, len(fluid_cells))
+        ritz_vec = np.memmap(f"{out_folder}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='r').reshape(num_ritz_vectors-1, len(fluid_cells))
         createTrainingData(ritz_vec, num_rhs, fluid_cells, out_folder)
 
         # for i in range(num_rhs):
