@@ -69,7 +69,7 @@ def saveData(epoch, log, outdir, suffix, train_loss, valid_loss, time_history):
 
 if __name__ == '__main__':
     np.random.seed(2) # same random seed for debug
-    N = 64
+    N = 256
     DIM = 2
     lr = 1.0e-3
     epoch_num_per_matrix = 5
@@ -77,36 +77,37 @@ if __name__ == '__main__':
     bc = 'dambreak'
     b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
     total_matrices = 100 # number of matrices chosen for training
+    num_ritz = 1000
     num_rhs = 200 # number of ritz vectors for training for each matrix
+    kernel_size = 5 # kernel size
     cuda = torch.device("cuda") # Use CUDA for training
 
     log = LoggingWriter()
 
 
     resume = False
-    loss_type = 'res'
+    loss_type = 'scaledA'
+
     if loss_type == 'res':
-        suffix = f'{bc}_M{total_matrices}_ritz100_rhs{num_rhs}_res'
+        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_res'
         loss_fn = "model.residual_loss"
     elif loss_type == 'eng':
-        suffix = f'{bc}_M{total_matrices}_ritz100_rhs{num_rhs}_eng'
+        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_eng'
         loss_fn = "model.energy_loss"
     elif loss_type == 'scaled2':
-        suffix = f'{bc}_M{total_matrices}_ritz100_rhs{num_rhs}_scaled2'
+        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaled2'
         loss_fn = "model.scaled_loss_2"
     elif loss_type == 'scaledA':
-        suffix = f'{bc}_M{total_matrices}_ritz100_rhs{num_rhs}_scaledA'
+        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaledA'
         loss_fn = "model.scaled_loss_A"
     else:
         raise Exception("No such loss type")
 
-    # suffix = bc+'_direction'
-    # suffix = bc+'_1000ritz'
-    outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
+    outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}/ks{kernel_size}")
     os.makedirs(outdir, exist_ok=True)
     inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")
 
-    model = FluidNet(N, N)
+    model = FluidNet(kernel_size)
     model.move_to(cuda)
     loss_fn = eval(loss_fn)
 

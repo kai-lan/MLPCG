@@ -24,7 +24,7 @@ torch.set_grad_enabled(False) # disable autograd globally
 ###################
 # FluidNet / DCDM
 ###################
-def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, verbose=True, norm_type='l2'):
+def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=True, norm_type='l2'):
     N = math.isqrt(len(b))
     assert N**2 == len(b), "RHS vector dimension is incorrect"
     norm_b = b.norm().item()
@@ -56,12 +56,12 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, verbose=True, norm_type
         res_history.append(norm)
         if verbose:
             print(f"Iter {i+1}, residual {res_history[-1]}")
-        if norm < tol: return x_sol, res_history
+        if norm < max(tol, atol/norm_b): return x_sol, res_history
     return x_sol, res_history
 ###################
 # CG
 ###################
-def CG(b, A, x_init, max_it, tol=1e-10, verbose=True, norm_type='l2'):
+def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=True, norm_type='l2'):
     count = 0
     norm_b = np.linalg.norm(b)
     if norm_type == 'l2': norm = np.linalg.norm(b - A @ x_init) / norm_b
@@ -77,13 +77,13 @@ def CG(b, A, x_init, max_it, tol=1e-10, verbose=True, norm_type='l2'):
         res_history.append(norm)
         if verbose:
             print(f"Iter {count}, residual {res_history[-1]}")
-    x, info = slin.cg(A, b, x0=x_init, tol=tol, maxiter=max_it, callback=callback)
+    x, info = slin.cg(A, b, x0=x_init, tol=tol, atol=atol, maxiter=max_it, callback=callback)
     return x, res_history
 
 ###################
 # CG on GPU
 ###################
-def CG_GPU(b, A, x_init, max_it, tol=1e-10, verbose=True, norm_type='l2'):
+def CG_GPU(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=True, norm_type='l2'):
     count = 0
     norm_b = cp.linalg.norm(b)
     if norm_type == 'l2': norm = cp.linalg.norm(b - A @ x_init) / norm_b
@@ -99,5 +99,5 @@ def CG_GPU(b, A, x_init, max_it, tol=1e-10, verbose=True, norm_type='l2'):
         res_history.append(norm)
         if verbose:
             print(f"Iter {count}, residual {res_history[-1]}")
-    x, info = gslin.cg(A, b, x0=x_init, tol=tol, maxiter=max_it, callback=callback)
+    x, info = gslin.cg(A, b, x0=x_init, tol=tol, atol=atol, maxiter=max_it, callback=callback)
     return x, res_history

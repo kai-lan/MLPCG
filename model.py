@@ -84,9 +84,8 @@ class FluidNet(BaseModel):
     # For now, only 2D model. Add 2D/3D option. Only known from data!
     # Also, build model with MSE of pressure as loss func, therefore input is velocity
     # and output is pressure, to be compared to target pressure.
-    def __init__(self, train_dim, test_dim):
+    def __init__(self, ks=3):
         super(FluidNet, self).__init__()
-        ks = 3
         # self.num_upsamples = log2()
         self.normalizeInputThreshold=0.00001
         self.conv1 = nn.Conv2d(2, 16, kernel_size=ks, padding='same', padding_mode='zeros')

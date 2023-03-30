@@ -47,27 +47,27 @@ A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dt
 rhs = torch.tensor(rhs_sp, dtype=torch.float32, device=device)
 flags = torch.tensor(flags_sp, dtype=torch.float32, device=device)
 
-NN = 64
-num_mat = 100
-num_ritz = 100
-num_rhs = 100
+NN = 256
+num_mat = 50
+num_ritz = 1000
+num_rhs = 200
 fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"model_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res.pth")
-fluidnet_model_res = FluidNet(64, 64)
+fluidnet_model_res = FluidNet()
 fluidnet_model_res.move_to(device)
 fluidnet_model_res.load_state_dict(torch.load(fluidnet_model_res_file))
 
 fluidnet_model_eng_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"model_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_eng.pth")
-fluidnet_model_eng = FluidNet(64, 64)
+fluidnet_model_eng = FluidNet()
 fluidnet_model_eng.load_state_dict(torch.load(fluidnet_model_eng_file))
 fluidnet_model_eng.move_to(device)
 
 fluidnet_model_scaled2_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"model_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_scaled2.pth")
-fluidnet_model_scaled2 = FluidNet(64, 64)
+fluidnet_model_scaled2 = FluidNet()
 fluidnet_model_scaled2.move_to(device)
 fluidnet_model_scaled2.load_state_dict(torch.load(fluidnet_model_scaled2_file))
 
 fluidnet_model_scaledA_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"model_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_scaledA.pth")
-fluidnet_model_scaledA = FluidNet(64, 64)
+fluidnet_model_scaledA = FluidNet()
 fluidnet_model_scaledA.move_to(device)
 fluidnet_model_scaledA.load_state_dict(torch.load(fluidnet_model_scaledA_file))
 
@@ -78,7 +78,7 @@ verbose = False
 max_iter = 500
 tol = 1e-4
 t0 = timeit.default_timer()
-x_cg, res_cg = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
+x_cg, res_cg = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), max_iter, tol=tol, atol=1e-10, norm_type=norm_type, verbose=verbose)
 print("CG took", timeit.default_timer()-t0, 's after', len(res_cg), 'iterations')
 
 ###############
@@ -88,7 +88,7 @@ rhs_cp, A_cp = cp.array(rhs_sp, dtype=np.float32), cpsp.csr_matrix(A_sp, dtype=n
 x_cg_cp, res_cg_cp = None, None
 def cuda_benchmark_cg():
     global x_cg_cp, res_cg_cp
-    x_cg_cp, res_cg_cp = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), max_iter, tol=tol, norm_type=norm_type, verbose=verbose)
+    x_cg_cp, res_cg_cp = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), max_iter, tol=tol, atol=1e-10, norm_type=norm_type, verbose=verbose)
 result = cuda_benchmark(cuda_benchmark_cg, n_repeat=1)
 print("CUDA CG took", result.gpu_times[0][0], 's after', len(res_cg_cp), 'iterations')
 
