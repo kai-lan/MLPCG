@@ -3,6 +3,7 @@ sys.path.insert(1, 'lib')
 import matplotlib.pyplot as plt
 from lib.read_data import *
 import numpy as np
+import torch
 
 path = os.path.dirname(os.path.realpath(__file__))
 
@@ -55,11 +56,15 @@ def vis_A(frame, masked=False):
     plt.close()
 
 def plot_loss(data_path, suffix):
-    loss_train = np.load(data_path + f"/training_loss_{suffix}.npy")
-    loss_test = np.load(data_path + f"/validation_loss_{suffix}.npy")
+    # loss_train = np.load(data_path + f"/training_loss_{suffix}.npy")
+    # loss_test = np.load(data_path + f"/validation_loss_{suffix}.npy")
+    checkpt = torch.load(data_path+f"/checkpt_{suffix}.tar")
+    loss_train = checkpt['training_loss']
+    loss_test = checkpt['validation_loss']
+    print(loss_train)
     fig, axes = plt.subplots(2, 1)
-    axes[0].plot(loss_train, label="train")
-    axes[1].plot(loss_test, label="validation")
+    axes[0].plot(loss_train[:20], label="train")
+    axes[1].plot(loss_test[:20], label="validation")
     plt.xlabel("Epoch")
     axes[0].set_ylabel("Loss")
     axes[1].set_ylabel("Loss")
@@ -79,7 +84,7 @@ if __name__ == '__main__':
     DIM = 2
     example_folder = os.path.join(DATA_PATH, f"circlepool_N{N}_200")
     # vis_flags(164)
-    plot_loss(f"{OUT_PATH}/output_{DIM}D_256", "dambreak_M50_ritz1000_rhs200_eng")
+    plot_loss(f"{OUT_PATH}/output_{DIM}D_64", "dambreak_M50_ritz1000_rhs200_eng")
     # rhs = vis_div_v(frame, masked=False)
     # sol = vis_pressure(frame, masked=False)
     # visualize_frame_by_frame(200)

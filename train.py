@@ -51,39 +51,56 @@ def train_(A, epoch_num, train_loader, validation_loader, model, optimizer, loss
         print(training_loss[-1], validation_loss[-1], f"({i} / {epoch_num})")
     return training_loss, validation_loss, time_history
 
-def saveData(epoch, log, outdir, suffix, train_loss, valid_loss, time_history):
-    log.record({"N": N,
-                "DIM": DIM,
-                "bc": bc,
-                "lr": lr,
-                "Epoches per matrix": epoch_num_per_matrix,
-                "Epoches": epoch,
-                "batch size": b_size,
-                "Num matrices": total_matrices,
-                "Num RHS": num_rhs})
-    log.write(os.path.join(outdir, f"settings_{suffix}.log"))
-    np.save(os.path.join(outdir, f"training_loss_{suffix}.npy"), train_loss)
-    np.save(os.path.join(outdir, f"validation_loss_{suffix}.npy"), valid_loss)
-    np.save(os.path.join(outdir, f"time_{suffix}.npy"), time_history)
-    torch.save(model.state_dict(), os.path.join(outdir, f"model_{suffix}.pth"))
+def saveData(model, optimizer, epoch, log, outdir, suffix, train_loss, valid_loss, time_history):
+    if log is not None:
+        log.record({"N": N,
+                    "DIM": DIM,
+                    "bc": bc,
+                    "lr": lr,
+                    "Epoches per matrix": epoch_num_per_matrix,
+                    "Epoches": epoch,
+                    "batch size": b_size,
+                    "Num matrices": total_matrices,
+                    "Num RHS": num_rhs})
+        log.write(os.path.join(outdir, f"settings_{suffix}.log"))
+    # np.save(os.path.join(outdir, f"training_loss_{suffix}.npy"), train_loss)
+    # np.save(os.path.join(outdir, f"validation_loss_{suffix}.npy"), valid_loss)
+    # np.save(os.path.join(outdir, f"time_{suffix}.npy"), time_history)
+    torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'training_loss': train_loss,
+            'validation_loss': valid_loss,
+            'time': time_history
+            }, os.path.join(outdir, f"checkpt_{suffix}.tar"))
+
+def loadData(outdir, suffix):
+    checkpt = torch.load(os.path.join(outdir, f"checkpt_{suffix}.tar"))
+    epoch = checkpt['epoch']
+    training_loss = checkpt['training_loss']
+    validation_loss = checkpt['validation_loss']
+    time_history = checkpt['time']
+    model_params = checkpt['model_state_dict']
+    optim_params = checkpt['optimizer_state_dict']
+    return epoch, list(training_loss), list(validation_loss), list(time_history), model_params, optim_params
 
 if __name__ == '__main__':
     np.random.seed(2) # same random seed for debug
     N = 256
     DIM = 2
-    lr = 1.0e-3
+    lr = 1.0e-4
     epoch_num_per_matrix = 5
-    epoch_num = 20
+    epoch_num = 50
     bc = 'dambreak'
     b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
-    total_matrices = 100 # number of matrices chosen for training
+    total_matrices = 50 # number of matrices chosen for training
     num_ritz = 1000
     num_rhs = 200 # number of ritz vectors for training for each matrix
-    kernel_size = 5 # kernel size
+    kernel_size = 3 # kernel size
     cuda = torch.device("cuda") # Use CUDA for training
 
     log = LoggingWriter()
-
 
     resume = False
     loss_type = 'scaledA'
@@ -103,17 +120,24 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}/ks{kernel_size}")
+    outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
     inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")
 
     model = FluidNet(kernel_size)
     model.move_to(cuda)
     loss_fn = eval(loss_fn)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
 
     if resume:
-        model.load_state_dict(torch.load(os.path.join(outdir, f"model_{suffix}.pth")))
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+        ep, train_loss, valid_loss, time_history, model_params, optim_params = loadData(outdir, suffix)
+        model.load_state_dict(model_params)
+        optimizer.load_state_dict(optim_params)
+        start_epoch = ep
+    else:
+        train_loss, valid_loss, time_history = [], [], []
+        start_epoch = 0
+
 
     train_size = round(0.8 * num_rhs)
     perm = np.random.permutation(num_rhs)
@@ -124,7 +148,6 @@ if __name__ == '__main__':
     matrices = np.random.permutation(range(1, 201))[:total_matrices]
     np.save(f"{outdir}/matrices_trained_{total_matrices}.npy", matrices)
     # matrices = range(1, total_matrices+1)
-    train_loss, valid_loss, time_history = [], [], []
     start_time = time.time()
     for i in range(1, epoch_num+1):
         print(f"Epoch: {i}/{epoch_num}")
@@ -140,7 +163,7 @@ if __name__ == '__main__':
         train_loss.append(tl)
         valid_loss.append(vl)
         time_history.append(time.time() - start_time)
-        saveData(i, log, outdir, suffix, train_loss, valid_loss, time_history)
+        saveData(model, optimizer, i+start_epoch, log, outdir, suffix, train_loss, valid_loss, time_history)
     end_time = time.time()
     print("Took", end_time-start_time, 's')
 

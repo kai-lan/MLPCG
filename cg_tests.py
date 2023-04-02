@@ -19,12 +19,10 @@ import cupyx.scipy.sparse.linalg as gslin # https://docs.cupy.dev/en/stable/refe
 import matplotlib.pyplot as plt
 from lib.read_data import compute_weight
 
-torch.set_grad_enabled(False) # disable autograd globally
-
 ###################
 # FluidNet / DCDM
 ###################
-def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=True, norm_type='l2'):
+def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, norm_type='l2'):
     N = math.isqrt(len(b))
     assert N**2 == len(b), "RHS vector dimension is incorrect"
     norm_b = b.norm().item()
@@ -61,7 +59,7 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Tru
 ###################
 # CG
 ###################
-def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=True, norm_type='l2'):
+def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, norm_type='l2'):
     count = 0
     norm_b = np.linalg.norm(b)
     if norm_type == 'l2': norm = np.linalg.norm(b - A @ x_init) / norm_b
@@ -83,7 +81,7 @@ def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=True, norm_type='l2'
 ###################
 # CG on GPU
 ###################
-def CG_GPU(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=True, norm_type='l2'):
+def CG_GPU(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, norm_type='l2'):
     count = 0
     norm_b = cp.linalg.norm(b)
     if norm_type == 'l2': norm = cp.linalg.norm(b - A @ x_init) / norm_b
