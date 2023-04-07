@@ -47,6 +47,25 @@ def vis_pressure(frame, masked=False):
     plt.close()
     return sol
 
+def vis_levelset(frame, masked=False):
+    file = os.path.join(example_folder, f"levelset_{frame}.bin")
+    levelset = load_vector(file)
+    # if masked:
+    #     levelset = levelset == 0
+    plt.imshow(levelset.reshape((N,)*DIM).T, origin='lower', cmap='jet', vmin=-0.1, vmax=0.2)
+    plt.colorbar()
+    plt.savefig(f"{path}/levelset_{DIM}d_{N}.png", bbox_inches="tight")
+    plt.close()
+    # print(np.sum(levelset))
+    return levelset
+
+def vis_ppc(frame):
+    cells = read_ppc(os.path.join(example_folder, f"active_cells_{frame}.bin"), os.path.join(example_folder, f"ppc_{frame}.bin"), N, DIM)
+    plt.imshow(cells.reshape((N,)*DIM).T, origin='lower', cmap='jet')
+    plt.colorbar()
+    plt.savefig(f"{path}/ppc_{DIM}d_{N}.png", bbox_inches="tight")
+    plt.close()
+    # print(cells.reshape((N,)*DIM).T)
 def vis_A(frame, masked=False):
     file_A = os.path.join(example_folder, f"A_{frame}.bin")
     A = readA_sparse(file_A)
@@ -63,8 +82,8 @@ def plot_loss(data_path, suffix):
     loss_test = checkpt['validation_loss']
     print(loss_train)
     fig, axes = plt.subplots(2, 1)
-    axes[0].plot(loss_train[:20], label="train")
-    axes[1].plot(loss_test[:20], label="validation")
+    axes[0].plot(loss_train, label="train")
+    axes[1].plot(loss_test, label="validation")
     plt.xlabel("Epoch")
     axes[0].set_ylabel("Loss")
     axes[1].set_ylabel("Loss")
@@ -80,11 +99,17 @@ def visualize_frame_by_frame(num_frames):
         time.sleep(0.1)
 
 if __name__ == '__main__':
-    N = 256
+    N = 64
     DIM = 2
-    example_folder = os.path.join(DATA_PATH, f"circlepool_N{N}_200")
-    # vis_flags(164)
-    plot_loss(f"{OUT_PATH}/output_{DIM}D_64", "dambreak_M50_ritz1000_rhs200_eng")
+    example_folder = os.path.join(DATA_PATH, f"dambreak_N{N}_200")
+
+
+    frame=54
+    # vis_flags(frame)
+    # levelset = vis_levelset(frame, True)
+    # print(levelset)
+    vis_ppc(frame)
+    # plot_loss(f"{OUT_PATH}/output_{DIM}D_64", "dambreak_M100_ritz100_rhs200_res_binary")
     # rhs = vis_div_v(frame, masked=False)
     # sol = vis_pressure(frame, masked=False)
     # visualize_frame_by_frame(200)

@@ -49,6 +49,12 @@ def load_vector(data_folder_name, normalize = False, dtype='double'):
     else:
         print("No file for exist named " + data_folder_name)
 
+def read_ppc(file_active_cells, file_ppc, N, DIM, dtype='int32'):
+    active_cells = read_flags(file_active_cells, dtype)
+    ppc = np.zeros((N+2)**DIM, dtype=dtype)
+    ppc[active_cells] = read_flags(file_ppc)
+    ppc = ppc.reshape((N+2,)*DIM)[1:-1, 1:-1].ravel()
+    return ppc
 """
 template <typename T>
 void Serialize(const std::vector<T>& v, const std::string& filename) {

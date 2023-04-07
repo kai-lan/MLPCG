@@ -28,60 +28,89 @@ def train(outdir, suffix, lr, epoch_num, bs, train_set, test_set):
     training_loss, validation_loss, time_history = train_(epoch_num, train_loader, test_loader, model, optimizer, loss_fn)
 
     os.makedirs(outdir, exist_ok=True)
-    log = LoggingWriter()
+
     np.save(os.path.join(outdir, f"training_loss_{suffix}.npy"), training_loss)
     np.save(os.path.join(outdir, f"validation_loss_{suffix}.npy"), validation_loss)
     np.save(os.path.join(outdir, f"time_{suffix}.npy"), time_history)
     torch.save(model.state_dict(), os.path.join(outdir, f"model_{suffix}.pth"))
     return training_loss, validation_loss, time_history
-
+class RitzDataset(Dataset):
+    def __init__(self, data, flags, perm, shape):
+        self.data = data
+        self.flags = flags
+        self.perm = perm
+        self.shape = shape
+        self.fluidcells = torch.where(flags == 2)[0]
+    def __getitem__(self, index):
+        index = self.perm[index]
+        b = torch.zeros(N**DIM, dtype=torch.float32)
+        b[self.fluidcells] = torch.from_numpy(self.data[index])
+        x = torch.stack([
+            b,
+            self.flags
+        ]).reshape(self.shape)
+        return x
+    def __len__(self):
+        return len(self.perm)
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import warnings
     warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
     torch.set_default_dtype(torch.float32)
-    N = 64
+    N = 256
     DIM = 2
     dim2 = N**DIM
     lr = 0.001
-    epoch_num = 10
+    epoch_num = 100
     cuda = torch.device("cuda") # Use CUDA for training
 
-    frame = 160
+    frame = 10
+    # num_ritz = 1000
     num_rhs = 200
     b_size = 20
 
-    data_path = os.path.join(DATA_PATH, f"dambreak_N{N}_{num_rhs}", f"preprocessed/{frame}")
+    data_path = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"preprocessed/{frame}")
     A = torch.load(f"{data_path}/A.pt")
     rhs = torch.tensor(torch.load(f"{data_path}/rhs.pt"))
     flags = torch.tensor(torch.load(f"{data_path}/flags.pt"))
     A = A.to(cuda)
-    rhs, flags = rhs.to(cuda), flags.to(cuda)
+    # rhs, flags = rhs.to(cuda), flags.to(cuda)
 
     model = FluidNet(ks=3)
+    # model = SimpleModel()
     model.move_to(cuda)
     loss_fn = model.residual_loss
+    # loss_fn = model.energy_loss
+    # loss_fn = model.scaled_loss_2
+    # loss_fn = model.scaled_loss_A
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     train_size = round(0.8 * num_rhs)
     perm = np.random.permutation(num_rhs)
     train_set = MyDataset(data_path, perm[:train_size], (2,)+(N,)*DIM)
     valid_set = MyDataset(data_path, perm[train_size:], (2,)+(N,)*DIM)
+    # data = np.memmap(f"{data_path}/ritz_{num_ritz}.dat", dtype=np.float32, mode='r').reshape(num_ritz-1, len(torch.argwhere(flags==2)))
+
+    # train_set = RitzDataset(data, flags, perm[:train_size], (2,)+(N,)*DIM)
+    # valid_set = RitzDataset(data, flags, perm[train_size:], (2,)+(N,)*DIM)
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
 
     outdir = os.path.join(OUT_PATH, f"output_single_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
-    suffix = f"frame_{frame}_downsample"
+    suffix = f"frame_{frame}"
 
-    for_train = False
+    for_train = True
     for_test = True
 
     if for_train:
         training_loss, validation_loss, time_history = train_(A, epoch_num, train_loader, valid_loader, model, optimizer, loss_fn)
         saveData(model, optimizer, epoch_num, None, outdir, suffix, training_loss, validation_loss, time_history)
-
+        fig, axes = plt.subplots(2)
+        axes[0].plot(training_loss, label='training')
+        axes[1].plot(validation_loss, label='validation')
+        plt.savefig("loss.png", bbox_inches='tight')
     def fluidnet_predict(fluidnet_model):
         global flags
         def predict(r):
@@ -97,18 +126,15 @@ if __name__ == '__main__':
         model.load_state_dict(checkpt['model_state_dict'])
         optimizer.load_state_dict(checkpt['optimizer_state_dict'])
         model.eval()
+        flags = flags.to(cuda)
+        rhs = rhs.to(cuda)
         x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model), max_it=200, tol=1e-4, verbose=True)
 
         print("Fluidnet", res_fluidnet_res[-1])
 
-        # A = readA_sparse(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"A_{frame}.bin")).astype(np.float32)
-        # rhs = load_vector(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"div_v_star_{frame}.bin")).astype(np.float32)
-        # x, res_history = CG(rhs, A, np.zeros_like(rhs), max_it=1000, tol=1e-5, verbose=False)
+        A = readA_sparse(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"A_{frame}.bin")).astype(np.float32)
+        rhs = load_vector(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"div_v_star_{frame}.bin")).astype(np.float32)
+        x, res_history = CG(rhs, A, np.zeros_like(rhs), max_it=1000, tol=1e-4, verbose=False)
         # r = rhs - A @ x
-        # print(f"CG residual after {len(res_history)} iterations", np.linalg.norm(r)/np.linalg.norm(rhs))
+        print(f"CG residual after {len(res_history)} iterations", res_history[-1])
 
-
-    # fig, axes = plt.subplots(2)
-    # axes[0].plot(training_loss, label='training')
-    # axes[1].plot(validation_loss, label='validation')
-    # plt.savefig("loss.png", bbox_inches='tight')

@@ -62,23 +62,60 @@ class SimpleModel(BaseModel):
     def __init__(self) -> None:
         super(SimpleModel, self).__init__()
         self.init = nn.Conv2d(2, 8, kernel_size=3, padding='same')
-        self.top = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.top1 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.top2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.top3 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+
         self.down1 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
-        # self.down2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.down2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.down3 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+
+        self.ddown1 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.ddown2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.ddown3 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+
+        self.dddown1 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.dddown2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.dddown3 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+
+        self.flat  = nn.Conv2d(8, 8, kernel_size=1, padding='same')
         self.last  = nn.Conv2d(8, 1, kernel_size=1, padding='same')
+        self.downsample = nn.AvgPool2d(2)
+        self.upsample = nn.Upsample(scale_factor=2)
+        # self.sm = nn.Conv2d(1, 1, kernel_size=3, padding='same')
+        self.sm = nn.AvgPool2d(3, stride=1, padding=1)
+        # self.bn = nn.BatchNorm2d(8)
     def forward(self, x):
-        x = F.normalize(x, dim=0)
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
+        # x = F.normalize(x, dim=0)
+        # vec = x[:, 0:1]
+        # geo = x[:, 1:]
+        # geo = self.sm(geo)
+        # x = torch.stack([vec.squeeze(dim=1), geo.squeeze(dim=1)], dim=1)
+        # x[:, 1:] = self.sm(x[:, 1:])
+        x = F.relu(self.init(x))
+        x1 = self.downsample(x)
+        x2 = self.downsample(x1)
+        x3 = self.downsample(x2)
+
+        x = F.relu(self.top1(x))
+        x1= F.relu(self.down1(x1))
+        x2= F.relu(self.ddown1(x2))
+        x3= F.relu(self.dddown1(x3))
+
+        x = F.relu(self.top2(x))
+        x1 = F.relu(self.down2(x1))
+        x2 = F.relu(self.ddown2(x2))
+        x3 = F.relu(self.dddown2(x3))
+
+        x = F.relu(self.top3(x))
+        x1 = F.relu(self.down3(x1))
+        x2 = F.relu(self.ddown3(x2))
+        x3 = F.relu(self.dddown3(x3))
+
+        x = x + self.upsample(x1) + self.upsample(self.upsample(x2)) + self.upsample(self.upsample(self.upsample(x3)))
+        x = F.relu(self.flat(x))
         x = self.last(x)
         return x
-    def loss(self, x, y, A):
-        bs = x.shape[0]
-        r = torch.zeros(1).to(x.device)
-        for i in range(bs):
-            r += (y[i] - A[i] @ x[i]).norm() / y[i].norm()
-        return r / bs
 
 class FluidNet(BaseModel):
     # For now, only 2D model. Add 2D/3D option. Only known from data!
@@ -111,9 +148,9 @@ class FluidNet(BaseModel):
         # Normalization might improve invariance of scaling for the network because y = Ax <=> sy = A(sx)
         # Also spead out values to both positive and negative, otherwise relu zero out all negative values
         x = x_in.clone() # Do not modify x
-        std = torch.std(x[:, 0:1], dim=(2, 3), keepdim=True)
-        scale = torch.clamp(std, self.normalizeInputThreshold, inf)
-        x[:, 0:1] /= scale
+        # std = torch.std(x[:, 0:1], dim=(2, 3), keepdim=True)
+        # scale = torch.clamp(std, self.normalizeInputThreshold, inf)
+        # x[:, 0:1] /= scale
         # for _ in range(self.num_upsamples):
         #     x = self.upsample(x)
         x = F.relu(self.conv1(x))
@@ -138,9 +175,9 @@ class FluidNet(BaseModel):
 
         # for _ in range(self.num_upsamples):
         #     x = self.downsample(x)
-        x = x * scale # In-place operation like x *= 2 or x[:]= ... is not allowed for x that requires auto grad
+        # x = x * scale # In-place operation like x *= 2 or x[:]= ... is not allowed for x that requires auto grad
         ## zero out entries in null space (non-fluid)
-        x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0) # 2 is fluid cell
+        # x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0) # 2 is fluid cell
         return x
 
 class NewModel(FluidNet): # Made downsampling and upsampling learnable

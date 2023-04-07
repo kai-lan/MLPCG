@@ -87,15 +87,15 @@ def loadData(outdir, suffix):
 
 if __name__ == '__main__':
     np.random.seed(2) # same random seed for debug
-    N = 256
+    N = 64
     DIM = 2
-    lr = 1.0e-4
+    lr = 1.0e-3
     epoch_num_per_matrix = 5
     epoch_num = 50
     bc = 'dambreak'
     b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
-    total_matrices = 50 # number of matrices chosen for training
-    num_ritz = 1000
+    total_matrices = 100 # number of matrices chosen for training
+    num_ritz = 100
     num_rhs = 200 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
     cuda = torch.device("cuda") # Use CUDA for training
@@ -103,19 +103,20 @@ if __name__ == '__main__':
     log = LoggingWriter()
 
     resume = False
-    loss_type = 'scaledA'
+    loss_type = 'res'
+    image_type = 'ppc' # binary, ppc, levelset
 
     if loss_type == 'res':
-        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_res'
+        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_res_{image_type}'
         loss_fn = "model.residual_loss"
     elif loss_type == 'eng':
-        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_eng'
+        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_eng_{image_type}'
         loss_fn = "model.energy_loss"
     elif loss_type == 'scaled2':
-        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaled2'
+        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaled2_{image_type}'
         loss_fn = "model.scaled_loss_2"
     elif loss_type == 'scaledA':
-        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaledA'
+        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaledA_{image_type}'
         loss_fn = "model.scaled_loss_A"
     else:
         raise Exception("No such loss type")
@@ -141,13 +142,13 @@ if __name__ == '__main__':
 
     train_size = round(0.8 * num_rhs)
     perm = np.random.permutation(num_rhs)
-    train_set = MyDataset(None, perm[:train_size], (2,)+(N,)*DIM)
-    valid_set = MyDataset(None, perm[train_size:], (2,)+(N,)*DIM)
+    train_set = MyDataset(None, perm[:train_size], (2,)+(N,)*DIM, image_type)
+    valid_set = MyDataset(None, perm[train_size:], (2,)+(N,)*DIM, image_type)
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
-    matrices = np.random.permutation(range(1, 201))[:total_matrices]
-    np.save(f"{outdir}/matrices_trained_{total_matrices}.npy", matrices)
-    # matrices = range(1, total_matrices+1)
+    # matrices = np.random.permutation(range(1, 201))[:total_matrices]
+    matrices = np.load(os.path.join(DATA_PATH, f"{bc}_N{N}_200/train_mat.npy"))
+    # np.save(f"{outdir}/matrices_trained_{total_matrices}.npy", matrices)
     start_time = time.time()
     for i in range(1, epoch_num+1):
         print(f"Epoch: {i}/{epoch_num}")

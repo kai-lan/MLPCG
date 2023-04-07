@@ -30,10 +30,11 @@ from tqdm import tqdm
 def _lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
     assert A.shape[0] == A.shape[1], "A is not square"
     n = A.shape[0]
-    m = min(num_ritz_vec, n)  # Generate 1.5 times number of ritz vectors of the desired
+    m = min(num_ritz_vec+10, n)  # Generate 1.5 times number of ritz vectors of the desired
     V = np.zeros((m, n)) # Store orthonormal vectors v0, v1, ... as row vectors (Numpy array is row-major, so accessing row is faster
     alpha = np.zeros(m) # Diagonal of T
     beta = np.zeros(m-1) # Super- and sub-diagonal of T
+    # V[0] = np.random.normal(0, 1, n)
     V[0] = rhs / np.linalg.norm(rhs) # initialize wit rhs
     # Initial step: find v1
     V[1] = A @ V[0]
@@ -77,11 +78,11 @@ def createRitzVec(A, rhs, num_ritz_vectors):
     # Calculating eigenvectors of the tridiagonal matrix: only return eigvals > 1e-8
     print("Calculating eigenvectors of the tridiagonal matrix")
     start = time.time()
-    ritz_vals, Q = scipy.linalg.eigh_tridiagonal(diagonal, sub_diagonal, select='v', select_range=(1.0e-8, np.inf))
+    ritz_vals, Q = scipy.linalg.eigh_tridiagonal(diagonal, sub_diagonal, select='v', select_range=(1e-8, np.inf))
     # print(ritz_vals.shape, Q.shape)
     print("Calculating eigenvectors took", time.time() - start, 's')
-    ritz_vectors = (W.T @ Q).T # m x n
-    return ritz_vals, ritz_vectors
+    ritz_vectors = (W.T @ Q[:, :num_ritz_vectors]).T # m x n
+    return ritz_vals[:num_ritz_vectors], ritz_vectors
 
 def createRawData(ritz_vectors, sample_size, flags, outdir):
     if len(ritz_vectors) < sample_size: raise Exception("Given ritz vectors are less than sample size")
@@ -122,11 +123,12 @@ if __name__ == '__main__':
     dir = f"{DATA_PATH}/dambreak_N{N}_200"
     os.makedirs(dir, exist_ok=True)
     num_ritz_vectors = 100
-    num_frames = 200
-    # Ds, Es = [], []
+    # start_frame = 10
+    # end_frame = 11
+    perm = np.random.permutation(range(1, 201))[:100]
+    np.save(f"{dir}/train_mat.npy", perm)
 
-
-    for i in tqdm(range(1, num_frames+1)):
+    for i in tqdm(perm):
         print('Matrix', i)
         out = f"{dir}/preprocessed/{i}"
         os.makedirs(out, exist_ok=True)
