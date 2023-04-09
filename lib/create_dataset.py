@@ -25,39 +25,37 @@ import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
 from tqdm import tqdm
 
-
+def lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
+    return _lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=ortho_iters, cut_off_tol=cut_off_tol)
 # Given A n x n, return V, T with A = VTV^T
 def _lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
     assert A.shape[0] == A.shape[1], "A is not square"
     n = A.shape[0]
-    m = min(num_ritz_vec+10, n)  # Generate 1.5 times number of ritz vectors of the desired
+    # m = min(num_ritz_vec+10, n)  # Generate 1.5 times number of ritz vectors of the desired
+    m = num_ritz_vec
     V = np.zeros((m, n)) # Store orthonormal vectors v0, v1, ... as row vectors (Numpy array is row-major, so accessing row is faster
     alpha = np.zeros(m) # Diagonal of T
     beta = np.zeros(m-1) # Super- and sub-diagonal of T
     # V[0] = np.random.normal(0, 1, n)
     V[0] = rhs / np.linalg.norm(rhs) # initialize wit rhs
-    # Initial step: find v1
-    V[1] = A @ V[0]
-    alpha[0] = V[1].dot(V[0])
-    V[1] -= alpha[0] * V[0]
-    beta[0] = np.linalg.norm(V[1])
-    if beta[0] < cut_off_tol: # cut off if lower than some tolerance
-        print("Cut off at", 1)
-        return V[:1], alpha[:1], beta[:0] # Only keep previous entries
-    V[1] /= beta[0]
+    w = A @ V[0]
+    alpha[0] = w.dot(V[0])
+    w = w - alpha[0] * V[0]
 
-    for j in range(2, m):
-        v = A @ V[j-1]
-        alpha[j-1] = np.dot(v, V[j-1])
-        v = v - alpha[j-1] * V[j-1] - beta[j-2] * V[j-2]
-        it = min(j-2, ortho_iters)
-        for k in reversed(range(it)):
-            v = v - V[k].dot(v) * V[k]
-        beta[j-1] = np.linalg.norm(v)
+    for j in range(1, m):
+        beta[j-1] = np.linalg.norm(w)
         if beta[j-1] < cut_off_tol: # cut off if lower than some tolerance
             print("Cut off at", j)
             return V[:j], alpha[:j], beta[:j-1] # Only keep previous entries
-        V[j] = v / beta[j-1]
+        else:
+            V[j] = w / beta[j-1]
+        w = A @ V[j]
+        alpha[j] = w.dot(V[j])
+        w = w - alpha[j] * V[j] - beta[j-1] * V[j-1] # later can be used for V[j+1]
+        it = min(max(j-1, 0), ortho_iters)
+        for k in reversed(range(it)):
+            print('k', k)
+            w = w - V[k].dot(w) * V[k]
     return V, alpha, beta
 
 def _test_lanczos_algorithm(A, num_ritz_vec, orthogonal):
@@ -78,7 +76,7 @@ def createRitzVec(A, rhs, num_ritz_vectors):
     # Calculating eigenvectors of the tridiagonal matrix: only return eigvals > 1e-8
     print("Calculating eigenvectors of the tridiagonal matrix")
     start = time.time()
-    ritz_vals, Q = scipy.linalg.eigh_tridiagonal(diagonal, sub_diagonal, select='v', select_range=(1e-8, np.inf))
+    ritz_vals, Q = scipy.linalg.eigh_tridiagonal(diagonal, sub_diagonal, select='a')
     # print(ritz_vals.shape, Q.shape)
     print("Calculating eigenvectors took", time.time() - start, 's')
     ritz_vectors = (W.T @ Q[:, :num_ritz_vectors]).T # m x n
@@ -118,15 +116,16 @@ def createResVec(A, b, tol=1e-20, max_it=300, verbose=False, outdir=None):
 
 if __name__ == '__main__':
     np.random.seed(2)
-    N = 64
+    N = 256
     DIM = 2
     dir = f"{DATA_PATH}/dambreak_N{N}_200"
     os.makedirs(dir, exist_ok=True)
-    num_ritz_vectors = 100
+    num_ritz_vectors = 2000
     # start_frame = 10
     # end_frame = 11
-    perm = np.random.permutation(range(1, 201))[:100]
-    np.save(f"{dir}/train_mat.npy", perm)
+    # perm = np.random.permutation(range(1, 201))[:100]
+    # np.save(f"{dir}/train_mat.npy", perm)
+    perm = [160]
 
     for i in tqdm(perm):
         print('Matrix', i)
@@ -139,9 +138,10 @@ if __name__ == '__main__':
         A = hf.compressedMat(A, flags)
         rhs = hf.compressedVec(rhs, flags)
         ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors)
-        fp = np.memmap(f"{out}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='w+', shape=ritz_vec.shape)
-        fp[:] = ritz_vec
-        fp.flush()
+        print(ritz_vals[:10])
+        # fp = np.memmap(f"{out}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='w+', shape=ritz_vec.shape)
+        # fp[:] = ritz_vec
+        # fp.flush()
 
         # _test_lanczos_algorithm(A, num_ritz_vectors, or)
         # createResVec(A, rhs, verbose=True)
