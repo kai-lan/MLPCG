@@ -7,14 +7,13 @@ from multiprocessing import Process
 import time
 
 DIM = 2
-N = 64
+N = 256
 data_folder = os.path.join(DATA_PATH, f"dambreak_N{N}_200")
 
-matrices = np.load(f"{data_folder}/train_mat.npy")
-# start = 10
-# end = 11
-num_rhs = 200
-num_ritz_vectors = 100
+# matrices = np.load(f"{data_folder}/train_mat.npy")
+matrices = [25]
+num_rhs = 800
+num_ritz_vectors = 800
 
 def createTrainingData(ritz_vectors, sample_size, fluid_cells, outdir):
     # small_matmul_size = 100 # Small mat size for temp data
@@ -52,9 +51,9 @@ def worker(indices):
         flags = read_flags(os.path.join(data_folder, f"flags_{index}.bin"))
         fluid_cells = np.where(flags == 2)[0]
 
-        ppc = read_ppc(os.path.join(data_folder, f"active_cells_{index}.bin"), os.path.join(data_folder, f"ppc_{index}.bin"), N, DIM)
+        # ppc = read_ppc(os.path.join(data_folder, f"active_cells_{index}.bin"), os.path.join(data_folder, f"ppc_{index}.bin"), N, DIM)
 
-        levelset = load_vector(os.path.join(data_folder, f"levelset_{index}.bin"))
+        # levelset = load_vector(os.path.join(data_folder, f"levelset_{index}.bin"))
 
         # Stored the compressed matrix and vectors (with empty cells removed)
         out_folder = os.path.join(data_folder, "preprocessed", str(index))
@@ -72,11 +71,12 @@ def worker(indices):
         rhs = torch.tensor(rhs, dtype=torch.float32)
         torch.save(rhs, os.path.join(out_folder, f"rhs.pt"))
 
-        ppc = torch.tensor(ppc, dtype=torch.float32)
-        torch.save(ppc, os.path.join(out_folder, f"ppc.pt"))
+        # ppc = torch.tensor(ppc, dtype=torch.float32)
+        # ppc[ppc < 3] = 0
+        # torch.save(ppc, os.path.join(out_folder, f"ppc.pt"))
 
-        levelset = torch.tensor(levelset, dtype=torch.float32)
-        torch.save(levelset, os.path.join(out_folder, f"levelset.pt"))
+        # levelset = torch.tensor(levelset, dtype=torch.float32)
+        # torch.save(levelset, os.path.join(out_folder, f"levelset.pt"))
 
         ritz_vec = np.memmap(f"{out_folder}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='r').reshape(num_ritz_vectors, len(fluid_cells))
         createTrainingData(ritz_vec, num_rhs, fluid_cells, out_folder)

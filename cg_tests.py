@@ -72,6 +72,8 @@ def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, norm_type='l2
     def callback(x):
         nonlocal count
         count += 1
+        r = b - A @ x
+        # np.save(f"res_{count}.npy", r)
         if norm_type == 'l2': norm = np.linalg.norm(b - A @ x) / norm_b
         else: norm = x.dot(A @ x) / 2 - x.dot(b)
         res_history.append(norm)

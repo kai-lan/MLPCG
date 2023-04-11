@@ -11,6 +11,33 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchsummary import summary
 
+class InvModel(nn.Module):
+    def __init__(self):
+        super(InvModel, self).__init__()
+        self.conv1 = nn.Conv2d(1, 8, kernel_size=3, padding='same')
+        self.conv2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.conv3 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.conv4 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.conv5 = nn.Conv2d(8, 1, kernel_size=1, padding='same')
+    def forward(self, x):
+        x = self.conv1
+    def move_to(self, device):
+        self.device = device
+        self.to(device)
+    def loss(self, A_invs, As, fluids):
+        r = torch.zeros(1).to(self.device)
+        for i in range(As.shape[0]):
+            A_inv = A_invs[i]
+            A_inv = A_inv.to_sparse_coo()
+            A = As[i]
+            A = A.to_sparse_coo()
+            diag = torch.zeros(A.shape[0], device=self.device)
+            diag[fluids] = 1.0
+            I = torch.sparse.spdiags(diag, torch.tensor([0]), A.shape)
+            r += (A @ A_inv - I).norm()
+
+
+
 class BaseModel(nn.Module):
     def __init__(self):
         super(BaseModel, self).__init__()
@@ -173,11 +200,9 @@ class FluidNet(BaseModel):
         x = F.relu(self.conv5(x))
         x = self.conv6(x)
 
-        # for _ in range(self.num_upsamples):
-        #     x = self.downsample(x)
         # x = x * scale # In-place operation like x *= 2 or x[:]= ... is not allowed for x that requires auto grad
         ## zero out entries in null space (non-fluid)
-        # x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0) # 2 is fluid cell
+        x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0) # 2 is fluid cell
         return x
 
 class NewModel(FluidNet): # Made downsampling and upsampling learnable

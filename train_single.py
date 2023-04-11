@@ -58,14 +58,15 @@ if __name__ == '__main__':
     import warnings
     warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
     torch.set_default_dtype(torch.float32)
-    N = 256
+    N = 64
     DIM = 2
     dim2 = N**DIM
     lr = 0.001
     epoch_num = 100
     cuda = torch.device("cuda") # Use CUDA for training
 
-    frame = 10
+    image_type = 'flags'
+    frame = 110 # 100, 25
     # num_ritz = 1000
     num_rhs = 200
     b_size = 20
@@ -73,9 +74,11 @@ if __name__ == '__main__':
     data_path = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"preprocessed/{frame}")
     A = torch.load(f"{data_path}/A.pt")
     rhs = torch.tensor(torch.load(f"{data_path}/rhs.pt"))
-    flags = torch.tensor(torch.load(f"{data_path}/flags.pt"))
+    # rhs = torch.tensor(torch.load(f"{data_path}/rhs_denoised.pt"))
+    image = torch.tensor(torch.load(f"{data_path}/{image_type}.pt"))
+    # image_denoised = torch.tensor(torch.load(f"{data_path}/{image_type}_denoised.pt"))
     A = A.to(cuda)
-    # rhs, flags = rhs.to(cuda), flags.to(cuda)
+    # rhs, image = rhs.to(cuda), image.to(cuda)
 
     model = FluidNet(ks=3)
     # model = SimpleModel()
@@ -88,18 +91,18 @@ if __name__ == '__main__':
 
     train_size = round(0.8 * num_rhs)
     perm = np.random.permutation(num_rhs)
-    train_set = MyDataset(data_path, perm[:train_size], (2,)+(N,)*DIM)
-    valid_set = MyDataset(data_path, perm[train_size:], (2,)+(N,)*DIM)
-    # data = np.memmap(f"{data_path}/ritz_{num_ritz}.dat", dtype=np.float32, mode='r').reshape(num_ritz-1, len(torch.argwhere(flags==2)))
+    train_set = MyDataset(data_path, perm[:train_size], (2,)+(N,)*DIM, image_type, '')
+    valid_set = MyDataset(data_path, perm[train_size:], (2,)+(N,)*DIM, image_type, '')
+    # data = np.memmap(f"{data_path}/ritz_{num_ritz}.dat", dtype=np.float32, mode='r').reshape(num_ritz-1, len(torch.argwhere(image==2)))
 
-    # train_set = RitzDataset(data, flags, perm[:train_size], (2,)+(N,)*DIM)
-    # valid_set = RitzDataset(data, flags, perm[train_size:], (2,)+(N,)*DIM)
-    train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
+    # train_set = RitzDataset(data, image, perm[:train_size], (2,)+(N,)*DIM)
+    # valid_set = RitzDataset(data, image, perm[train_size:], (2,)+(N,)*DIM)
+    train_loader = DataLoader(train_set, batch_size=b_size, shuffle=True)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
 
     outdir = os.path.join(OUT_PATH, f"output_single_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
-    suffix = f"frame_{frame}"
+    suffix = f"frame_{frame}_{image_type}"
 
     for_train = True
     for_test = True
@@ -111,12 +114,11 @@ if __name__ == '__main__':
         axes[0].plot(training_loss, label='training')
         axes[1].plot(validation_loss, label='validation')
         plt.savefig("loss.png", bbox_inches='tight')
-    def fluidnet_predict(fluidnet_model):
-        global flags
+    def fluidnet_predict(fluidnet_model, image):
         def predict(r):
             with torch.no_grad():
                 r = nn.functional.normalize(r, dim=0)
-                b = torch.stack([r, flags]).view(1, 2, N, N)
+                b = torch.stack([r, image]).view(1, 2, N, N)
                 x = fluidnet_model(b).flatten()
             return x
         return predict
@@ -126,9 +128,9 @@ if __name__ == '__main__':
         model.load_state_dict(checkpt['model_state_dict'])
         optimizer.load_state_dict(checkpt['optimizer_state_dict'])
         model.eval()
-        flags = flags.to(cuda)
+        image = image.to(cuda)
         rhs = rhs.to(cuda)
-        x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model), max_it=200, tol=1e-4, verbose=True)
+        x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model, image), max_it=200, tol=1e-4, verbose=True)
 
         print("Fluidnet", res_fluidnet_res[-1])
 

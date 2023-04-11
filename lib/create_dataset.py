@@ -54,7 +54,6 @@ def _lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
         w = w - alpha[j] * V[j] - beta[j-1] * V[j-1] # later can be used for V[j+1]
         it = min(max(j-1, 0), ortho_iters)
         for k in reversed(range(it)):
-            print('k', k)
             w = w - V[k].dot(w) * V[k]
     return V, alpha, beta
 
@@ -120,12 +119,13 @@ if __name__ == '__main__':
     DIM = 2
     dir = f"{DATA_PATH}/dambreak_N{N}_200"
     os.makedirs(dir, exist_ok=True)
-    num_ritz_vectors = 2000
+    num_ritz_vectors = 800
     # start_frame = 10
     # end_frame = 11
-    # perm = np.random.permutation(range(1, 201))[:100]
+    perm = np.random.permutation(range(1, 201)) #[:100]
     # np.save(f"{dir}/train_mat.npy", perm)
-    perm = [160]
+    # perm = [160]
+    perm = [25]
 
     for i in tqdm(perm):
         print('Matrix', i)
@@ -139,9 +139,9 @@ if __name__ == '__main__':
         rhs = hf.compressedVec(rhs, flags)
         ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors)
         print(ritz_vals[:10])
-        # fp = np.memmap(f"{out}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='w+', shape=ritz_vec.shape)
-        # fp[:] = ritz_vec
-        # fp.flush()
+        fp = np.memmap(f"{out}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='w+', shape=ritz_vec.shape)
+        fp[:] = ritz_vec
+        fp.flush()
 
         # _test_lanczos_algorithm(A, num_ritz_vectors, or)
         # createResVec(A, rhs, verbose=True)

@@ -159,7 +159,10 @@ if __name__ == '__main__':
 
     bd = box_bd(n, DIM)
     A = lap_with_bc(n, DIM, bd=bd, bd_padding=bd_padding, dtype=np.float32)
-    print(A)
+    A_inv = sparse.linalg.inv(A)
+    plt.imshow(A_inv.toarray(), cmap='jet')
+    plt.colorbar()
+    plt.savefig("inv.png")
     # writeA_sparse(A, os.path.join(dir_path, "..", f"data_dcdm/{prefix}train_{DIM}D_{N}/A_{BC}.bin"), 'f')
 
     # B = readA_sparse(n, os.path.join(dir_path, f"../dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin"), DIM, 'f')
