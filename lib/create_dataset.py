@@ -55,6 +55,8 @@ def _lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
         it = min(max(j-1, 0), ortho_iters)
         for k in reversed(range(it)):
             w = w - V[k].dot(w) * V[k]
+    print(alpha)
+    print(beta)
     return V, alpha, beta
 
 def _test_lanczos_algorithm(A, num_ritz_vec, orthogonal):
@@ -79,7 +81,7 @@ def createRitzVec(A, rhs, num_ritz_vectors):
     # print(ritz_vals.shape, Q.shape)
     print("Calculating eigenvectors took", time.time() - start, 's')
     ritz_vectors = (W.T @ Q[:, :num_ritz_vectors]).T # m x n
-    return ritz_vals[:num_ritz_vectors], ritz_vectors
+    return ritz_vals, ritz_vectors
 
 def createRawData(ritz_vectors, sample_size, flags, outdir):
     if len(ritz_vectors) < sample_size: raise Exception("Given ritz vectors are less than sample size")
@@ -119,13 +121,13 @@ if __name__ == '__main__':
     DIM = 2
     dir = f"{DATA_PATH}/dambreak_N{N}_200"
     os.makedirs(dir, exist_ok=True)
-    num_ritz_vectors = 800
+    num_ritz_vectors = 400
     # start_frame = 10
     # end_frame = 11
     perm = np.random.permutation(range(1, 201)) #[:100]
     # np.save(f"{dir}/train_mat.npy", perm)
     # perm = [160]
-    perm = [25]
+    # perm = [25]
 
     for i in tqdm(perm):
         print('Matrix', i)

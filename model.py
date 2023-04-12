@@ -37,7 +37,6 @@ class InvModel(nn.Module):
             r += (A @ A_inv - I).norm()
 
 
-
 class BaseModel(nn.Module):
     def __init__(self):
         super(BaseModel, self).__init__()
@@ -57,13 +56,6 @@ class BaseModel(nn.Module):
         r = torch.zeros(1).to(x.device)
         for i in range(bs):
             r += 0.5 * x[i].dot(A @ x[i]) - x[i].dot(b[i])
-        return r / bs
-    # Inv Energy loss: positive decreasing
-    def inv_energy_loss(self, x, b, A):
-        bs = x.shape[0]
-        r = torch.zeros(1).to(x.device)
-        for i in range(bs):
-            r += -1/(0.5 * x[i].dot(A @ x[i]) - x[i].dot(b[i]))
         return r / bs
     # Scaled loss in 2-norm
     def scaled_loss_2(self, x, y, A): # bs x dim x dim (x dim)
@@ -88,37 +80,35 @@ class BaseModel(nn.Module):
 class SimpleModel(BaseModel):
     def __init__(self) -> None:
         super(SimpleModel, self).__init__()
-        self.init = nn.Conv2d(2, 8, kernel_size=3, padding='same')
-        self.top1 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
-        self.top2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
-        self.top3 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.init = nn.Conv2d(2, 12, kernel_size=3, padding='same')
+        self.top1 = nn.Conv2d(12, 12, kernel_size=3, padding='same')
+        self.top2 = nn.Conv2d(12, 12, kernel_size=3, padding='same')
+        self.top3 = nn.Conv2d(12, 12, kernel_size=3, padding='same')
 
-        self.down1 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
-        self.down2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
-        self.down3 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
 
-        self.ddown1 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
-        self.ddown2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
-        self.ddown3 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
+        self.down1 = nn.Conv2d(12, 12, kernel_size=3, padding='same')
+        self.down2 = nn.Conv2d(12, 12, kernel_size=3, padding='same')
+        self.down3 = nn.Conv2d(12, 12, kernel_size=3, padding='same')
 
-        self.dddown1 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
-        self.dddown2 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
-        self.dddown3 = nn.Conv2d(8, 8, kernel_size=3, padding='same')
 
-        self.flat  = nn.Conv2d(8, 8, kernel_size=1, padding='same')
-        self.last  = nn.Conv2d(8, 1, kernel_size=1, padding='same')
+        self.ddown1 = nn.Conv2d(12, 12, kernel_size=3, padding='same')
+        self.ddown2 = nn.Conv2d(12, 12, kernel_size=3, padding='same')
+        self.ddown3 = nn.Conv2d(12, 12, kernel_size=3, padding='same')
+
+
+        self.dddown1 = nn.Conv2d(12, 12, kernel_size=3, padding='same')
+        self.dddown2 = nn.Conv2d(12, 12, kernel_size=3, padding='same')
+        self.dddown3 = nn.Conv2d(12, 12, kernel_size=3, padding='same')
+
+
+        self.flat  = nn.Conv2d(12, 12, kernel_size=1, padding='same')
+        self.last  = nn.Conv2d(12, 1, kernel_size=1, padding='same')
         self.downsample = nn.AvgPool2d(2)
         self.upsample = nn.Upsample(scale_factor=2)
-        # self.sm = nn.Conv2d(1, 1, kernel_size=3, padding='same')
-        self.sm = nn.AvgPool2d(3, stride=1, padding=1)
-        # self.bn = nn.BatchNorm2d(8)
+
     def forward(self, x):
         # x = F.normalize(x, dim=0)
-        # vec = x[:, 0:1]
-        # geo = x[:, 1:]
-        # geo = self.sm(geo)
         # x = torch.stack([vec.squeeze(dim=1), geo.squeeze(dim=1)], dim=1)
-        # x[:, 1:] = self.sm(x[:, 1:])
         x = F.relu(self.init(x))
         x1 = self.downsample(x)
         x2 = self.downsample(x1)
@@ -138,6 +128,11 @@ class SimpleModel(BaseModel):
         x1 = F.relu(self.down3(x1))
         x2 = F.relu(self.ddown3(x2))
         x3 = F.relu(self.dddown3(x3))
+
+        # x = F.relu(self.top4(x))
+        # x1 = F.relu(self.down4(x1))
+        # x2 = F.relu(self.ddown4(x2))
+        # x3 = F.relu(self.dddown4(x3))
 
         x = x + self.upsample(x1) + self.upsample(self.upsample(x2)) + self.upsample(self.upsample(self.upsample(x3)))
         x = F.relu(self.flat(x))
@@ -169,7 +164,7 @@ class FluidNet(BaseModel):
         self.down23 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
         self.downsample = nn.AvgPool2d(2)
         self.upsample = nn.Upsample(scale_factor=2)
-        # print('num of upsample', self.num_upsamples)
+
     def forward(self, x_in):
         # Input: x = [bs, 2, Nx, Ny]
         # Normalization might improve invariance of scaling for the network because y = Ax <=> sy = A(sx)
@@ -178,8 +173,6 @@ class FluidNet(BaseModel):
         # std = torch.std(x[:, 0:1], dim=(2, 3), keepdim=True)
         # scale = torch.clamp(std, self.normalizeInputThreshold, inf)
         # x[:, 0:1] /= scale
-        # for _ in range(self.num_upsamples):
-        #     x = self.upsample(x)
         x = F.relu(self.conv1(x))
         x1 = self.downsample(x)
         x2 = self.downsample(x1)
@@ -206,39 +199,39 @@ class FluidNet(BaseModel):
         return x
 
 class NewModel(FluidNet): # Made downsampling and upsampling learnable
-    def __init__(self, train_dim, test_dim):
-        super(NewModel, self).__init__(train_dim, test_dim)
+    def __init__(self):
+        super(NewModel, self).__init__()
         self.downsample = nn.Conv2d(16, 16, kernel_size=3, padding=1)
         self.upsample = nn.ConvTranspose2d(16, 16, kernel_size=3, padding=1)
 
-class NewModel1(FluidNet): # increase num of channels as we downsample
-    def __init__(self, train_dim, test_dim):
-        super(NewModel1, self).__init__(train_dim, test_dim)
-        ks = 3 * int(test_dim/train_dim)
-        self.conv1 = nn.Conv2d(2, 8, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.conv2 = nn.Conv2d(8, 8, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.conv3 = nn.Conv2d(8, 8, kernel_size=ks, padding='same', padding_mode='zeros')
+class NewModel1(BaseModel): # increase num of channels as we downsample
+    def __init__(self, ks=3):
+        super(NewModel1, self).__init__()
+        self.conv1 = nn.Conv2d(2, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.conv2 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.conv3 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
 
-        self.conv4 = nn.Conv2d(8, 8, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.conv5 = nn.Conv2d(8, 8, kernel_size=1, padding='same', padding_mode='zeros')
-        self.conv6 = nn.Conv2d(8, 1, kernel_size=1, padding='same', padding_mode='zeros')
+        self.conv4 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.conv5 = nn.Conv2d(16, 16, kernel_size=1, padding='same', padding_mode='zeros')
+        self.conv6 = nn.Conv2d(16, 1, kernel_size=1, padding='same', padding_mode='zeros')
 
         self.down11 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
         self.down12 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
         self.down13 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
 
-        self.down21 = nn.Conv2d(32, 32, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.down22 = nn.Conv2d(32, 32, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.down23 = nn.Conv2d(32, 32, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.downsample1 = nn.Conv2d(8, 16, kernel_size=3, padding=1)
-        self.downsample2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
-        self.upsample1 = nn.ConvTranspose2d(16, 8, kernel_size=3, padding=1)
-        self.upsample2 = nn.ConvTranspose2d(32, 16, kernel_size=3, padding=1)
+        self.down21 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.down22 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.down23 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+
+        self.downsample1 = nn.Conv2d(16, 16, kernel_size=2, stride=2)
+        self.downsample2 = nn.Conv2d(16, 16, kernel_size=2, stride=2)
+        self.upsample1 = nn.ConvTranspose2d(16, 16, kernel_size=2, stride=2)
+        self.upsample2 = nn.ConvTranspose2d(16, 16, kernel_size=2, stride=2)
     def forward(self, x_in):
         x = x_in.clone()
-        std = torch.std(x[:, 0:1], dim=(2, 3), keepdim=True)
-        scale = torch.clamp(std, self.normalizeInputThreshold, inf)
-        x[:, 0:1] /= scale
+        # std = torch.std(x[:, 0:1], dim=(2, 3), keepdim=True)
+        # scale = torch.clamp(std, self.normalizeInputThreshold, inf)
+        # x[:, 0:1] /= scale
 
         x = F.relu(self.conv1(x))
         x1 = self.downsample1(x)
@@ -259,16 +252,10 @@ class NewModel1(FluidNet): # increase num of channels as we downsample
 
         x = F.relu(self.conv5(x))
         x = self.conv6(x)
-        x = x * scale
+        # x = x * scale
         x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0)
         return x
-class NewModel2(NewModel1): # increase num of channels as we downsample
-    def __init__(self, train_dim, test_dim):
-        super(NewModel2, self).__init__(train_dim, test_dim)
-        self.downsample1 = nn.Conv2d(8, 16, kernel_size=5, padding=2)
-        self.downsample2 = nn.Conv2d(16, 32, kernel_size=5, padding=2)
-        self.upsample1 = nn.ConvTranspose2d(16, 8, kernel_size=5, padding=2)
-        self.upsample2 = nn.ConvTranspose2d(32, 16, kernel_size=5, padding=2)
+
 class DCDM(nn.Module):
     def __init__(self, DIM):
         super(DCDM, self).__init__()
@@ -331,27 +318,62 @@ class DCDM(nn.Module):
         self.device = device
         self.to(device)
 
+# SteadyFlowNet https://dl.acm.org/doi/pdf/10.1145/2939672.2939738
+class SteadyFlowNet(BaseModel):
+    def __init__(self):
+        super(SteadyFlowNet, self).__init__()
+        self.conv1 = nn.Conv2d(2, 64, kernel_size=8, stride=8) # 2 x 256 x 256 -> 64 x 32 x 32
+        self.conv2 = nn.Conv2d(64, 256, kernel_size=4, stride=4) # 64 x 32 x 32 -> 256 x 8 x 8
+        self.conv3 = nn.Conv2d(256, 256, kernel_size=8, stride=8) # 256 x 8 x 8 -> 256 x 1 x 1
+        self.dcon1 = nn.ConvTranspose2d(256, 256, kernel_size=8, stride=8) # 256 x 1 x 1 -> 256 x 8 x 8
+        self.dcon2 = nn.ConvTranspose2d(256, 128, kernel_size=8, stride=8) # 256 x 8 x 8 -> 128 x 64 x 64
+        self.dcon3 = nn.ConvTranspose2d(128, 16, kernel_size=2, stride=2) # 128 x 64 x 64 -> 16 x 128 x 128
+        self.dcon4 = nn.ConvTranspose2d(16, 1, kernel_size=2, stride=2) # 16 x 128 x 128 -> 1 x 256 x 256
+    def forward(self, x_in):
+        x = x_in.clone()
+        x = self.conv1(x)
+        x = F.relu(x)
+        x = self.conv2(x)
+        x = F.relu(x)
+        x = self.conv3(x)
+        x = F.relu(x)
+        # x = x.flatten(1)
+        x = self.dcon1(x)
+        x = F.relu(x)
+        x = self.dcon2(x)
+        x = F.relu(x)
+        x = self.dcon3(x)
+        x = F.relu(x)
+        x = self.dcon4(x)
+        x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0)
+        return x
 if __name__ == '__main__':
     import os, sys
     path = os.path.dirname(os.path.realpath(__file__))
     sys.path.append(path + "/lib")
-    from lib.read_data import read_flags, load_vector
+    from lib.read_data import *
     import matplotlib.pyplot as plt
 
+    N = 256
     frame = 100
     # file_A = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"A_{frame}.bin")
-    file_rhs = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"div_v_star_{frame}.bin")
-    file_sol = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"pressure_{frame}.bin")
-    file_flags = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"flags_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"flags_{frame}.bin")
     # A = readA_sparse(64, file_A, DIM=2)
-    rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32).reshape(1, 64, 64)
-    flags = torch.tensor(read_flags(file_flags), dtype=torch.float32).reshape(1, 64, 64)
-    sol = torch.tensor(load_vector(file_sol), dtype=torch.float32).reshape(64, 64)
+    rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32)
+    flags = torch.tensor(read_flags(file_flags), dtype=torch.float32)
+    sol = torch.tensor(load_vector(file_sol), dtype=torch.float32)
 
-    model = FluidNet()
+    x = torch.stack([rhs, flags]).reshape(1, 2, N, N)
+
+    # model = FluidNet(ks=3)
     # model = DCDM(2)
+    model = NewModel1()
     model.eval()
     torch.set_grad_enabled(False) # disable autograd globally
     model.to(torch.device("cuda"))
 
-    summary(model, (2, 64, 64))
+    summary(model, (2, 256, 256))
+    # y = model(x)
+    # print(y.shape)
