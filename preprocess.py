@@ -11,9 +11,11 @@ N = 256
 data_folder = os.path.join(DATA_PATH, f"dambreak_N{N}_200")
 
 # matrices = np.load(f"{data_folder}/train_mat.npy")
-matrices = [25]
-num_rhs = 800
-num_ritz_vectors = 800
+# matrices = [25]
+matrices = range(1, 201)
+matrices = [25, 100]
+num_rhs = 400
+num_ritz_vectors = 400
 
 def createTrainingData(ritz_vectors, sample_size, fluid_cells, outdir):
     # small_matmul_size = 100 # Small mat size for temp data
@@ -30,7 +32,7 @@ def createTrainingData(ritz_vectors, sample_size, fluid_cells, outdir):
     # t0=time.time()
     for it in range(for_outside):
         coef_matrix[:] = np.random.normal(0, 1, [len(ritz_vectors), sample_size])
-        coef_matrix[0:cut_idx] *= 9
+        # coef_matrix[0:cut_idx] *= 9
         b_rhs_temp[:] = coef_matrix.T @ ritz_vectors
         l_b = small_matmul_size * it
         r_b = small_matmul_size * (it+1)
@@ -48,6 +50,7 @@ def worker(indices):
 
     for index in indices:
         rhs = load_vector(os.path.join(data_folder, f"div_v_star_{index}.bin"))
+        sol = load_vector(os.path.join(data_folder, f"pressure_{index}.bin"))
         flags = read_flags(os.path.join(data_folder, f"flags_{index}.bin"))
         fluid_cells = np.where(flags == 2)[0]
 
@@ -70,6 +73,9 @@ def worker(indices):
 
         rhs = torch.tensor(rhs, dtype=torch.float32)
         torch.save(rhs, os.path.join(out_folder, f"rhs.pt"))
+
+        sol = torch.tensor(sol, dtype=torch.float32)
+        torch.save(sol, os.path.join(out_folder, f"sol.pt"))
 
         # ppc = torch.tensor(ppc, dtype=torch.float32)
         # ppc[ppc < 3] = 0

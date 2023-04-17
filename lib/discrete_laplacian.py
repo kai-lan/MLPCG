@@ -8,6 +8,8 @@ Part of the code was modified from 2022 Fall MAT 228A HW.
 '''
 import numpy as np
 from scipy import sparse
+from numba import njit
+import time
 ###############################################################################
 #
 # form the (scaled by dx*dx) 1D Laplacian for Dirichlet boundary conditions on a
@@ -19,7 +21,7 @@ from scipy import sparse
 #
 def lap1d(n, dtype=np.float32):
     v  = np.ones(n, dtype=dtype)
-    L1 = sparse.spdiags([v,-2*v,v],[-1,0,1],n,n)
+    L1 = sparse.spdiags([-v,2*v,-v],[-1,0,1],n,n)
     return L1
 
 ###############################################################################
@@ -80,6 +82,7 @@ def flatten_inds(inds, n, bd_padding=True):
             return (inds[:, 0] - 1) * (n - 2) + (inds[:, 1] - 1)
         return (inds[:, 0] - 1) * (n - 2)**2 + (inds[:, 1] - 1) * (n - 2) + (inds[:, 2] - 1)
 
+
 def neighbors(ind, n):
     nb = []
     dim = len(ind)
@@ -92,7 +95,7 @@ def neighbors(ind, n):
         if ind[1] + 1 < n: nb.append([ind[0], ind[1]+1, ind[-1]])
     return nb
 
-def lap_with_bc(n, dim, solid=[], air=[], bd=[], spd=True, bd_padding=True, dtype=np.float32):
+def lap_with_bc(n, dim, solid=[], air=[], bd=[], bd_padding=True, dtype=np.float32):
     """Generate pressure Laplacian matrix with specified BC
     Args:
         n (int): Number of grids in each dimension.
@@ -105,14 +108,15 @@ def lap_with_bc(n, dim, solid=[], air=[], bd=[], spd=True, bd_padding=True, dtyp
     """
     m = n if bd_padding else n-2
     if dim == 2:
-        A = lap2d(m, m, dtype=dtype).tolil()
+        A = lap2d(m, m, dtype=dtype)
     else:
         A = lap3d(m, m, m, dtype=dtype).tolil()
+    A = A.tolil()
     if len(bd) > 0:
         bd_neighbor_cells = []
         for ind in bd: bd_neighbor_cells.extend(neighbors(ind, n))
         bd_neighbors_inds = flatten_inds(bd_neighbor_cells, n, bd_padding)
-        for i in bd_neighbors_inds: A[i, i] += 1
+        for i in bd_neighbors_inds: A[i, i] -= 1
         if bd_padding:
             bd_inds = flatten_inds(bd, n)
             A[bd_inds] = 0
@@ -121,7 +125,7 @@ def lap_with_bc(n, dim, solid=[], air=[], bd=[], spd=True, bd_padding=True, dtyp
         solid_neighbor_cells = []
         for ind in solid: solid_neighbor_cells.extend(neighbors(ind, n))
         solid_neighbors_inds = flatten_inds(solid_neighbor_cells, n)
-        for i in solid_neighbors_inds: A[i, i] += 1
+        for i in solid_neighbors_inds: A[i, i] -= 1
         solid_inds = flatten_inds(solid, n)
         A[solid_inds] = 0
         A[:, solid_inds] = 0
@@ -129,7 +133,6 @@ def lap_with_bc(n, dim, solid=[], air=[], bd=[], spd=True, bd_padding=True, dtyp
         air_inds = flatten_inds(air, n)
         A[air_inds] = 0
         A[:, air_inds] = 0
-    if spd: A *= -1
     return A.tocsr()
 
 def box_bd(n, DIM):
@@ -150,7 +153,8 @@ if __name__ == '__main__':
     dir_path = os.path.dirname(os.path.realpath(__file__))
     from write_data import writeA_sparse
     from read_data import readA_sparse
-    N = 64
+    from benchmark import MyTimer
+    N = 128
     DIM = 2
     BC = 'empty'
     bd_padding = False
@@ -158,11 +162,17 @@ if __name__ == '__main__':
     n = N if bd_padding else N+2
 
     bd = box_bd(n, DIM)
+    timer = MyTimer(['flatten_inds', 'lap2d', 'neighbors'])
     A = lap_with_bc(n, DIM, bd=bd, bd_padding=bd_padding, dtype=np.float32)
-    A_inv = sparse.linalg.inv(A)
-    plt.imshow(A_inv.toarray(), cmap='jet')
-    plt.colorbar()
-    plt.savefig("inv.png")
+    print(timer.counter)
+    print(timer.total_time)
+    # end = time.perf_counter()
+    # print('Total', end-start, 's')
+
+    # A_inv = sparse.linalg.inv(A)
+    # plt.imshow(A_inv.toarray(), cmap='jet')
+    # plt.colorbar()
+    # plt.savefig("inv.png")
     # writeA_sparse(A, os.path.join(dir_path, "..", f"data_dcdm/{prefix}train_{DIM}D_{N}/A_{BC}.bin"), 'f')
 
     # B = readA_sparse(n, os.path.join(dir_path, f"../dataset_mlpcg/train_{n}_{DIM}D/A_{BC}.bin"), DIM, 'f')

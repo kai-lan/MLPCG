@@ -99,16 +99,16 @@ def visualize_frame_by_frame(num_frames):
         time.sleep(0.1)
 
 if __name__ == '__main__':
-    N = 64
+    N = 256
     DIM = 2
     example_folder = os.path.join(DATA_PATH, f"dambreak_N{N}_200")
 
 
-    frame=54
-    # vis_flags(frame)
+    frame=100
+    vis_flags(frame)
     # levelset = vis_levelset(frame, True)
     # print(levelset)
-    vis_ppc(frame)
+    # vis_ppc(frame)
     # plot_loss(f"{OUT_PATH}/output_{DIM}D_64", "dambreak_M100_ritz100_rhs200_res_binary")
     # rhs = vis_div_v(frame, masked=False)
     # sol = vis_pressure(frame, masked=False)

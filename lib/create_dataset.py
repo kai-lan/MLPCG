@@ -55,8 +55,6 @@ def _lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
         it = min(max(j-1, 0), ortho_iters)
         for k in reversed(range(it)):
             w = w - V[k].dot(w) * V[k]
-    print(alpha)
-    print(beta)
     return V, alpha, beta
 
 def _test_lanczos_algorithm(A, num_ritz_vec, orthogonal):
@@ -127,7 +125,7 @@ if __name__ == '__main__':
     perm = np.random.permutation(range(1, 201)) #[:100]
     # np.save(f"{dir}/train_mat.npy", perm)
     # perm = [160]
-    # perm = [25]
+    perm = [25, 100]
 
     for i in tqdm(perm):
         print('Matrix', i)
