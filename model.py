@@ -6,6 +6,7 @@ Author: Kai Lan (kai.weixian.lan@gmail.com)
 --------------
 '''
 from math import inf, log2
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -143,60 +144,46 @@ class FluidNet(BaseModel):
     # For now, only 2D model. Add 2D/3D option. Only known from data!
     # Also, build model with MSE of pressure as loss func, therefore input is velocity
     # and output is pressure, to be compared to target pressure.
-    def __init__(self, ks=3):
+    def __init__(self, ks=3, depth=2, length=3):
         super(FluidNet, self).__init__()
-        # self.num_upsamples = log2()
-        self.normalizeInputThreshold=0.00001
-        self.conv1 = nn.Conv2d(2, 16, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.conv2 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.conv3 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.ks = ks
+        self.depth = depth
+        self.length = length
+        self.flat_ind = lambda i, j: i * length + j
+        self.init = nn.Conv2d(2, 12, kernel_size=ks, padding='same', padding_mode='zeros')
 
-        self.conv4 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.conv5 = nn.Conv2d(16, 16, kernel_size=1, padding='same', padding_mode='zeros')
-        self.conv6 = nn.Conv2d(16, 1, kernel_size=1, padding='same', padding_mode='zeros')
+        self.conv = nn.ModuleList()
+        for i in range(depth+1):
+            for j in range(length):
+                self.conv.append(nn.Conv2d(12, 12, kernel_size=ks, padding='same', padding_mode='zeros'))
 
-        self.down11 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.down12 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.down13 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.conv5 = nn.Conv2d(12, 12, kernel_size=1, padding='same', padding_mode='zeros')
+        self.conv6 = nn.Conv2d(12, 1, kernel_size=1, padding='same', padding_mode='zeros')
 
-        self.down21 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.down22 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
-        self.down23 = nn.Conv2d(16, 16, kernel_size=ks, padding='same', padding_mode='zeros')
         self.downsample = nn.AvgPool2d(2)
         self.upsample = nn.Upsample(scale_factor=2)
 
     def forward(self, x_in):
         # Input: x = [bs, 2, Nx, Ny]
-        # Normalization might improve invariance of scaling for the network because y = Ax <=> sy = A(sx)
-        # Also spead out values to both positive and negative, otherwise relu zero out all negative values
-        x = x_in.clone() # Do not modify x
-        # std = torch.std(x[:, 0:1], dim=(2, 3), keepdim=True)
-        # scale = torch.clamp(std, self.normalizeInputThreshold, inf)
-        # x[:, 0:1] /= scale
-        x = F.relu(self.conv1(x))
-        x1 = self.downsample(x)
-        x2 = self.downsample(x1)
+        x = [x_in.clone()]
+        x[0] = F.relu(self.init(x[0]))
+        for i in range(1, self.depth+1):
+            x.append(self.downsample(x[-1]))
 
-        x = F.relu(self.conv2(x))
-        x1 = F.relu(self.down11(x1))
-        x2 = F.relu(self.down21(x2))
+        for j in range(self.length):
+            for i in range(self.depth+1):
+                x[i] = F.relu(self.conv[self.flat_ind(i,j)](x[i]))
 
-        x = F.relu(self.conv3(x))
-        x1 = F.relu(self.down12(x1))
-        x2 = F.relu(self.down22(x2))
+        for i in reversed(range(1, self.depth+1)):
+            x[i-1] = x[i-1] + self.upsample(x[i])
 
-        x = F.relu(self.conv4(x))
-        x1 = F.relu(self.down13(x1))
-        x2 = F.relu(self.down23(x2))
-        x = x + self.upsample(x1 + self.upsample(x2))
-
-        x = F.relu(self.conv5(x))
-        x = self.conv6(x)
+        x[0] = F.relu(self.conv5(x[0]))
+        x[0] = self.conv6(x[0])
 
         # x = x * scale # In-place operation like x *= 2 or x[:]= ... is not allowed for x that requires auto grad
         ## zero out entries in null space (non-fluid)
-        x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0) # 2 is fluid cell
-        return x
+        x[0].masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0) # 2 is fluid cell
+        return x[0]
 
 class NewModel(FluidNet): # Made downsampling and upsampling learnable
     def __init__(self):
