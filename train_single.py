@@ -10,91 +10,71 @@ from tqdm import tqdm
 from model import *
 from train import train_, saveData
 from lib.read_data import *
-from lib.dataset import MyDataset
+from lib.dataset import *
 from lib.write_log import LoggingWriter
 import time, timeit
 dir_path = os.path.realpath(__file__)
 sys.path.insert(1, os.path.join(dir_path, 'lib'))
 
 
-def train(outdir, suffix, lr, epoch_num, bs, train_set, test_set):
-    train_loader = DataLoader(train_set, batch_size=bs, shuffle=True)
-    test_loader = DataLoader(test_set, batch_size=bs, shuffle=False)
-
-    model = FluidNet()
-    model.move_to(cuda)
-    loss_fn = model.inv_energy_loss
-    # loss_fn = model.residual_loss
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-
-    training_loss, validation_loss, time_history = train_(epoch_num, train_loader, test_loader, model, optimizer, loss_fn)
-
-    os.makedirs(outdir, exist_ok=True)
-
-    np.save(os.path.join(outdir, f"training_loss_{suffix}.npy"), training_loss)
-    np.save(os.path.join(outdir, f"validation_loss_{suffix}.npy"), validation_loss)
-    np.save(os.path.join(outdir, f"time_{suffix}.npy"), time_history)
-    torch.save(model.state_dict(), os.path.join(outdir, f"model_{suffix}.pth"))
-    return training_loss, validation_loss, time_history
-class RitzDataset(Dataset):
-    def __init__(self, data, flags, perm, shape):
-        self.data = data
-        self.flags = flags
-        self.perm = perm
-        self.shape = shape
-        self.fluidcells = torch.where(flags == 2)[0]
-    def __getitem__(self, index):
-        index = self.perm[index]
-        b = torch.zeros(N**DIM, dtype=torch.float32)
-        b[self.fluidcells] = torch.from_numpy(self.data[index])
-        x = torch.stack([
-            b,
-            self.flags
-        ]).reshape(self.shape)
-        return x
-    def __len__(self):
-        return len(self.perm)
-
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import warnings
     warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
     torch.set_default_dtype(torch.float32)
-    N = 128
+    # Make training reproducible
+    np.random.seed(0)
+    torch.manual_seed(0)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    N = 256
+    # scale = 1
     DIM = 2
     dim2 = N**DIM
     lr = 0.001
-    epoch_num = 100
+    epoch_num = 200
     cuda = torch.device("cuda") # Use CUDA for training
 
     image_type = 'flags'
-    frame = 100 # 100, 25, 10
-    num_ritz = 200
-    num_rhs = 200
+    frame = 10
+    # num_ritz = 200
+    num_rhs = 400
     b_size = 20
     denoised = False
 
-    data_path = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"preprocessed/{frame}")
+    data_path = f"{DATA_PATH}/dambreak_N{N}_200/preprocessed/{frame}"
+    # data_path = f"{DATA_PATH}/dambreak_single/{N}_{N*scale}/{frame}"
+    outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
+    os.makedirs(outdir, exist_ok=True)
+    suffix = f"frame_{frame}_{image_type}"
+
     A = torch.load(f"{data_path}/A.pt")
-    rhs = torch.tensor(torch.load(f"{data_path}/rhs.pt"))
-    # rhs = torch.tensor(torch.load(f"{data_path}/rhs_denoised.pt"))
     image = torch.tensor(torch.load(f"{data_path}/{image_type}.pt"))
     fluids = torch.argwhere(image == 2)
     if denoised:
         image_denoised = torch.tensor(torch.load(f"{data_path}/{image_type}_denoised.pt"))
         fluids_denoised = torch.argwhere(image_denoised == 2)
 
-    A = A.to(cuda)
+    assert A.layout == torch.sparse_coo, "A is not COO"
+    model = FluidNet()
 
-    model = FluidNet(ks=3)
+
     # model = NewModel1()
+
+    # pre_trained_path = f"{OUT_PATH}/output_single_{DIM}D_{N}"
+    # checkpt = torch.load(f"{pre_trained_path}/checkpt_frame_{frame}_flags.tar")
+    # model.load_state_dict(checkpt['model_state_dict'])
     model.move_to(cuda)
+
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    # optimizer = optim.SGD(model.parameters(), lr=lr)
+    # optimizer.load_state_dict(checkpt['optimizer_state_dict'])
     loss_fn = model.residual_loss
     # loss_fn = model.energy_loss
     # loss_fn = model.scaled_loss_2
     # loss_fn = model.scaled_loss_A
 
-    optimizer = optim.Adam(model.parameters(), lr=lr)
 
     train_size = round(0.8 * num_rhs)
     perm = np.random.permutation(num_rhs)
@@ -107,12 +87,9 @@ if __name__ == '__main__':
     # data = np.memmap(f"{data_path}/ritz_{num_ritz}.dat", dtype=np.float32, mode='r').reshape(num_ritz, len(torch.argwhere(image==2)))
     # train_set = RitzDataset(data, image, perm[:train_size], (2,)+(N,)*DIM)
     # valid_set = RitzDataset(data, image, perm[train_size:], (2,)+(N,)*DIM)
-    train_loader = DataLoader(train_set, batch_size=b_size, shuffle=True)
+    train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
 
-    outdir = os.path.join(OUT_PATH, f"output_single_{DIM}D_{N}")
-    os.makedirs(outdir, exist_ok=True)
-    suffix = f"frame_{frame}_{image_type}"
 
     for_train = True
     for_test = True
@@ -120,16 +97,25 @@ if __name__ == '__main__':
     if for_train:
         training_loss, validation_loss, time_history = train_(A, epoch_num, train_loader, valid_loader, model, optimizer, loss_fn)
         saveData(model, optimizer, epoch_num, None, outdir, suffix, training_loss, validation_loss, time_history)
-        fig, axes = plt.subplots(2)
-        axes[0].plot(training_loss, label='training')
-        axes[1].plot(validation_loss, label='validation')
-        plt.savefig("loss.png", bbox_inches='tight')
+
+        # fig, axes = plt.subplots(2)
+        # axes[0].plot(training_loss, label='training')
+        # axes[1].plot(validation_loss, label='validation')
+        plt.clf()
+        plt.plot(training_loss)
+        plt.savefig("loss.png")
     if for_test:
         checkpt = torch.load(f"{outdir}/checkpt_{suffix}.tar")
+        print(outdir)
         model.load_state_dict(checkpt['model_state_dict'])
         optimizer.load_state_dict(checkpt['optimizer_state_dict'])
         model.eval()
+        rhs = torch.tensor(torch.load(f"{data_path}/rhs.pt"))
+        # rhs = torch.tensor(torch.load(f"{data_path}/rhs_denoised.pt"))
+        image = torch.tensor(torch.load(f"{data_path}/{image_type}.pt"))
         image = image.to(cuda)
+        A = torch.load(f"{data_path}/A.pt")
+        A = A.to(cuda)
         if denoised: image_denoised = image_denoised.to(cuda)
         rhs = rhs.to(cuda)
 

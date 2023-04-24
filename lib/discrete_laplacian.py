@@ -95,7 +95,7 @@ def neighbors(ind, n):
         if ind[1] + 1 < n: nb.append([ind[0], ind[1]+1, ind[-1]])
     return nb
 
-def lap_with_bc(n, dim, solid=[], air=[], bd=[], bd_padding=True, dtype=np.float32):
+def lap_with_bc(n, dim, solid=[], air=[], bd=[], bd_padding=False, dtype=np.float32):
     """Generate pressure Laplacian matrix with specified BC
     Args:
         n (int): Number of grids in each dimension.
@@ -147,6 +147,14 @@ def box_bd(n, DIM):
     bd = list(set(bd))
     return bd
 
+def multiInd(ind, stride):
+    return ind // stride, ind % stride
+
+def poisson_lap(N, air_cells):
+    n = N + 2
+    A = sparse.lil_matrix((N, N))
+
+
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import sys, os
@@ -162,10 +170,14 @@ if __name__ == '__main__':
     n = N if bd_padding else N+2
 
     bd = box_bd(n, DIM)
-    timer = MyTimer(['flatten_inds', 'lap2d', 'neighbors'])
-    A = lap_with_bc(n, DIM, bd=bd, bd_padding=bd_padding, dtype=np.float32)
-    print(timer.counter)
-    print(timer.total_time)
+    # timer = MyTimer(['flatten_inds', 'lap2d', 'neighbors'])
+
+    i, j = multiInd(5, 3)
+    print(i, j)
+    # A = poisson_lap(n, DIM, bd=bd, bd_padding=bd_padding, dtype=np.float32)
+    # A = lap_with_bc(n, DIM, bd=bd, bd_padding=bd_padding, dtype=np.float32)
+    # print(timer.counter)
+    # print(timer.total_time)
     # end = time.perf_counter()
     # print('Total', end-start, 's')
 

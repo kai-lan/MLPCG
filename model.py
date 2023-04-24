@@ -149,41 +149,60 @@ class FluidNet(BaseModel):
         self.ks = ks
         self.depth = depth
         self.length = length
-        self.flat_ind = lambda i, j: i * length + j
-        self.init = nn.Conv2d(2, 12, kernel_size=ks, padding='same', padding_mode='zeros')
+        self.flat_ind = lambda i, j: i * (length+1) + j
+        nc = 16
 
-        self.conv = nn.ModuleList()
-        for i in range(depth+1):
-            for j in range(length):
-                self.conv.append(nn.Conv2d(12, 12, kernel_size=ks, padding='same', padding_mode='zeros'))
+        self.init = nn.Conv2d(2, nc, kernel_size=ks, padding='same')
 
-        self.conv5 = nn.Conv2d(12, 12, kernel_size=1, padding='same', padding_mode='zeros')
-        self.conv6 = nn.Conv2d(12, 1, kernel_size=1, padding='same', padding_mode='zeros')
+        self.conv01 = nn.Conv2d(nc, nc, kernel_size=ks, padding='same')
+        self.conv02 = nn.Conv2d(nc, nc, kernel_size=1, padding='same')
 
+        self.conv11 = nn.Conv2d(nc, nc, kernel_size=ks, padding='same')
+        self.conv12 = nn.Conv2d(nc, nc, kernel_size=1, padding='same')
+
+        self.conv21 = nn.Conv2d(nc, nc, kernel_size=ks, padding='same')
+        self.conv22 = nn.Conv2d(nc, nc, kernel_size=1, padding='same')
+
+        self.conv5 = nn.Conv2d(nc, nc, kernel_size=1, padding='same')
+        self.conv6 = nn.Conv2d(nc, 1, kernel_size=1, padding='same')
+
+        # self.downsample = nn.Conv2d(16, 16, kernel_size=2, stride=2)
+        # self.upsample = nn.ConvTranspose2d(16, 16, kernel_size=2, stride=2)
         self.downsample = nn.AvgPool2d(2)
         self.upsample = nn.Upsample(scale_factor=2)
 
     def forward(self, x_in):
         # Input: x = [bs, 2, Nx, Ny]
-        x = [x_in.clone()]
-        x[0] = F.relu(self.init(x[0]))
-        for i in range(1, self.depth+1):
-            x.append(self.downsample(x[-1]))
+        x = x_in.clone()
+        # std = torch.std(x[:, 0:1], dim=(2, 3), keepdim=True)
+        # scale = torch.clamp(std, 0.00001, inf)
+        # x[:, 0:1] /= scale
 
-        for j in range(self.length):
-            for i in range(self.depth+1):
-                x[i] = F.relu(self.conv[self.flat_ind(i,j)](x[i]))
+        x = F.relu(self.init(x))
 
-        for i in reversed(range(1, self.depth+1)):
-            x[i-1] = x[i-1] + self.upsample(x[i])
+        x1 = self.downsample(x)
+        x2 = self.downsample(x1)
 
-        x[0] = F.relu(self.conv5(x[0]))
-        x[0] = self.conv6(x[0])
+        x = F.relu(self.conv01(x))
+        x1 = F.relu(self.conv11(x1))
+        x2 = F.relu(self.conv21(x2))
 
+
+
+        x1 = self.upsample(x1)
+        x2 = self.upsample(self.upsample(x2))
+
+        x = F.relu(self.conv02(x))
+        x1 = F.relu(self.conv12(x1))
+        x2 = F.relu(self.conv22(x2))
+
+        x = x + x1 + x2
+
+        x = self.conv6(x)
         # x = x * scale # In-place operation like x *= 2 or x[:]= ... is not allowed for x that requires auto grad
         ## zero out entries in null space (non-fluid)
-        x[0].masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0) # 2 is fluid cell
-        return x[0]
+        x.masked_fill_(abs(x_in[:, 1:] - 2) > 1e-12, 0) # 2 is fluid cell
+        return x
 
 class NewModel(FluidNet): # Made downsampling and upsampling learnable
     def __init__(self):
@@ -354,9 +373,9 @@ if __name__ == '__main__':
 
     x = torch.stack([rhs, flags]).reshape(1, 2, N, N)
 
-    # model = FluidNet(ks=3)
+    model = FluidNet()
     # model = DCDM(2)
-    model = NewModel1()
+    # model = NewModel1()
     model.eval()
     torch.set_grad_enabled(False) # disable autograd globally
     model.to(torch.device("cuda"))

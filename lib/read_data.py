@@ -115,7 +115,7 @@ void Serialize(SparseMatrix<T, OptionsBitFlag, Index>& m, const std::string& fil
   }
 }
 """
-def readA_sparse(filenameA, dtype='d'):
+def readA_sparse(filenameA, dtype='d', sparse_type='coo'):
     '''
     dim: grid points in each dimenstion
     DIM: 2D or 3D
@@ -159,7 +159,12 @@ def readA_sparse(filenameA, dtype='d'):
     outerIdxPtr = outerIdxPtr + [nnz]
     for ii in range(num_rows):
         rows[outerIdxPtr[ii]:outerIdxPtr[ii+1]] = [ii]*(outerIdxPtr[ii+1] - outerIdxPtr[ii])
-    return sparse.csr_matrix((data, (rows, cols)),[num_rows, num_cols], dtype=dtype)
+    if sparse_type.lower() == 'csr':
+        return sparse.csr_matrix((data, (rows, cols)),[num_rows, num_cols], dtype=dtype)
+    elif sparse_type.lower() == 'coo':
+        return sparse.coo_matrix((data, (rows, cols)), [num_rows, num_cols], dtype=dtype)
+    else:
+        raise Exception("Sparse type only supports coo or csr")
 
 def compressedMat(A, flags):
     selection = np.where(flags.ravel() == 2)[0]
@@ -177,7 +182,7 @@ def expandVec(b, flags):
 if __name__ == '__main__':
     path = os.path.dirname(os.path.relpath(__file__))
     frame = 160
-    N = 256
+    N = 64
     prefix = ''
     bc = 'dambreak'
     file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200", f"A_{frame}.bin")
@@ -189,13 +194,12 @@ if __name__ == '__main__':
     sol = load_vector(file_sol)
 
     flags = read_flags(file_flags)
-    weight = compute_weight(file_flags, N, 2)
-    print(weight)
+    # weight = compute_weight(file_flags, N, 2)
+    # print(weight)
     # print(A.shape, rhs.shape, sol.shape, flags.shape)
     import torch
     x_gt = torch.tensor(sol)
     b = torch.tensor(rhs)
-    A = A.tocoo()
     A = torch.sparse_coo_tensor(np.array([A.row, A.col]), A.data, A.shape)
     r = b - A @ x_gt
     print(r.norm()/b.norm())

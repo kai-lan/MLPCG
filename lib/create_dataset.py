@@ -28,7 +28,7 @@ from tqdm import tqdm
 def lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
     return _lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=ortho_iters, cut_off_tol=cut_off_tol)
 # Given A n x n, return V, T with A = VTV^T
-def _lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
+def _lanczos_algorithm(A, init_v, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
     assert A.shape[0] == A.shape[1], "A is not square"
     n = A.shape[0]
     # m = min(num_ritz_vec+10, n)  # Generate 1.5 times number of ritz vectors of the desired
@@ -36,8 +36,7 @@ def _lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
     V = np.zeros((m, n)) # Store orthonormal vectors v0, v1, ... as row vectors (Numpy array is row-major, so accessing row is faster
     alpha = np.zeros(m) # Diagonal of T
     beta = np.zeros(m-1) # Super- and sub-diagonal of T
-    # V[0] = np.random.normal(0, 1, n)
-    V[0] = rhs / np.linalg.norm(rhs) # initialize wit rhs
+    V[0] = init_v / np.linalg.norm(init_v) # initialize wit rhs
     w = A @ V[0]
     alpha[0] = w.dot(V[0])
     w = w - alpha[0] * V[0]
@@ -90,64 +89,35 @@ def createRawData(ritz_vectors, sample_size, flags, outdir):
         with open(f"{outdir}/b_{i}.npz", 'wb') as f:
             sparse.save_npz(f, s)
 
-
-def createResVec(A, b, tol=1e-20, max_it=300, verbose=False, outdir=None):
-    x_init = np.zeros_like(b)
-    count = 0
-    norm_b = np.linalg.norm(b)
-    r = b - A @ x_init
-    np.save(f"{outdir}/b_res_{count}.npy", r.astype(np.float32))
-    norm_r = np.linalg.norm(r)
-    res_history = [norm_r/norm_b]
-    if verbose:
-        print(f"Iter {count}, residual {norm_r/norm_b}")
-    def callback(x):
-        nonlocal count
-        count += 1
-        r = b - A @ x
-        np.save(f"{outdir}/b_res_{count}.npy", r.astype(np.float32))
-        norm_r = np.linalg.norm(r)
-        res_history.append(norm_r/norm_b)
-        if verbose:
-            print(f"Iter {count}, residual {norm_r/norm_b}")
-    x, info = slin.cg(A, b, x0=x_init, tol=tol, maxiter=max_it, callback=callback)
-    return x, res_history
-
 if __name__ == '__main__':
     np.random.seed(2)
     N = 256
     DIM = 2
+
     dir = f"{DATA_PATH}/dambreak_N{N}_200"
     os.makedirs(dir, exist_ok=True)
-    num_ritz_vectors = 400
+    num_ritz_vectors = 800
     # start_frame = 10
     # end_frame = 11
-    perm = np.random.permutation(range(1, 201)) #[:100]
+    # perm = np.random.permutation(range(1, 201)) #[:100]
     # np.save(f"{dir}/train_mat.npy", perm)
-    # perm = [160]
-    perm = [25, 100]
+    perm = range(1, 201)
 
     for i in tqdm(perm):
         print('Matrix', i)
         out = f"{dir}/preprocessed/{i}"
         os.makedirs(out, exist_ok=True)
-        A = hf.readA_sparse(f"{dir}/A_{i}.bin", dtype='d')
+        A = hf.readA_sparse(f"{dir}/A_{i}.bin")
         flags = hf.read_flags(f"{dir}/flags_{i}.bin")
-        rhs = hf.load_vector(f"{dir}/div_v_star_{i}.bin", dtype='d')
-        sol = hf.load_vector(f"{dir}/pressure_{i}.bin", dtype='d')
+        rhs = hf.load_vector(f"{dir}/div_v_star_{i}.bin")
+        sol = hf.load_vector(f"{dir}/pressure_{i}.bin")
+
         A = hf.compressedMat(A, flags)
         rhs = hf.compressedVec(rhs, flags)
+        # rhs = np.random.rand(A.shape[0])
         ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors)
-        print(ritz_vals[:10])
-        fp = np.memmap(f"{out}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='w+', shape=ritz_vec.shape)
-        fp[:] = ritz_vec
-        fp.flush()
+        print(ritz_vals[:20])
+        np.save(f"{out}/ritz_{num_ritz_vectors}.npy", ritz_vec)
 
         # _test_lanczos_algorithm(A, num_ritz_vectors, or)
         # createResVec(A, rhs, verbose=True)
-
-    # import matplotlib.pyplot as plt
-    # plt.plot(Ds, label='ortho')
-    # plt.plot(Es, label='err')
-    # plt.legend()
-    # plt.savefig("lanczos.png")

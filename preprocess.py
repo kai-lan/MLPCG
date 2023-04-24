@@ -8,23 +8,23 @@ import time
 
 DIM = 2
 N = 256
-data_folder = os.path.join(DATA_PATH, f"dambreak_N{N}_200")
+# scale = 2
 
-# matrices = np.load(f"{data_folder}/train_mat.npy")
-# matrices = [25]
+
 matrices = range(1, 201)
-matrices = [25, 100]
-num_rhs = 400
-num_ritz_vectors = 400
+data_folder = f"{DATA_PATH}/dambreak_N{N}_200"
+# matrices = np.load(f"{data_folder}/train_mat.npy")
+num_ritz_vectors = 800
+num_rhs = num_ritz_vectors
 
-def createTrainingData(ritz_vectors, sample_size, fluid_cells, outdir):
+def createTrainingData(N, DIM, ritz_vectors, sample_size, fluid_cells, outdir):
     # small_matmul_size = 100 # Small mat size for temp data
     small_matmul_size = sample_size
-    theta = 200 # j < m/2 + theta low frequency spectrum
+    # theta = 200 # j < m/2 + theta low frequency spectrum
 
     for_outside = int(sample_size/small_matmul_size)
     b_rhs_temp = np.zeros([small_matmul_size, len(fluid_cells)])
-    cut_idx = int(num_ritz_vectors/2) + theta
+    # cut_idx = int(num_ritz_vectors/2) + theta
     sample_size = small_matmul_size
     coef_matrix = np.zeros([len(ritz_vectors), sample_size])
 
@@ -49,23 +49,17 @@ def worker(indices):
     print('Process id', os.getpid())
 
     for index in indices:
+        out_folder = f"{data_folder}/preprocessed/{index}"
         rhs = load_vector(os.path.join(data_folder, f"div_v_star_{index}.bin"))
         sol = load_vector(os.path.join(data_folder, f"pressure_{index}.bin"))
         flags = read_flags(os.path.join(data_folder, f"flags_{index}.bin"))
         fluid_cells = np.where(flags == 2)[0]
-
         # ppc = read_ppc(os.path.join(data_folder, f"active_cells_{index}.bin"), os.path.join(data_folder, f"ppc_{index}.bin"), N, DIM)
 
         # levelset = load_vector(os.path.join(data_folder, f"levelset_{index}.bin"))
 
-        # Stored the compressed matrix and vectors (with empty cells removed)
-        out_folder = os.path.join(data_folder, "preprocessed", str(index))
         A = readA_sparse(os.path.join(data_folder, f"A_{index}.bin"))
-
-        # Creating tensors from a list of np arrays is slow
-        # CSC and CSR do not support stacking for batching, but COO does
-        # A = torch.sparse_coo_tensor(np.array([A.row, A.col]), A.data, A.shape, dtype=torch.float32)
-        A = torch.sparse_csr_tensor(A.indptr, A.indices, A.data, A.shape, dtype=torch.float32)
+        A = torch.sparse_coo_tensor(np.array([A.row, A.col]), A.data, A.shape, dtype=torch.float32)
         torch.save(A, os.path.join(out_folder, f"A.pt"))
 
         flags = torch.tensor(flags, dtype=torch.float32)
@@ -84,20 +78,16 @@ def worker(indices):
         # levelset = torch.tensor(levelset, dtype=torch.float32)
         # torch.save(levelset, os.path.join(out_folder, f"levelset.pt"))
 
-        ritz_vec = np.memmap(f"{out_folder}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='r').reshape(num_ritz_vectors, len(fluid_cells))
-        createTrainingData(ritz_vec, num_rhs, fluid_cells, out_folder)
+        # ritz_vec = np.memmap(f"{out_folder}/ritz_{num_ritz_vectors}.dat", dtype=np.float32, mode='r').reshape(num_ritz_vectors, len(fluid_cells))
+        ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}.npy")
+        createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder)
 
-        # for i in range(num_rhs):
-        #     # b = sparse.load_npz(f"{out_folder}/b_{i}.npz").toarray().ravel()
-        #     b = torch.tensor(b[], dtype=torch.float32)
-        #     x = torch.stack([b, flags])
-        #     torch.save(x, os.path.join(out_folder, f"x_{i}.pt"))
 
 if __name__ == '__main__':
     t0 = time.time()
     # total_work = range(start, end)
     total_work = matrices
-    num_threads = 8
+    num_threads = 4
     chunks = np.array_split(total_work, num_threads)
     thread_list = []
     for thr in range(num_threads):

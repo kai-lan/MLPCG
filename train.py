@@ -13,42 +13,117 @@ from lib.write_log import LoggingWriter
 from lib.dataset import *
 from lib.GLOBAL_VARS import *
 from model import *
+import matplotlib.pyplot as plt
 
+def validation(train_loader, validation_loader, model, loss_fn, A):
+    tot_loss_train, tot_loss_val = 0, 0
+    with torch.no_grad():
+        for data in train_loader:
+            data = data.to(model.device)
+            x_pred = model(data) # input: (bs, 1, dim, dim)
+            tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
+        for data in validation_loader:
+            data = data.to(model.device)
+            x_pred = model(data) # input: (bs, 1, dim, dim)
+            tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
+    return tot_loss_train, tot_loss_val
 
-# Fluidnet
 def train_(A, epoch_num, train_loader, validation_loader, model, optimizer, loss_fn):
     A = A.to(model.device)
     training_loss = []
     validation_loss = []
     time_history = []
     t0 = time.time()
+
+    tot_loss_train, tot_loss_val = validation(train_loader, validation_loader, model, loss_fn, A)
+    training_loss.append(tot_loss_train)
+    validation_loss.append(tot_loss_val)
+    time_history.append(time.time() - t0)
+    print(training_loss[-1], validation_loss[-1], f"(0 / {epoch_num})")
+
     for i in range(1, epoch_num+1):
-        t0 = time.time()
         # Training
-        los = 0.0
-        for ii, data in enumerate(train_loader, 1):# x: (bs, dim, dim, dim)
+        for ii, data in enumerate(train_loader, 1):# data: (bs, 2, N, N)
             data = data.to(model.device)
-            x_pred = model(data) # (bs, 2, N, N)
-            loss = loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
+            x_pred = model(data) # (bs, 1, N, N) - > (bs, N, N)-> (bs, N*N)
+            loss = loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0, :, :].flatten(1), A)
+
+            # with torch.no_grad():
+            #     w1 = []
+            #     for name, param in model.named_parameters():
+            #         w1.append(param.detach().clone())
             optimizer.zero_grad()
             loss.backward()
+
+            # with torch.no_grad():
+            #     dLdw = None
+            #     for param in model.parameters():
+            #         if param.grad is not None:
+            #             if dLdw is None:
+            #                 dLdw = param.grad.ravel()
+            #             else:
+            #                 dLdw = torch.cat([dLdw, param.grad.ravel()])
+
+            #     dLdw = dLdw.cpu().numpy()
+
+            #     perturb = np.logspace(-8, 0, 40)
+            #     vals = []
+            #     for eps in perturb:
+            #         val = []
+            #         for param in model.parameters():
+            #             if param.grad is None: continue
+            #             o_param = param.clone()
+            #             for j in range(len(param.ravel())):
+            #                 new_param = o_param.clone().ravel()
+            #                 new_param[j] += eps
+            #                 param.copy_(new_param.reshape(param.shape))
+            #                 x_pred = model(data)
+            #                 lp_p = loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0, :, :].flatten(1), A).item()
+
+            #                 new_param = o_param.clone().ravel()
+            #                 new_param[j] -= eps
+            #                 param.copy_(new_param.reshape(param.shape))
+            #                 x_pred = model(data)
+            #                 lp_m = loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0, :, :].flatten(1), A).item()
+
+            #                 val.append((lp_p - lp_m)/(2*eps))
+
+            #             param.copy_(o_param)
+            #         val = np.array(val)
+            #         vals.append(np.linalg.norm((val - dLdw))/np.linalg.norm(dLdw))
+            #     vals = np.array(vals)
+            #     print(vals)
+            #     plt.clf()
+            #     plt.loglog(perturb, vals)
+            #     plt.grid()
+            #     plt.savefig("finite_difference.png")
             optimizer.step()
-            los += loss.item()
+
+
+            # print(optimizer.state_dict()['state'])
+            # with torch.no_grad():
+            #     w2 = []
+            #     for name, param in model.named_parameters():
+            #         w2.append(param.detach().clone())
+
+            #     for alpha in np.linspace(0, 1, 100):
+            #         for j, param in enumerate(model.parameters()):
+
+            #             w = (1 - alpha) * w1[j] + alpha * w2[j]
+            #             param.copy_(w)
+            #         x_pred = model(data)
+            #         loo = loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0, :, :].flatten(1), A)
+            #         losses.append(loo.item())
+
         # Validation
-        tot_loss_train, tot_loss_val = 0, 0
-        with torch.no_grad():
-            for data in train_loader:
-                data = data.to(model.device)
-                x_pred = model(data) # input: (bs, 1, dim, dim)
-                tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
-            for data in validation_loader:
-                data = data.to(model.device)
-                x_pred = model(data) # input: (bs, 1, dim, dim)
-                tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
+        tot_loss_train, tot_loss_val = validation(train_loader, validation_loader, model, loss_fn, A)
         training_loss.append(tot_loss_train)
         validation_loss.append(tot_loss_val)
         time_history.append(time.time() - t0)
         print(training_loss[-1], validation_loss[-1], f"({i} / {epoch_num})")
+
+    # plt.plot(losses)
+    # plt.savefig("debug_gradient.png")
     return training_loss, validation_loss, time_history
 
 def saveData(model, optimizer, epoch, log, outdir, suffix, train_loss, valid_loss, time_history):
