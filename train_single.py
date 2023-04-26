@@ -8,7 +8,7 @@ import torch.utils.benchmark as torch_benchmark
 from cg_tests import *
 from tqdm import tqdm
 from model import *
-from train import train_, saveData
+from train import train_, saveData, loadData
 from lib.read_data import *
 from lib.dataset import *
 from lib.write_log import LoggingWriter
@@ -33,43 +33,46 @@ if __name__ == '__main__':
     DIM = 2
     dim2 = N**DIM
     lr = 0.001
-    epoch_num = 200
+    epoch_num = 100
     cuda = torch.device("cuda") # Use CUDA for training
 
     image_type = 'flags'
-    frame = 10
+    frame = 100
     # num_ritz = 200
     num_rhs = 400
     b_size = 20
     denoised = False
 
     data_path = f"{DATA_PATH}/dambreak_N{N}_200/preprocessed/{frame}"
-    # data_path = f"{DATA_PATH}/dambreak_single/{N}_{N*scale}/{frame}"
-    outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
+
+    outdir = os.path.join(OUT_PATH, f"output_single_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
     suffix = f"frame_{frame}_{image_type}"
 
-    A = torch.load(f"{data_path}/A.pt")
+    A = torch.load(f"{data_path}/A.pt").to_sparse_csr()
     image = torch.tensor(torch.load(f"{data_path}/{image_type}.pt"))
     fluids = torch.argwhere(image == 2)
     if denoised:
         image_denoised = torch.tensor(torch.load(f"{data_path}/{image_type}_denoised.pt"))
         fluids_denoised = torch.argwhere(image_denoised == 2)
 
-    assert A.layout == torch.sparse_coo, "A is not COO"
+    # assert A.layout == torch.sparse_coo, "A is not COO"
     model = FluidNet()
-
-
-    # model = NewModel1()
-
-    # pre_trained_path = f"{OUT_PATH}/output_single_{DIM}D_{N}"
-    # checkpt = torch.load(f"{pre_trained_path}/checkpt_frame_{frame}_flags.tar")
-    # model.load_state_dict(checkpt['model_state_dict'])
     model.move_to(cuda)
-
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    # optimizer = optim.SGD(model.parameters(), lr=lr)
-    # optimizer.load_state_dict(checkpt['optimizer_state_dict'])
+
+
+    resume = True
+    if resume:
+        start_ep, model_params, optim_params, training_loss, validation_loss, time_history, grad_history, update_history = loadData(outdir, suffix)
+        model.load_state_dict(model_params)
+        optimizer.load_state_dict(optim_params)
+
+    else:
+        start_ep = 0
+        training_loss, validation_loss, time_history, grad_history, update_history = [], [], [], [], []
+
+
     loss_fn = model.residual_loss
     # loss_fn = model.energy_loss
     # loss_fn = model.scaled_loss_2
@@ -95,15 +98,28 @@ if __name__ == '__main__':
     for_test = True
 
     if for_train:
-        training_loss, validation_loss, time_history = train_(A, epoch_num, train_loader, valid_loader, model, optimizer, loss_fn)
-        saveData(model, optimizer, epoch_num, None, outdir, suffix, training_loss, validation_loss, time_history)
-
-        # fig, axes = plt.subplots(2)
-        # axes[0].plot(training_loss, label='training')
-        # axes[1].plot(validation_loss, label='validation')
+        start = time.time()
+        training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(A, epoch_num, train_loader, valid_loader, model, optimizer, loss_fn)
+        training_loss.extend(training_loss_)
+        validation_loss.extend(validation_loss_)
+        time_history.extend(time_history_)
+        grad_history.extend(grad_history_)
+        update_history.extend(update_history_)
+        saveData(model, optimizer, start_ep+epoch_num, None, outdir, suffix, training_loss, validation_loss, time_history, grad_history, update_history)
+        end = time.time()
         plt.clf()
-        plt.plot(training_loss)
-        plt.savefig("loss.png")
+        fig, axes = plt.subplots(2)
+        axes[0].plot(training_loss, label='training', c='blue')
+        axes[1].plot(validation_loss, label='validation', c='orange')
+        axes[0].legend()
+        axes[1].legend()
+        plt.savefig("train_loss.png")
+        plt.clf()
+        plt.plot(grad_history)
+        plt.savefig("train_grad.png")
+        plt.clf()
+        plt.plot(update_history)
+        plt.savefig("train_update.png")
     if for_test:
         checkpt = torch.load(f"{outdir}/checkpt_{suffix}.tar")
         print(outdir)
@@ -159,6 +175,11 @@ if __name__ == '__main__':
         rhs = load_vector(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"div_v_star_{frame}.bin")).astype(np.float32)
         t0 = timeit.default_timer()
         x, res_history = CG(rhs, A, np.zeros_like(rhs), max_it=1000, tol=1e-4, verbose=False)
-        # r = rhs - A @ x
-        print("CG took", timeit.default_timer()-t0, 's after', len(res_history), 'iterations', res_history[-1])
 
+        print("CG took", timeit.default_timer()-t0, 's after', len(res_history), 'iterations', res_history[-1])
+        plt.clf()
+        plt.plot(res_history, label='CG')
+        plt.plot(res_fluidnet_res, label='FluidNet')
+        plt.legend()
+        plt.savefig("test_loss.png")
+        print("Training time", end-start)
