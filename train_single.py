@@ -39,7 +39,7 @@ if __name__ == '__main__':
     image_type = 'flags'
     frame = 100
     # num_ritz = 200
-    num_rhs = 400
+    num_rhs = 800
     b_size = 20
     denoised = False
 
@@ -47,9 +47,10 @@ if __name__ == '__main__':
 
     outdir = os.path.join(OUT_PATH, f"output_single_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
-    suffix = f"frame_{frame}_{image_type}"
+    suffix = f"frame_{frame}_{image_type}_elu"
 
     A = torch.load(f"{data_path}/A.pt").to_sparse_csr()
+
     image = torch.tensor(torch.load(f"{data_path}/{image_type}.pt"))
     fluids = torch.argwhere(image == 2)
     if denoised:
@@ -60,7 +61,6 @@ if __name__ == '__main__':
     model = FluidNet()
     model.move_to(cuda)
     optimizer = optim.Adam(model.parameters(), lr=lr)
-
 
     resume = True
     if resume:
@@ -94,67 +94,68 @@ if __name__ == '__main__':
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
 
 
-    for_train = True
+    for_train = False
     for_test = True
+    for _ in range(1, 2):
+        if for_train:
+            model.train()
+            start = time.time()
+            training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(A, epoch_num, train_loader, valid_loader, model, optimizer, loss_fn)
+            training_loss.extend(training_loss_)
+            validation_loss.extend(validation_loss_)
+            time_history.extend(time_history_)
+            grad_history.extend(grad_history_)
+            update_history.extend(update_history_)
+            saveData(model, optimizer, start_ep+epoch_num, None, outdir, suffix, training_loss, validation_loss, time_history, grad_history, update_history)
+            end = time.time()
+            plt.clf()
+            fig, axes = plt.subplots(2)
+            axes[0].plot(training_loss, label='training', c='blue')
+            axes[1].plot(validation_loss, label='validation', c='orange')
+            axes[0].legend()
+            axes[1].legend()
+            plt.savefig("train_loss.png")
+            plt.clf()
+            plt.plot(grad_history)
+            plt.savefig("train_grad.png")
+            plt.clf()
+            plt.plot(update_history)
+            plt.savefig("train_update.png")
+        if for_test:
+            # checkpt = torch.load(f"{outdir}/checkpt_{suffix}.tar")
+            # print(outdir)
+            # model.load_state_dict(checkpt['model_state_dict'])
+            # optimizer.load_state_dict(checkpt['optimizer_state_dict'])
+            model.eval()
+            rhs = torch.tensor(torch.load(f"{data_path}/rhs.pt"))
+            # rhs = torch.tensor(torch.load(f"{data_path}/rhs_denoised.pt"))
+            image = torch.tensor(torch.load(f"{data_path}/{image_type}.pt"))
+            image = image.to(cuda)
+            # A = torch.load(f"{data_path}/A.pt")
+            A = A.to(cuda)
+            if denoised: image_denoised = image_denoised.to(cuda)
+            rhs = rhs.to(cuda)
 
-    if for_train:
-        start = time.time()
-        training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(A, epoch_num, train_loader, valid_loader, model, optimizer, loss_fn)
-        training_loss.extend(training_loss_)
-        validation_loss.extend(validation_loss_)
-        time_history.extend(time_history_)
-        grad_history.extend(grad_history_)
-        update_history.extend(update_history_)
-        saveData(model, optimizer, start_ep+epoch_num, None, outdir, suffix, training_loss, validation_loss, time_history, grad_history, update_history)
-        end = time.time()
-        plt.clf()
-        fig, axes = plt.subplots(2)
-        axes[0].plot(training_loss, label='training', c='blue')
-        axes[1].plot(validation_loss, label='validation', c='orange')
-        axes[0].legend()
-        axes[1].legend()
-        plt.savefig("train_loss.png")
-        plt.clf()
-        plt.plot(grad_history)
-        plt.savefig("train_grad.png")
-        plt.clf()
-        plt.plot(update_history)
-        plt.savefig("train_update.png")
-    if for_test:
-        checkpt = torch.load(f"{outdir}/checkpt_{suffix}.tar")
-        print(outdir)
-        model.load_state_dict(checkpt['model_state_dict'])
-        optimizer.load_state_dict(checkpt['optimizer_state_dict'])
-        model.eval()
-        rhs = torch.tensor(torch.load(f"{data_path}/rhs.pt"))
-        # rhs = torch.tensor(torch.load(f"{data_path}/rhs_denoised.pt"))
-        image = torch.tensor(torch.load(f"{data_path}/{image_type}.pt"))
-        image = image.to(cuda)
-        A = torch.load(f"{data_path}/A.pt")
-        A = A.to(cuda)
-        if denoised: image_denoised = image_denoised.to(cuda)
-        rhs = rhs.to(cuda)
-
-        def fluidnet_predict(fluidnet_model):
-            if denoised:
-                # fluids_full = torch.where(abs(x_in[:, 1:] - 2) > 1e-12)
-                def predict(r):
-                    with torch.no_grad():
-                        r = nn.functional.normalize(r, dim=0)
-                        rr = torch.zeros_like(r)
-                        rr[fluids_denoised] = r[fluids_denoised]
-                        b = torch.stack([rr, image_denoised]).view(1, 2, N, N)
-                        x = r.clone()
-                        x[fluids_denoised] = fluidnet_model(b).flatten()[fluids_denoised]
-                    return x
-            else:
-                def predict(r):
-                    with torch.no_grad():
-                        r = nn.functional.normalize(r, dim=0)
-                        b = torch.stack([r, image]).view(1, 2, N, N)
-                        x = fluidnet_model(b).flatten()
-                    return x
-            return predict
+            def fluidnet_predict(fluidnet_model):
+                if denoised:
+                    # fluids_full = torch.where(abs(x_in[:, 1:] - 2) > 1e-12)
+                    def predict(r):
+                        with torch.no_grad():
+                            r = nn.functional.normalize(r, dim=0)
+                            rr = torch.zeros_like(r)
+                            rr[fluids_denoised] = r[fluids_denoised]
+                            b = torch.stack([rr, image_denoised]).view(1, 2, N, N)
+                            x = r.clone()
+                            x[fluids_denoised] = fluidnet_model(b).flatten()[fluids_denoised]
+                        return x
+                else:
+                    def predict(r):
+                        with torch.no_grad():
+                            r = nn.functional.normalize(r, dim=0)
+                            b = torch.stack([r, image]).view(1, 2, N, N)
+                            x = fluidnet_model(b).flatten()
+                        return x
+                return predict
 
         # def torch_timer(loss):
         #     return torch_benchmark.Timer(
@@ -168,18 +169,21 @@ if __name__ == '__main__':
         # result_res = timer_res.timeit(1)
         # print("FluidNet residual took", result_res.times[0], 's')
 
-        x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model), max_it=100, tol=1e-4, verbose=True)
-        print("Fluidnet", res_fluidnet_res[-1])
+            x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model), max_it=100, tol=1e-4, verbose=True)
+            print("Fluidnet", res_fluidnet_res[-1])
 
-        A = readA_sparse(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"A_{frame}.bin")).astype(np.float32)
-        rhs = load_vector(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"div_v_star_{frame}.bin")).astype(np.float32)
-        t0 = timeit.default_timer()
-        x, res_history = CG(rhs, A, np.zeros_like(rhs), max_it=1000, tol=1e-4, verbose=False)
+            A_sp = readA_sparse(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"A_{frame}.bin")).astype(np.float32)
+            rhs_sp = load_vector(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"div_v_star_{frame}.bin")).astype(np.float32)
+            t0 = timeit.default_timer()
+            x, res_history = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), max_it=1000, tol=1e-4, verbose=False)
+            print("CG took", timeit.default_timer()-t0, 's after', len(res_history), 'iterations', res_history[-1])
 
-        print("CG took", timeit.default_timer()-t0, 's after', len(res_history), 'iterations', res_history[-1])
-        plt.clf()
-        plt.plot(res_history, label='CG')
-        plt.plot(res_fluidnet_res, label='FluidNet')
-        plt.legend()
-        plt.savefig("test_loss.png")
-        print("Training time", end-start)
+            with open(f"train_info_N{N}_{suffix}.txt", 'a') as f:
+                f.write(f"{_*epoch_num}, {len(res_fluidnet_res)-1}, {len(res_history)}\n")
+            plt.clf()
+            plt.plot(res_history, label='CG')
+            plt.plot(res_fluidnet_res, label='FluidNet')
+            plt.legend()
+            plt.savefig("test_loss.png")
+        if for_train:
+            print("Training time", end-start)

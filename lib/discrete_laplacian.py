@@ -23,7 +23,11 @@ def lap1d(n, dtype=np.float32):
     v  = np.ones(n, dtype=dtype)
     L1 = sparse.spdiags([-v,2*v,-v],[-1,0,1],n,n)
     return L1
-
+def lap1d_periodic(n, dtype=np.float32):
+    L1 = lap1d(n, dtype).tolil()
+    L1[0, -1] = -1
+    L1[-1, 0] = -1
+    return L1
 ###############################################################################
 #
 #   form the (scaled by dx*dx) matrix for the 2D Laplacian for Dirichlet boundary
@@ -39,6 +43,16 @@ def lap2d(nx,ny, dtype=np.float32):
     Ix = sparse.eye(nx, dtype=dtype)
 
     Ly=lap1d(ny, dtype=dtype)
+    Iy=sparse.eye(ny, dtype=dtype)
+
+    L2 = sparse.kron(Iy,Lx) + sparse.kron(Ly,Ix)
+
+    return L2
+def lap2d_periodic(nx, ny, dtype=np.float32):
+    Lx=lap1d_periodic(nx, dtype=dtype)
+    Ix = sparse.eye(nx, dtype=dtype)
+
+    Ly=lap1d_periodic(ny, dtype=dtype)
     Iy=sparse.eye(ny, dtype=dtype)
 
     L2 = sparse.kron(Iy,Lx) + sparse.kron(Ly,Ix)
@@ -62,6 +76,19 @@ def lap3d(nx,ny,nz, dtype=np.float32):
     Iy=sparse.eye(ny, dtype=dtype)
 
     Lz=lap1d(nz, dtype=dtype)
+    Iz=sparse.eye(nz, dtype=dtype)
+
+    L3 = sparse.kron(sparse.kron(Lx, Iy),Iz) + sparse.kron(sparse.kron(Ix, Ly),Iz) + sparse.kron(sparse.kron(Ix, Iy),Lz)
+    return L3
+
+def lap3d_periodic(nx,ny,nz, dtype=np.float32):
+    Lx=lap1d_periodic(nx, dtype=dtype)
+    Ix = sparse.eye(nx, dtype=dtype)
+
+    Ly=lap1d_periodic(ny, dtype=dtype)
+    Iy=sparse.eye(ny, dtype=dtype)
+
+    Lz=lap1d_periodic(nz, dtype=dtype)
     Iz=sparse.eye(nz, dtype=dtype)
 
     L3 = sparse.kron(sparse.kron(Lx, Iy),Iz) + sparse.kron(sparse.kron(Ix, Ly),Iz) + sparse.kron(sparse.kron(Ix, Iy),Lz)

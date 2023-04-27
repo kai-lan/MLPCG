@@ -91,12 +91,12 @@ def createRawData(ritz_vectors, sample_size, flags, outdir):
 
 if __name__ == '__main__':
     np.random.seed(2)
-    N = 128
+    N = 64
     DIM = 2
 
     dir = f"{DATA_PATH}/dambreak_N{N}_200"
     os.makedirs(dir, exist_ok=True)
-    num_ritz_vectors = 200
+    num_ritz_vectors = 100
     # start_frame = 10
     # end_frame = 11
     # perm = np.random.permutation(range(1, 201)) #[:100]
