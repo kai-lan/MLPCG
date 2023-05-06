@@ -99,12 +99,12 @@ def visualize_frame_by_frame(num_frames):
         time.sleep(0.1)
 
 if __name__ == '__main__':
-    N = 256
+    N = 64
     DIM = 2
     example_folder = os.path.join(DATA_PATH, f"dambreak_N{N}_200")
 
 
-    frame=100
+    frame = 100
     vis_flags(frame)
     # levelset = vis_levelset(frame, True)
     # print(levelset)

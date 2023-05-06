@@ -101,7 +101,7 @@ if __name__ == '__main__':
     # end_frame = 11
     # perm = np.random.permutation(range(1, 201)) #[:100]
     # np.save(f"{dir}/train_mat.npy", perm)
-    perm = range(1, 201)
+    perm = range(100, 101)
 
     for i in tqdm(perm):
         print('Matrix', i)

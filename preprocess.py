@@ -17,7 +17,7 @@ data_folder = f"{DATA_PATH}/dambreak_N{N}_200"
 num_ritz_vectors = 800
 num_rhs = num_ritz_vectors
 
-def createTrainingData(N, DIM, ritz_vectors, sample_size, fluid_cells, outdir):
+def createTrainingData(N, DIM, ritz_vectors, sample_size, fluid_cells, outdir, suffix=''):
     # small_matmul_size = 100 # Small mat size for temp data
     small_matmul_size = sample_size
     # theta = 200 # j < m/2 + theta low frequency spectrum
@@ -28,8 +28,7 @@ def createTrainingData(N, DIM, ritz_vectors, sample_size, fluid_cells, outdir):
     sample_size = small_matmul_size
     coef_matrix = np.zeros([len(ritz_vectors), sample_size])
 
-    # print("Creating Dataset ")
-    # t0=time.time()
+
     for it in range(for_outside):
         coef_matrix[:] = np.random.normal(0, 1, [len(ritz_vectors), sample_size])
         # coef_matrix[0:cut_idx] *= 9
@@ -41,7 +40,7 @@ def createTrainingData(N, DIM, ritz_vectors, sample_size, fluid_cells, outdir):
             b = torch.zeros(N**DIM, dtype=torch.float32)
             b[fluid_cells] = torch.tensor(b_rhs_temp[i-l_b], dtype=torch.float32)
             # s = sparse.coo_matrix((b_rhs_temp[i-l_b], (padding, np.zeros_like(padding))), shape=flags.shape+(1,), dtype=np.float32)
-            torch.save(b, os.path.join(outdir, f"b_{i}.pt"))
+            torch.save(b, os.path.join(outdir, f"b_{i}{suffix}.pt"))
 
     # print("Creating training Dataset took", time.time() - t0, 's')
 

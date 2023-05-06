@@ -15,21 +15,29 @@ from lib.GLOBAL_VARS import *
 from model import *
 import matplotlib.pyplot as plt
 
-def validation(train_loader, validation_loader, model, loss_fn, A):
+def move_data(data, device):
+    if len(data) > 0:
+        for i in range(len(data)):
+            data[i] = data[i].to(device)
+    else:
+        data[:] = data.to(device)
+
+def validation(train_loader, validation_loader, model, loss_fn, image, A):
     tot_loss_train, tot_loss_val = 0, 0
     with torch.no_grad():
         for data in train_loader:
             data = data.to(model.device)
-            x_pred = model(data) # input: (bs, 1, dim, dim)
+            x_pred = model(image, data) # input: (bs, 1, dim, dim)
             tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
         for data in validation_loader:
             data = data.to(model.device)
-            x_pred = model(data) # input: (bs, 1, dim, dim)
+            x_pred = model(image, data) # input: (bs, 1, dim, dim)
             tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
     return tot_loss_train, tot_loss_val
 
-def train_(A, epoch_num, train_loader, validation_loader, model, optimizer, loss_fn):
+def train_(image, A, epoch_num, train_loader, validation_loader, model, optimizer, loss_fn):
     A = A.to(model.device)
+    image = image.to(model.device)
     training_loss = []
     validation_loss = []
     time_history = []
@@ -37,7 +45,7 @@ def train_(A, epoch_num, train_loader, validation_loader, model, optimizer, loss
     update_history = []
     t0 = time.time()
 
-    tot_loss_train, tot_loss_val = validation(train_loader, validation_loader, model, loss_fn, A)
+    tot_loss_train, tot_loss_val = validation(train_loader, validation_loader, model, loss_fn, image, A)
     training_loss.append(tot_loss_train)
     validation_loss.append(tot_loss_val)
     time_history.append(time.time() - t0)
@@ -53,8 +61,10 @@ def train_(A, epoch_num, train_loader, validation_loader, model, optimizer, loss
         # Training
         for ii, data in enumerate(train_loader, 1):# data: (bs, 2, N, N)
             data = data.to(model.device)
-            x_pred = model(data) # (bs, 1, N, N) - > (bs, N, N)-> (bs, N*N)
-            loss = loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0, :, :].flatten(1), A)
+            x_pred = model(image, data)
+            x_pred = x_pred.squeeze(dim=1).flatten(1) # (bs, 1, N, N) -> (bs, N, N) -> (bs, N*N)
+            data = data.squeeze(dim=1).flatten(1)
+            loss = loss_fn(x_pred, data, A)
 
             optimizer.zero_grad()
             loss.backward()
@@ -72,7 +82,7 @@ def train_(A, epoch_num, train_loader, validation_loader, model, optimizer, loss
         old_param = new_param
 
         # Validation
-        tot_loss_train, tot_loss_val = validation(train_loader, validation_loader, model, loss_fn, A)
+        tot_loss_train, tot_loss_val = validation(train_loader, validation_loader, model, loss_fn, image, A)
         training_loss.append(tot_loss_train)
         validation_loss.append(tot_loss_val)
         time_history.append(time.time() - t0)
@@ -157,29 +167,31 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
+    suffix += '_linear'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
     inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")
 
-    model = FluidNet(kernel_size)
+    model = LinearModel()
     model.move_to(cuda)
     loss_fn = eval(loss_fn)
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     if resume:
-        ep, model_params, optim_params, train_loss, valid_loss, time_history, *_ = loadData(outdir, suffix)
+        ep, model_params, optim_params, train_loss, valid_loss, time_history, grad_history, update_history = loadData(outdir, suffix)
         model.load_state_dict(model_params)
         optimizer.load_state_dict(optim_params)
         start_epoch = ep
     else:
-        train_loss, valid_loss, time_history = [], [], []
+        train_loss, valid_loss, time_history, grad_history, update_history = [], [], [], [], []
         start_epoch = 0
 
 
     train_size = round(0.8 * num_rhs)
     perm = np.random.permutation(num_rhs)
     def transform(x):
-        x = x.reshape((2,)+(N,)*DIM)
+        # x = x.reshape((2,)+(N,)*DIM)
+        x = x[0].reshape((1, N, N))
         return x
     train_set = MyDataset(None, perm[:train_size], transform, denoised=False)
     valid_set = MyDataset(None, perm[train_size:], transform, denoised=False)
@@ -196,19 +208,29 @@ if __name__ == '__main__':
             print('Matrix', j)
             train_set.data_folder = os.path.join(f"{inpdir}/{j}")
             valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
-            A = torch.load(f"{train_set.data_folder}/A.pt")
-            _training_loss, _validation_loss, _= train_(A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
-            tl += np.sum(_training_loss)
-            vl += np.sum(_validation_loss)
-        train_loss.append(tl)
-        valid_loss.append(vl)
-        time_history.append(time.time() - start_time)
-        saveData(model, optimizer, i+start_epoch, log, outdir, suffix, train_loss, valid_loss, time_history)
+            A = torch.load(f"{train_set.data_folder}/A.pt").to_sparse_csr()
+            training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
+            tl += np.sum(training_loss_)
+            vl += np.sum(validation_loss_)
+            train_loss.append(tl)
+            valid_loss.append(vl)
+            time_history.append(time.time() - start_time)
+            grad_history.extend(grad_history_)
+            update_history.extend(update_history_)
+        saveData(model, optimizer, i+start_epoch, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history)
     end_time = time.time()
     print("Took", end_time-start_time, 's')
 
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(2)
-    axes[0].plot(train_loss, label='training')
-    axes[1].plot(valid_loss, label='validation')
-    plt.savefig(f"loss_{bc}.png", bbox_inches='tight')
+    axes[0].plot(train_loss, label='training', c='blue')
+    axes[1].plot(valid_loss, label='validation', c='orange')
+    axes[0].legend()
+    axes[1].legend()
+    plt.savefig("train_loss.png")
+    plt.clf()
+    plt.plot(grad_history)
+    plt.savefig("train_grad.png")
+    plt.clf()
+    plt.plot(update_history)
+    plt.savefig("train_update.png")

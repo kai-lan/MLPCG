@@ -189,7 +189,7 @@ if __name__ == '__main__':
     from write_data import writeA_sparse
     from read_data import readA_sparse
     from benchmark import MyTimer
-    N = 128
+    N = 4
     DIM = 2
     BC = 'empty'
     bd_padding = False
@@ -199,10 +199,11 @@ if __name__ == '__main__':
     bd = box_bd(n, DIM)
     # timer = MyTimer(['flatten_inds', 'lap2d', 'neighbors'])
 
-    i, j = multiInd(5, 3)
-    print(i, j)
+    # i, j = multiInd(5, 3)
+    # print(i, j)
     # A = poisson_lap(n, DIM, bd=bd, bd_padding=bd_padding, dtype=np.float32)
-    # A = lap_with_bc(n, DIM, bd=bd, bd_padding=bd_padding, dtype=np.float32)
+    A = lap_with_bc(n, DIM, bd=bd, bd_padding=bd_padding, dtype=np.float32)
+    print(A.toarray())
     # print(timer.counter)
     # print(timer.total_time)
     # end = time.perf_counter()

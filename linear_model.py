@@ -29,7 +29,6 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = False
 
     N = 256
-    # scale = 1
     DIM = 2
     dim2 = N**DIM
     lr = 0.001
@@ -41,23 +40,17 @@ if __name__ == '__main__':
     # num_ritz = 200
     num_rhs = 400
     b_size = 20
-    denoised = False
-
+    levels = 1
     data_path = f"{DATA_PATH}/dambreak_N{N}_200/preprocessed/{frame}"
 
     outdir = os.path.join(OUT_PATH, f"output_single_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
-    suffix = f"frame_{frame}_{image_type}_elu_D3_L4"
+    suffix = f"frame_{frame}_{image_type}_elu_{levels}"
 
     A = torch.load(f"{data_path}/A.pt").to_sparse_csr()
+    image = torch.load(f"{data_path}/flags.pt").reshape(1, N, N)
 
-    image = torch.tensor(torch.load(f"{data_path}/{image_type}.pt")).reshape(1, N, N)
-    fluids = torch.argwhere(image == 2)
-    if denoised:
-        image_denoised = torch.tensor(torch.load(f"{data_path}/{image_type}_denoised.pt"))
-        fluids_denoised = torch.argwhere(image_denoised == 2)
-
-    model = FluidNet()
+    model = LinearModel(levels=levels)
     model.move_to(cuda)
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
@@ -81,13 +74,11 @@ if __name__ == '__main__':
     train_size = round(0.8 * num_rhs)
     perm = np.random.permutation(num_rhs)
     def transform(x):
-        return x.reshape(1, N, N)
-    train_set = MyDataset(data_path, perm[:train_size], transform, denoised=denoised)
-    valid_set = MyDataset(data_path, perm[train_size:], transform, denoised=denoised)
+        x = x.reshape((1, N, N))
+        return x
+    train_set = MyDataset(data_path, perm[:train_size], transform, denoised=False)
+    valid_set = MyDataset(data_path, perm[train_size:], transform, denoised=False)
 
-    # data = np.memmap(f"{data_path}/ritz_{num_ritz}.dat", dtype=np.float32, mode='r').reshape(num_ritz, len(torch.argwhere(image==2)))
-    # train_set = RitzDataset(data, image, perm[:train_size], (2,)+(N,)*DIM)
-    # valid_set = RitzDataset(data, image, perm[train_size:], (2,)+(N,)*DIM)
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
 
@@ -121,53 +112,23 @@ if __name__ == '__main__':
             plt.savefig("train_update.png")
         if for_test:
             checkpt = torch.load(f"{outdir}/checkpt_{suffix}.tar")
-            # print(outdir)
+
             model.load_state_dict(checkpt['model_state_dict'])
-            # optimizer.load_state_dict(checkpt['optimizer_state_dict'])
             model.eval()
             rhs = torch.tensor(torch.load(f"{data_path}/rhs.pt"))
-            # rhs = torch.tensor(torch.load(f"{data_path}/rhs_denoised.pt"))
-            # image = torch.tensor(torch.load(f"{data_path}/{image_type}.pt"))
+            image = torch.tensor(torch.load(f"{data_path}/{image_type}.pt")).reshape(1, N, N)
             image = image.to(cuda)
             # A = torch.load(f"{data_path}/A.pt")
             A = A.to(cuda)
-            if denoised: image_denoised = image_denoised.to(cuda)
             rhs = rhs.to(cuda)
 
-            def fluidnet_predict(fluidnet_model):
-                if denoised:
-                    # fluids_full = torch.where(abs(x_in[:, 1:] - 2) > 1e-12)
-                    def predict(r):
-                        with torch.no_grad():
-                            r = nn.functional.normalize(r, dim=0)
-                            rr = torch.zeros_like(r)
-                            rr[fluids_denoised] = r[fluids_denoised]
-                            b = torch.stack([rr, image_denoised]).view(1, 2, N, N)
-                            x = r.clone()
-                            x[fluids_denoised] = fluidnet_model(b).flatten()[fluids_denoised]
-                        return x
-                else:
-                    def predict(r):
-                        with torch.no_grad():
-                            r = nn.functional.normalize(r, dim=0)
-                            # b = torch.stack([r, image]).view(1, 2, N, N)
-                            x = fluidnet_model(image.reshape(1, 1, N, N), r.reshape(1, 1, N, N)).flatten()
-                        return x
-                return predict
+            def predict(r):
+                with torch.no_grad():
+                    r = nn.functional.normalize(r, dim=0)
+                    x = model(image, r.reshape(1, 1, N, N)).flatten()
+                return x
 
-        # def torch_timer(loss):
-        #     return torch_benchmark.Timer(
-        #     stmt=f'torch_benchmark_dcdm_{loss}(model, image)',
-        #     setup=f'from __main__ import torch_benchmark_dcdm_{loss}',
-        #     globals={'model':model, 'image': image})
-
-        # def torch_benchmark_dcdm_res(model, image):
-        #     x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model, image), max_it=100, tol=1e-4, verbose=True)
-        # timer_res = torch_timer('res')
-        # result_res = timer_res.timeit(1)
-        # print("FluidNet residual took", result_res.times[0], 's')
-
-            x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model), max_it=100, tol=1e-4, verbose=True)
+            x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), predict, max_it=100, tol=1e-4, verbose=True)
             print("Fluidnet", res_fluidnet_res[-1])
 
             A_sp = readA_sparse(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"A_{frame}.bin")).astype(np.float32)

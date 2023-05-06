@@ -23,16 +23,16 @@ def flip_data(rhs, flags):
     flipped_A = lap_with_bc(n, DIM, bd=bd, air=empty_cells, bd_padding=False, dtype=np.float32)
     return flipped_rhs, flipped_flags, flipped_A
 
-N = 64
+N = 256
 DIM = 2
 norm_type = 'l2'
 
-train_matrices = set(np.load(f"{OUT_PATH}/output_2D_256/matrices_trained_50.npy"))
-frames = set(np.arange(1, 1001)) - train_matrices
-frame = list(frames)[138] # Random frame
-# frame = list(train_matrices)[40]
+train_matrices = set(np.load(f"{OUT_PATH}/output_2D_256/matrices_trained_100.npy"))
+frames = set(np.arange(1, 201)) - train_matrices
+# frame = list(frames)[3] # Random frame
+frame = list(train_matrices)[40]
 # frame = 164
-frame = 10
+# frame = 8
 scene = 'dambreak'
 print("Testing frame", frame, "scene", scene)
 
@@ -45,34 +45,34 @@ ppc_sp = read_ppc(f"{dambreak_path}/active_cells_{frame}.bin", f"{dambreak_path}
 levelset_sp = load_vector(f"{dambreak_path}/levelset_{frame}.bin")
 
 device = torch.device('cuda')
-A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float32, device=device)
+A = torch.sparse_coo_tensor(np.array([A_sp.row, A_sp.col]), A_sp.data, A_sp.shape, dtype=torch.float32, device=device)
 rhs = torch.tensor(rhs_sp, dtype=torch.float32, device=device)
 flags = torch.tensor(flags_sp, dtype=torch.float32, device=device)
 ppc = torch.tensor(ppc_sp, dtype=torch.float32, device=device)
 levelset = torch.tensor(levelset_sp, dtype=torch.float32, device=device)
 
-NN = 64
+NN = 256
 num_mat = 100
-num_ritz = 100
-num_rhs = 200
+num_ritz = 800
+num_rhs = 400
 
-fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_binary.tar")
+fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_flags.tar")
 fluidnet_model_res = FluidNet()
 fluidnet_model_res.move_to(device)
 fluidnet_model_res.load_state_dict(torch.load(fluidnet_model_res_file)['model_state_dict'])
 fluidnet_model_res.eval()
 
-fluidnet_model_eng_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_ppc.tar")
-fluidnet_model_eng = FluidNet()
-fluidnet_model_eng.move_to(device)
-fluidnet_model_eng.load_state_dict(torch.load(fluidnet_model_eng_file)['model_state_dict'])
-fluidnet_model_eng.eval()
+# fluidnet_model_eng_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_ppc.tar")
+# fluidnet_model_eng = FluidNet()
+# fluidnet_model_eng.move_to(device)
+# fluidnet_model_eng.load_state_dict(torch.load(fluidnet_model_eng_file)['model_state_dict'])
+# fluidnet_model_eng.eval()
 
-fluidnet_model_scaled2_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_levelset.tar")
-fluidnet_model_scaled2 = FluidNet()
-fluidnet_model_scaled2.move_to(device)
-fluidnet_model_scaled2.load_state_dict(torch.load(fluidnet_model_scaled2_file)['model_state_dict'])
-fluidnet_model_scaled2.eval()
+# fluidnet_model_scaled2_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_levelset.tar")
+# fluidnet_model_scaled2 = FluidNet()
+# fluidnet_model_scaled2.move_to(device)
+# fluidnet_model_scaled2.load_state_dict(torch.load(fluidnet_model_scaled2_file)['model_state_dict'])
+# fluidnet_model_scaled2.eval()
 
 # fluidnet_model_scaledA_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_eng.tar")
 # fluidnet_model_scaledA = FluidNet()
@@ -150,22 +150,22 @@ timer_res = torch_timer('res')
 result_res = timer_res.timeit(1)
 print("FluidNet residual took", result_res.times[0], 's after', len(res_fluidnet_res), 'iterations')
 
-timer_eng = torch_timer('eng')
-result_eng = timer_eng.timeit(1)
-print("FluidNet energy took", result_eng.times[0], 's after', len(res_fluidnet_eng), 'iterations')
+# timer_eng = torch_timer('eng')
+# result_eng = timer_eng.timeit(1)
+# print("FluidNet energy took", result_eng.times[0], 's after', len(res_fluidnet_eng), 'iterations')
 
-timer_scaled2 = torch_timer('scaled2')
-result_scaled2 = timer_scaled2.timeit(1)
-print("FluidNet scaled2 took", result_scaled2.times[0], 's after', len(res_fluidnet_scale2), 'iterations')
+# timer_scaled2 = torch_timer('scaled2')
+# result_scaled2 = timer_scaled2.timeit(1)
+# print("FluidNet scaled2 took", result_scaled2.times[0], 's after', len(res_fluidnet_scale2), 'iterations')
 
 # timer_scaledA = torch_timer('scaledA')
 # result_scaledA = timer_scaledA.timeit(1)
 # print("FluidNet scaledA took", result_scaledA.times[0], 's after', len(res_fluidnet_scaleA), 'iterations')
 
 import matplotlib.pyplot as plt
-plt.plot(res_fluidnet_res, label='fluidnet_res_binary')
-plt.plot(res_fluidnet_eng, label='fluidnet_res_ppc')
-plt.plot(res_fluidnet_scale2, label='fluidnet_res_levelset')
+plt.plot(res_fluidnet_res, label='fluidnet_res_flags')
+# plt.plot(res_fluidnet_eng, label='fluidnet_res_ppc')
+# plt.plot(res_fluidnet_scale2, label='fluidnet_res_levelset')
 # plt.plot(res_fluidnet_scaleA, label='fluidnet_scaleA')
 plt.plot(res_cg, label='cg')
 plt.plot(res_cg_cp, label='GPU cg')

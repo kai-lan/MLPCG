@@ -14,10 +14,7 @@ class MyDataset(Dataset):
             self.suffix = ''
     def __getitem__(self, index):
         index = self.perm[index]
-        x = torch.stack([
-            torch.load(f"{self.data_folder}/b_{index}{self.suffix}.pt"),
-            torch.load(f"{self.data_folder}/flags{self.suffix}.pt")
-        ])
+        x = torch.load(f"{self.data_folder}/b_{index}{self.suffix}.pt")
         x = self.transform(x)
         return x
     def __len__(self):
