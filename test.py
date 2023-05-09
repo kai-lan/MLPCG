@@ -5,6 +5,7 @@ import cupyx.scipy.sparse as cpsp
 from cupyx.profiler import benchmark as cuda_benchmark
 import torch.utils.benchmark as torch_benchmark
 from model import *
+from sm_model import *
 from lib.read_data import *
 from lib.discrete_laplacian import *
 from torch.nn.functional import normalize
@@ -23,16 +24,16 @@ def flip_data(rhs, flags):
     flipped_A = lap_with_bc(n, DIM, bd=bd, air=empty_cells, bd_padding=False, dtype=np.float32)
     return flipped_rhs, flipped_flags, flipped_A
 
-N = 256
+N = 128
 DIM = 2
 norm_type = 'l2'
 
-train_matrices = set(np.load(f"{OUT_PATH}/output_2D_256/matrices_trained_100.npy"))
-frames = set(np.arange(1, 201)) - train_matrices
+# train_matrices = set(np.load(f"{OUT_PATH}/output_2D_{N}/matrices_trained_50.npy"))
+# frames = set(np.arange(1, 201)) - train_matrices
 # frame = list(frames)[3] # Random frame
-frame = list(train_matrices)[40]
+# frame = list(train_matrices)[40]
 # frame = 164
-# frame = 8
+frame = 10
 scene = 'dambreak'
 print("Testing frame", frame, "scene", scene)
 
@@ -41,23 +42,23 @@ dambreak_path = os.path.join(DATA_PATH, f"{scene}_N{N}_200") #_smoke include bou
 A_sp = readA_sparse(os.path.join(dambreak_path, f"A_{frame}.bin")).astype(np.float32)
 rhs_sp = load_vector(os.path.join(dambreak_path, f"div_v_star_{frame}.bin")).astype(np.float32)
 flags_sp = read_flags(os.path.join(dambreak_path, f"flags_{frame}.bin"))
-ppc_sp = read_ppc(f"{dambreak_path}/active_cells_{frame}.bin", f"{dambreak_path}/ppc_{frame}.bin", N, DIM)
-levelset_sp = load_vector(f"{dambreak_path}/levelset_{frame}.bin")
+# ppc_sp = read_ppc(f"{dambreak_path}/active_cells_{frame}.bin", f"{dambreak_path}/ppc_{frame}.bin", N, DIM)
+# levelset_sp = load_vector(f"{dambreak_path}/levelset_{frame}.bin")
 
 device = torch.device('cuda')
 A = torch.sparse_coo_tensor(np.array([A_sp.row, A_sp.col]), A_sp.data, A_sp.shape, dtype=torch.float32, device=device)
 rhs = torch.tensor(rhs_sp, dtype=torch.float32, device=device)
 flags = torch.tensor(flags_sp, dtype=torch.float32, device=device)
-ppc = torch.tensor(ppc_sp, dtype=torch.float32, device=device)
-levelset = torch.tensor(levelset_sp, dtype=torch.float32, device=device)
+# ppc = torch.tensor(ppc_sp, dtype=torch.float32, device=device)
+# levelset = torch.tensor(levelset_sp, dtype=torch.float32, device=device)
 
-NN = 256
-num_mat = 100
-num_ritz = 800
-num_rhs = 400
+NN = 64
+num_mat = 50
+num_ritz = 200
+num_rhs = 100
 
-fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_flags.tar")
-fluidnet_model_res = FluidNet()
+fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_flags_newmodel.tar")
+fluidnet_model_res = SmallSMModelLegacy()
 fluidnet_model_res.move_to(device)
 fluidnet_model_res.load_state_dict(torch.load(fluidnet_model_res_file)['model_state_dict'])
 fluidnet_model_res.eval()
@@ -117,8 +118,8 @@ def fluidnet_predict(fluidnet_model, image):
     def predict(r):
         with torch.no_grad():
             r = normalize(r, dim=0)
-            b = torch.stack([r, image]).view(1, 2, N, N)
-            x = fluidnet_model(b).flatten()
+            # b = torch.stack([r, image]).view(1, 2, N, N)
+            x = fluidnet_model(image.view(1, N, N), r.view(1, 1, N, N)).flatten()
         return x
     return predict
 
@@ -131,15 +132,15 @@ x_fluidnet_scaleA, res_fluidnet_scaleA = None, None
 def torch_benchmark_dcdm_res(model):
     global x_fluidnet_res, res_fluidnet_res
     x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model, flags), max_iter, tol=tol, atol=atol)
-def torch_benchmark_dcdm_eng(model):
-    global x_fluidnet_eng, res_fluidnet_eng
-    x_fluidnet_eng, res_fluidnet_eng = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model, ppc), max_iter, tol=tol, atol=atol)
-def torch_benchmark_dcdm_scaled2(model):
-    global x_fluidnet_scale2, res_fluidnet_scale2
-    x_fluidnet_scale2, res_fluidnet_scale2 = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model, levelset), max_iter, tol=tol, atol=atol)
-def torch_benchmark_dcdm_scaledA(model):
-    global x_fluidnet_scaleA, res_fluidnet_scaleA
-    x_fluidnet_scaleA, res_fluidnet_scaleA = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model), max_iter, tol=tol, atol=atol)
+# def torch_benchmark_dcdm_eng(model):
+#     global x_fluidnet_eng, res_fluidnet_eng
+#     x_fluidnet_eng, res_fluidnet_eng = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model, ppc), max_iter, tol=tol, atol=atol)
+# def torch_benchmark_dcdm_scaled2(model):
+#     global x_fluidnet_scale2, res_fluidnet_scale2
+#     x_fluidnet_scale2, res_fluidnet_scale2 = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model, levelset), max_iter, tol=tol, atol=atol)
+# def torch_benchmark_dcdm_scaledA(model):
+#     global x_fluidnet_scaleA, res_fluidnet_scaleA
+#     x_fluidnet_scaleA, res_fluidnet_scaleA = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model), max_iter, tol=tol, atol=atol)
 def torch_timer(loss):
     return torch_benchmark.Timer(
     stmt=f'torch_benchmark_dcdm_{loss}(model)',

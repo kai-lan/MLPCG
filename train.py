@@ -13,6 +13,7 @@ from lib.write_log import LoggingWriter
 from lib.dataset import *
 from lib.GLOBAL_VARS import *
 from model import *
+from sm_model import *
 import matplotlib.pyplot as plt
 
 def move_data(data, device):
@@ -133,16 +134,17 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    N = 256
+
+    N = 64
     DIM = 2
     lr = 1.0e-3
     epoch_num_per_matrix = 5
     epoch_num = 50
     bc = 'dambreak'
     b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
-    total_matrices = 100 # number of matrices chosen for training
-    num_ritz = 800
-    num_rhs = 400 # number of ritz vectors for training for each matrix
+    total_matrices = 50 # number of matrices chosen for training
+    num_ritz = 200
+    num_rhs = 100 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
     cuda = torch.device("cuda") # Use CUDA for training
 
@@ -167,12 +169,12 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    suffix += '_linear'
+    suffix += '_smmodel'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
     inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")
 
-    model = LinearModel()
+    model = SmallSMModel()
     model.move_to(cuda)
     loss_fn = eval(loss_fn)
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -189,10 +191,11 @@ if __name__ == '__main__':
 
     train_size = round(0.8 * num_rhs)
     perm = np.random.permutation(num_rhs)
+
     def transform(x):
-        # x = x.reshape((2,)+(N,)*DIM)
-        x = x[0].reshape((1, N, N))
+        x = x.reshape((1, N, N))
         return x
+
     train_set = MyDataset(None, perm[:train_size], transform, denoised=False)
     valid_set = MyDataset(None, perm[train_size:], transform, denoised=False)
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
@@ -201,6 +204,7 @@ if __name__ == '__main__':
     # matrices = np.load(os.path.join(DATA_PATH, f"{bc}_N{N}_200/train_mat.npy"))
     np.save(f"{outdir}/matrices_trained_{total_matrices}.npy", matrices)
     start_time = time.time()
+
     for i in range(1, epoch_num+1):
         print(f"Epoch: {i}/{epoch_num}")
         tl, vl = 0.0, 0.0
@@ -209,7 +213,8 @@ if __name__ == '__main__':
             train_set.data_folder = os.path.join(f"{inpdir}/{j}")
             valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
             A = torch.load(f"{train_set.data_folder}/A.pt").to_sparse_csr()
-            training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
+            image = torch.load(f"{train_set.data_folder}/flags.pt").view(1, N, N)
+            training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
             tl += np.sum(training_loss_)
             vl += np.sum(validation_loss_)
             train_loss.append(tl)

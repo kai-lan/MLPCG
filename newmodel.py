@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-from model import *
+from sm_model import *
 
 
 
@@ -35,7 +35,7 @@ if __name__ == '__main__':
     cuda = torch.device("cuda") # Use CUDA for training
 
     image_type = 'flags'
-    frame = 25
+    frame = 100
     # num_ritz = 200
     num_rhs = 400
     b_size = 20
@@ -49,7 +49,7 @@ if __name__ == '__main__':
 
     A = torch.load(f"{data_path}/A.pt").to_sparse_csr()
     image = torch.load(f"{data_path}/flags.pt").reshape(1, N, N)
-    model = SmallSMModel()
+    model = SmallSMModelLegacy()
     model.move_to(cuda)
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
@@ -127,8 +127,8 @@ if __name__ == '__main__':
             x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), predict, max_it=100, tol=1e-4, verbose=True)
             print("Fluidnet", res_fluidnet_res[-1])
 
-            A_sp = readA_sparse(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"A_{frame}.bin")).astype(np.float32)
-            rhs_sp = load_vector(os.path.join(DATA_PATH, f"dambreak_{DIM}D_{N}", f"div_v_star_{frame}.bin")).astype(np.float32)
+            A_sp = readA_sparse(f"{data_path}/../../A_{frame}.bin").astype(np.float32)
+            rhs_sp = load_vector(f"{data_path}/../../div_v_star_{frame}.bin").astype(np.float32)
             t0 = timeit.default_timer()
             x, res_history = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), max_it=1000, tol=1e-4, verbose=False)
             print("CG took", timeit.default_timer()-t0, 's after', len(res_history), 'iterations', res_history[-1])

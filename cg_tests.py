@@ -28,6 +28,7 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
     norm_b = b.norm().item()
     r = b - A @ x_init
     # np.save(f"res_0.npy", r.cpu().numpy())
+    # print('tol', tol, 'atol/normb', norm_b)
     if norm_type == 'l2': norm = r.norm().item() / norm_b
     else: norm = x_init.dot(A @ x_init).item() / 2 - x_init.dot(b)
     res_history = [norm]
@@ -56,7 +57,8 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
         res_history.append(norm)
         if verbose:
             print(f"Iter {i}, residual {res_history[-1]}")
-        if norm < max(tol, atol/norm_b): return x_sol, res_history
+        if norm < max(tol, atol/norm_b):
+            return x_sol, res_history
     return x_sol, res_history
 ###################
 # CG
