@@ -87,49 +87,42 @@ class SmallSMModelD2(BaseModel):
     def __init__(self):
         super().__init__()
         self.pre0 = SmallSMBlock()
-        self.post1 = SmallSMBlock()
+        self.post0 = SmallSMBlock()
         self.pre1 = SmallSMBlock()
-        # self.L20 = SmallSMBlock()
-        # self.L21 = SmallSMBlock()
-        # self.c00 = nn.LazyLinear(out_features=1)
-        # self.c01 = nn.LazyLinear(out_features=1)
-        # self.c00 = SmallLinearBlock()
-        # self.c01 = SmallLinearBlock()
-        # self.c00 = nn.Conv2d(1, 1, kernel_size=1)
-        # self.c01 = nn.Conv2d(1, 1, kernel_size=1)
-        # self.c10 = nn.Conv2d(1, 1, kernel_size=1)
-        # self.c11 = nn.Conv2d(1, 1, kernel_size=1)
-        # self.downsample = nn.Conv2d(1, 1, kernel_size=2, stride=2)
-        # self.upsample = nn.ConvTranspose2d(1, 1, kernel_size=2, stride=2)
+        self.post1 = SmallSMBlock()
+        self.l2 = SmallSMBlock()
+
+        self.c00 = SmallLinearBlock()
+        self.c01 = SmallLinearBlock()
+        self.c10 = SmallLinearBlock()
+        self.c11 = SmallLinearBlock()
+
 
     def forward(self, image, b):
         b0 = self.pre0(image, b)
         b0 = F.elu(b0)
-        # b0 = self.L1(image, b0)
-        # b0 = F.elu(b0)
 
         b1 = F.avg_pool2d(b0, (2, 2))
-        # p0 = self.downsample(b0.unsqueeze(1))
         image1 = F.max_pool2d(image, (2, 2))
-        b1 = self.post1(image1, b1)
+        b1 = self.pre1(image1, b1)
         b1 = F.elu(b1)
 
-        # b2 = F.avg_pool2d(b1, (2, 2))
-        # image2 = F.max_pool2d(image1, (2, 2))
-        # b2 = self.L20(image2, b2)
-        # b2 = F.elu(b2)
+        b2 = F.avg_pool2d(b1, (2, 2))
+        image2 = F.max_pool2d(image1, (2, 2))
+        b2 = self.l2(image2, b2)
+        b2 = F.elu(b2)
 
-        # b2 = F.upsample(b2, scale_factor=2)
-        # b2 = self.L21(image1, b2)
-        # b2 = F.elu(b2)
-        # b1 = self.c10(b1) + self.c11(b2)
+        b2 = F.interpolate(b2, scale_factor=2)
+        b2 = self.post1(image1, b2)
+        b2 = F.elu(b2)
+        b1 = self.c10(image1) * b1 + self.c11(image1) * b2
+
         b1 = F.interpolate(b1, scale_factor=2)
-        b1 = self.pre1(image, b1)
+        b1 = self.post0(image, b1)
         b1 = F.elu(b1)
+        b0 = self.c00(image) * b0 + self.c01(image) * b1
 
-        # x = self.c00(image) * b0 + self.c01(image) * b1
-        x = b1
-        return x
+        return b0
 
 
 class SMConvBlock(nn.Module):
@@ -226,3 +219,37 @@ class SMModelFull(BaseModel):
         x = activate(self.conv5(x))
         x = self.conv6(x)
         return x
+
+if __name__ == '__main__':
+    import os, sys
+    path = os.path.dirname(os.path.realpath(__file__))
+    sys.path.append(path + "/lib")
+    from lib.read_data import *
+    import matplotlib.pyplot as plt
+    from torchsummary import summary
+
+    N = 256
+    frame = 100
+    # file_A = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"A_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"flags_{frame}.bin")
+    # A = readA_sparse(64, file_A, DIM=2)
+    rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32)
+    flags = torch.tensor(read_flags(file_flags), dtype=torch.float32)
+    sol = torch.tensor(load_vector(file_sol), dtype=torch.float32)
+
+    x = torch.stack([rhs, flags]).reshape(1, 2, N, N).to(torch.device('cuda'))
+
+    model = SmallSMModel()
+    # model = DCDM(2)
+    # model = NewModel1()
+    # model.eval()
+    # torch.set_grad_enabled(False) # disable autograd globally
+    model.to(torch.device("cuda"))
+
+    summary(model, ((1, 256, 256), (1, 1, 256, 256)))
+    # y = model(flags.reshape(1, N, N), rhs.reshape(1, 1, N, N))
+    # loss = model.residual_loss(x, y, A)
+    # print(y.shape)
+    print(model)

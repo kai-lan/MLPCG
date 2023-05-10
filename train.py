@@ -169,12 +169,12 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    suffix += '_smmodel'
+    suffix += '_smmodeld2'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
     inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")
 
-    model = SmallSMModel()
+    model = SmallSMModelD2()
     model.move_to(cuda)
     loss_fn = eval(loss_fn)
     optimizer = optim.Adam(model.parameters(), lr=lr)

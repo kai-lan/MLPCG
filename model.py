@@ -398,8 +398,7 @@ if __name__ == '__main__':
 
     x = torch.stack([rhs, flags]).reshape(1, 2, N, N).to(torch.device('cuda'))
 
-    # model = FluidNet()
-    model = SmallSMModel()
+    model = FluidNet()
     # model = DCDM(2)
     # model = NewModel1()
     # model.eval()

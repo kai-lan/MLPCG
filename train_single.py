@@ -26,10 +26,10 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    N = 256
+    N = 1024
     DIM = 2
     dim2 = N**DIM
-    lr = 0.001
+    lr = 0.01
     epoch_num = 100
     cuda = torch.device("cuda") # Use CUDA for training
 
@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
     A = torch.load(f"{data_path}/A.pt").to_sparse_csr()
     image = torch.load(f"{data_path}/flags.pt").reshape(1, N, N)
-    model = FluidNet()
+    model = SmallSMModelD2()
     model.move_to(cuda)
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
@@ -137,7 +137,7 @@ if __name__ == '__main__':
                 f.write(f"{_*epoch_num}, {len(res_fluidnet_res)-1}, {len(res_history)}\n")
             plt.clf()
             plt.plot(res_history, label='CG')
-            plt.plot(res_fluidnet_res, label='FluidNet')
+            plt.plot(res_fluidnet_res, label='MLPCG')
             plt.legend()
             plt.savefig("test_loss.png")
         if for_train:
