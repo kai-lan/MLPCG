@@ -135,7 +135,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    N = 64
+    N = 256
     DIM = 2
     lr = 1.0e-3
     epoch_num_per_matrix = 5
@@ -143,8 +143,8 @@ if __name__ == '__main__':
     bc = 'dambreak'
     b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
     total_matrices = 50 # number of matrices chosen for training
-    num_ritz = 200
-    num_rhs = 100 # number of ritz vectors for training for each matrix
+    num_ritz = 800
+    num_rhs = 400 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
     cuda = torch.device("cuda") # Use CUDA for training
 
@@ -217,11 +217,11 @@ if __name__ == '__main__':
             training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
             tl += np.sum(training_loss_)
             vl += np.sum(validation_loss_)
-            train_loss.append(tl)
-            valid_loss.append(vl)
-            time_history.append(time.time() - start_time)
             grad_history.extend(grad_history_)
             update_history.extend(update_history_)
+        train_loss.append(tl)
+        valid_loss.append(vl)
+        time_history.append(time.time() - start_time)
         saveData(model, optimizer, i+start_epoch, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history)
     end_time = time.time()
     print("Took", end_time-start_time, 's')

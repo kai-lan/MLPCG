@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from model import BaseModel
+import numpy as np
 
 class SmallSMBlock(nn.Module):
     def __init__(self):
@@ -16,6 +17,9 @@ class SmallSMBlock(nn.Module):
         y = (x * K).sum(dim=(-2, -1)) # bs x 1 x N x N x 3 x 3, N x N x 3 x 3 -> bs x 1 x N x N
         return y
 
+# _____       _____
+#      |     |
+#      |_____|
 class SmallSMModelLegacy(BaseModel):
     def __init__(self):
         super().__init__()
@@ -33,13 +37,53 @@ class SmallSMModelLegacy(BaseModel):
         b1 = self.L10(image0, b1)
         b1 = F.elu(b1)
 
-        b1 = F.upsample(b1, scale_factor=2)
+        b1 = F.interpolate(b1, scale_factor=2)
         b1 = self.L11(image, b1)
         b1 = F.elu(b1)
         x = self.c00(b0) + self.c01(b1)
         return x
 
+class SmallLinearBlock(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.KL = nn.Conv2d(1, 9, kernel_size=3, padding='same')
+    def forward(self, image):
+        K = self.KL(image) # 1 x N x N -> 9 x N x N
+        return K.mean()
+
+# ----pre0----          ----post1----
+#            |          |
+#            ----pre1----
 class SmallSMModel(BaseModel):
+    def __init__(self):
+        super().__init__()
+        self.pre0 = SmallSMBlock()
+        self.post1 = SmallSMBlock()
+        self.pre1 = SmallSMBlock()
+        self.c00 = SmallLinearBlock()
+        self.c01 = SmallLinearBlock()
+    def forward(self, image, b):
+        b0 = self.pre0(image, b)
+        b0 = F.elu(b0)
+
+        b1 = F.avg_pool2d(b0, (2, 2))
+        image1 = F.max_pool2d(image, (2, 2))
+        b1 = self.post1(image1, b1)
+        b1 = F.elu(b1)
+
+        b1 = F.interpolate(b1, scale_factor=2)
+        b1 = self.pre1(image, b1)
+        b1 = F.elu(b1)
+
+        x = self.c00(image) * b0 + self.c01(image) * b1
+        return x
+
+# _____                   _____
+#      |                 |
+#      |_____       _____|
+#            |     |
+#            |_____|
+class SmallSMModelD2(BaseModel):
     def __init__(self):
         super().__init__()
         self.pre0 = SmallSMBlock()
@@ -47,14 +91,17 @@ class SmallSMModel(BaseModel):
         self.pre1 = SmallSMBlock()
         # self.L20 = SmallSMBlock()
         # self.L21 = SmallSMBlock()
-        self.c00 = nn.LazyLinear(out_features=1)
-        self.c01 = nn.LazyLinear(out_features=1)
+        # self.c00 = nn.LazyLinear(out_features=1)
+        # self.c01 = nn.LazyLinear(out_features=1)
+        # self.c00 = SmallLinearBlock()
+        # self.c01 = SmallLinearBlock()
         # self.c00 = nn.Conv2d(1, 1, kernel_size=1)
         # self.c01 = nn.Conv2d(1, 1, kernel_size=1)
         # self.c10 = nn.Conv2d(1, 1, kernel_size=1)
         # self.c11 = nn.Conv2d(1, 1, kernel_size=1)
         # self.downsample = nn.Conv2d(1, 1, kernel_size=2, stride=2)
         # self.upsample = nn.ConvTranspose2d(1, 1, kernel_size=2, stride=2)
+
     def forward(self, image, b):
         b0 = self.pre0(image, b)
         b0 = F.elu(b0)
@@ -76,14 +123,14 @@ class SmallSMModel(BaseModel):
         # b2 = self.L21(image1, b2)
         # b2 = F.elu(b2)
         # b1 = self.c10(b1) + self.c11(b2)
-
-        b1 = F.upsample(b1, scale_factor=2)
+        b1 = F.interpolate(b1, scale_factor=2)
         b1 = self.pre1(image, b1)
         b1 = F.elu(b1)
 
-
-        x = self.c00(image) * b0 + self.c01(image) * b1
+        # x = self.c00(image) * b0 + self.c01(image) * b1
+        x = b1
         return x
+
 
 class SMConvBlock(nn.Module):
     def __init__(self, nc_in, nc_out, kernel_size=3):

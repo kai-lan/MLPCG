@@ -24,21 +24,21 @@ def flip_data(rhs, flags):
     flipped_A = lap_with_bc(n, DIM, bd=bd, air=empty_cells, bd_padding=False, dtype=np.float32)
     return flipped_rhs, flipped_flags, flipped_A
 
-N = 128
+N = 1024
 DIM = 2
 norm_type = 'l2'
 
 # train_matrices = set(np.load(f"{OUT_PATH}/output_2D_{N}/matrices_trained_50.npy"))
 # frames = set(np.arange(1, 201)) - train_matrices
-# frame = list(frames)[3] # Random frame
+# frame = list(frames)[50] # Random frame
 # frame = list(train_matrices)[40]
-# frame = 164
-frame = 10
-scene = 'dambreak'
+frame = 64
+# frame = 12
+scene = f'dambreak_N{N}_200'
 print("Testing frame", frame, "scene", scene)
 
 # dambreak
-dambreak_path = os.path.join(DATA_PATH, f"{scene}_N{N}_200") #_smoke include boundary
+dambreak_path = os.path.join(DATA_PATH, f"{scene}") #_smoke include boundary
 A_sp = readA_sparse(os.path.join(dambreak_path, f"A_{frame}.bin")).astype(np.float32)
 rhs_sp = load_vector(os.path.join(dambreak_path, f"div_v_star_{frame}.bin")).astype(np.float32)
 flags_sp = read_flags(os.path.join(dambreak_path, f"flags_{frame}.bin"))
@@ -52,28 +52,28 @@ flags = torch.tensor(flags_sp, dtype=torch.float32, device=device)
 # ppc = torch.tensor(ppc_sp, dtype=torch.float32, device=device)
 # levelset = torch.tensor(levelset_sp, dtype=torch.float32, device=device)
 
-NN = 64
+NN = 256
 num_mat = 50
-num_ritz = 200
-num_rhs = 100
+num_ritz = 800
+num_rhs = 400
 
-fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_flags_newmodel.tar")
+fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_flags_smmodellegacy.tar")
 fluidnet_model_res = SmallSMModelLegacy()
 fluidnet_model_res.move_to(device)
 fluidnet_model_res.load_state_dict(torch.load(fluidnet_model_res_file)['model_state_dict'])
 fluidnet_model_res.eval()
 
-# fluidnet_model_eng_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_ppc.tar")
-# fluidnet_model_eng = FluidNet()
-# fluidnet_model_eng.move_to(device)
-# fluidnet_model_eng.load_state_dict(torch.load(fluidnet_model_eng_file)['model_state_dict'])
-# fluidnet_model_eng.eval()
+fluidnet_model_eng_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_flags_smmodel.tar")
+fluidnet_model_eng = SmallSMModel()
+fluidnet_model_eng.move_to(device)
+fluidnet_model_eng.load_state_dict(torch.load(fluidnet_model_eng_file)['model_state_dict'])
+fluidnet_model_eng.eval()
 
-# fluidnet_model_scaled2_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_levelset.tar")
-# fluidnet_model_scaled2 = FluidNet()
-# fluidnet_model_scaled2.move_to(device)
-# fluidnet_model_scaled2.load_state_dict(torch.load(fluidnet_model_scaled2_file)['model_state_dict'])
-# fluidnet_model_scaled2.eval()
+fluidnet_model_scaled2_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_flags_fluidnet.tar")
+fluidnet_model_scaled2 = FluidNet()
+fluidnet_model_scaled2.move_to(device)
+fluidnet_model_scaled2.load_state_dict(torch.load(fluidnet_model_scaled2_file)['model_state_dict'])
+fluidnet_model_scaled2.eval()
 
 # fluidnet_model_scaledA_file = os.path.join(OUT_PATH, f"output_2D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_eng.tar")
 # fluidnet_model_scaledA = FluidNet()
@@ -118,8 +118,7 @@ def fluidnet_predict(fluidnet_model, image):
     def predict(r):
         with torch.no_grad():
             r = normalize(r, dim=0)
-            # b = torch.stack([r, image]).view(1, 2, N, N)
-            x = fluidnet_model(image.view(1, N, N), r.view(1, 1, N, N)).flatten()
+            x = fluidnet_model.eval_forward(image.view(1, N, N), r.view(1, 1, N, N)).flatten()
         return x
     return predict
 
@@ -132,12 +131,12 @@ x_fluidnet_scaleA, res_fluidnet_scaleA = None, None
 def torch_benchmark_dcdm_res(model):
     global x_fluidnet_res, res_fluidnet_res
     x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model, flags), max_iter, tol=tol, atol=atol)
-# def torch_benchmark_dcdm_eng(model):
-#     global x_fluidnet_eng, res_fluidnet_eng
-#     x_fluidnet_eng, res_fluidnet_eng = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model, ppc), max_iter, tol=tol, atol=atol)
-# def torch_benchmark_dcdm_scaled2(model):
-#     global x_fluidnet_scale2, res_fluidnet_scale2
-#     x_fluidnet_scale2, res_fluidnet_scale2 = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model, levelset), max_iter, tol=tol, atol=atol)
+def torch_benchmark_dcdm_eng(model):
+    global x_fluidnet_eng, res_fluidnet_eng
+    x_fluidnet_eng, res_fluidnet_eng = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model, flags), max_iter, tol=tol, atol=atol)
+def torch_benchmark_dcdm_scaled2(model):
+    global x_fluidnet_scale2, res_fluidnet_scale2
+    x_fluidnet_scale2, res_fluidnet_scale2 = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model, flags), max_iter, tol=tol, atol=atol)
 # def torch_benchmark_dcdm_scaledA(model):
 #     global x_fluidnet_scaleA, res_fluidnet_scaleA
 #     x_fluidnet_scaleA, res_fluidnet_scaleA = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(model), max_iter, tol=tol, atol=atol)
@@ -149,28 +148,28 @@ def torch_timer(loss):
 
 timer_res = torch_timer('res')
 result_res = timer_res.timeit(1)
-print("FluidNet residual took", result_res.times[0], 's after', len(res_fluidnet_res), 'iterations')
+print("Small SM Legacy took", result_res.times[0], 's after', len(res_fluidnet_res), 'iterations')
 
-# timer_eng = torch_timer('eng')
-# result_eng = timer_eng.timeit(1)
-# print("FluidNet energy took", result_eng.times[0], 's after', len(res_fluidnet_eng), 'iterations')
+timer_eng = torch_timer('eng')
+result_eng = timer_eng.timeit(1)
+print("Small SM took", result_eng.times[0], 's after', len(res_fluidnet_eng), 'iterations')
 
-# timer_scaled2 = torch_timer('scaled2')
-# result_scaled2 = timer_scaled2.timeit(1)
-# print("FluidNet scaled2 took", result_scaled2.times[0], 's after', len(res_fluidnet_scale2), 'iterations')
+timer_scaled2 = torch_timer('scaled2')
+result_scaled2 = timer_scaled2.timeit(1)
+print("FluidNet scaled2 took", result_scaled2.times[0], 's after', len(res_fluidnet_scale2), 'iterations')
 
 # timer_scaledA = torch_timer('scaledA')
 # result_scaledA = timer_scaledA.timeit(1)
 # print("FluidNet scaledA took", result_scaledA.times[0], 's after', len(res_fluidnet_scaleA), 'iterations')
 
 import matplotlib.pyplot as plt
-plt.plot(res_fluidnet_res, label='fluidnet_res_flags')
-# plt.plot(res_fluidnet_eng, label='fluidnet_res_ppc')
-# plt.plot(res_fluidnet_scale2, label='fluidnet_res_levelset')
+plt.plot(res_fluidnet_res, label='small_sm_legacy')
+plt.plot(res_fluidnet_eng, label='small_sm')
+plt.plot(res_fluidnet_scale2, label='fluidnet')
 # plt.plot(res_fluidnet_scaleA, label='fluidnet_scaleA')
 plt.plot(res_cg, label='cg')
-plt.plot(res_cg_cp, label='GPU cg')
+plt.plot(res_cg_cp, label='cuda cg')
 if norm_type == 'l2': plt.yscale('log')
-plt.title(f"{norm_type} VS Iterations")
+plt.title(f"{norm_type} norm VS Iterations")
 plt.legend()
 plt.savefig("test_loss.png")

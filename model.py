@@ -13,13 +13,14 @@ import torch.nn.functional as F
 from torchsummary import summary
 
 
-
 class BaseModel(nn.Module):
     def __init__(self):
         super(BaseModel, self).__init__()
     def move_to(self, device):
         self.device = device
         self.to(device)
+    def eval_forward(self, *args, **kargs):
+        return self.forward(*args, **kargs)
         # Residual loss
     def residual_loss(self, x, y, A):
         bs = x.shape[0]
@@ -53,6 +54,7 @@ class BaseModel(nn.Module):
             r = y[i] - alpha * Ax
             result += r.dot(A @ r)
         return result / bs
+
 # x -> L0 x -> L1 L0 x -> L2 L1 L0 x -> ...
 #       |         |           |
 #       |_________|___________|
