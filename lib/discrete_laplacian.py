@@ -201,9 +201,10 @@ if __name__ == '__main__':
 
     # i, j = multiInd(5, 3)
     # print(i, j)
-    # A = poisson_lap(n, DIM, bd=bd, bd_padding=bd_padding, dtype=np.float32)
+    # A = lap3d_periodic(4, 4, 4)
     A = lap_with_bc(n, DIM, bd=bd, bd_padding=bd_padding, dtype=np.float32)
-    print(A.toarray())
+    print(A.shape)
+    print(A.toarray().sum(axis=1))
     # print(timer.counter)
     # print(timer.total_time)
     # end = time.perf_counter()

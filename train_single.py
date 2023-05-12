@@ -26,7 +26,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    N = 1024
+    N = 64
     DIM = 2
     dim2 = N**DIM
     lr = 0.01
@@ -36,7 +36,7 @@ if __name__ == '__main__':
     image_type = 'flags'
     frame = 100
     # num_ritz = 200
-    num_rhs = 400
+    num_rhs = 100
     b_size = 20
     # levels = 20
     # data_path = f"{DATA_PATH}/full_domain/N{N}"
@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
     A = torch.load(f"{data_path}/A.pt").to_sparse_csr()
     image = torch.load(f"{data_path}/flags.pt").reshape(1, N, N)
-    model = SmallSMModelD2()
+    model = SmallSMModelD3()
     model.move_to(cuda)
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
@@ -70,8 +70,9 @@ if __name__ == '__main__':
     def transform(x):
         x = x.reshape((1, N, N))
         return x
-    train_set = MyDataset(data_path, perm[:train_size], transform, denoised=False)
-    valid_set = MyDataset(data_path, perm[train_size:], transform, denoised=False)
+
+    train_set = MyDataset(data_path, perm[:train_size], transform, suffix='') # 'k' for Krylov vectors: b, Ab, A^2 b, A^3 b
+    valid_set = MyDataset(data_path, perm[train_size:], transform, suffix='')
 
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
@@ -97,13 +98,13 @@ if __name__ == '__main__':
             axes[1].plot(validation_loss, label='validation', c='orange')
             axes[0].legend()
             axes[1].legend()
-            plt.savefig("train_loss.png")
+            plt.savefig(f"train_loss_{N}.png")
             plt.clf()
             plt.plot(grad_history)
-            plt.savefig("train_grad.png")
+            plt.savefig(f"train_grad_{N}.png")
             plt.clf()
             plt.plot(update_history)
-            plt.savefig("train_update.png")
+            plt.savefig(f"train_update_{N}.png")
         if for_test:
             checkpt = torch.load(f"{outdir}/checkpt_{suffix}.tar")
 
@@ -139,6 +140,6 @@ if __name__ == '__main__':
             plt.plot(res_history, label='CG')
             plt.plot(res_fluidnet_res, label='MLPCG')
             plt.legend()
-            plt.savefig("test_loss.png")
+            plt.savefig(f"test_loss_{N}.png")
         if for_train:
             print("Training time", end-start)

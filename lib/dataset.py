@@ -4,14 +4,11 @@ import numpy as np
 import os
 
 class MyDataset(Dataset):
-    def __init__(self, data_folder, permutation, transform, denoised):
+    def __init__(self, data_folder, permutation, transform, suffix=''):
         self.data_folder = data_folder
         self.perm = permutation
         self.transform = transform
-        if denoised:
-            self.suffix = '_denoised'
-        else:
-            self.suffix = ''
+        self.suffix = suffix
     def __getitem__(self, index):
         index = self.perm[index]
         x = torch.load(f"{self.data_folder}/b_{index}{self.suffix}.pt")

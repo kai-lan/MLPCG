@@ -15,7 +15,7 @@ Ritz vector for matrix A.
 '''
 #OMP_NUM_THREADS=8 python ....py
 from GLOBAL_VARS import *
-os.environ['OMP_NUM_THREADS'] = '8'
+os.environ['OMP_NUM_THREADS'] = '4'
 import numpy as np
 import scipy
 import time
@@ -24,6 +24,7 @@ import read_data as hf
 import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
 from tqdm import tqdm
+from multiprocessing import Process
 
 def lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
     return _lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=ortho_iters, cut_off_tol=cut_off_tol)
@@ -89,28 +90,16 @@ def createRawData(ritz_vectors, sample_size, flags, outdir):
         with open(f"{outdir}/b_{i}.npz", 'wb') as f:
             sparse.save_npz(f, s)
 
-if __name__ == '__main__':
-    np.random.seed(2)
-    N = 64
-    DIM = 2
-
-    dir = f"{DATA_PATH}/dambreak_N{N}_200"
-    os.makedirs(dir, exist_ok=True)
-    num_ritz_vectors = 100
-    # start_frame = 10
-    # end_frame = 11
-    # perm = np.random.permutation(range(1, 201)) #[:100]
-    # np.save(f"{dir}/train_mat.npy", perm)
-    perm = range(100, 101)
-
-    for i in tqdm(perm):
+def worker(frames):
+    print('Process id', os.getpid())
+    for i in frames:
         print('Matrix', i)
         out = f"{dir}/preprocessed/{i}"
         os.makedirs(out, exist_ok=True)
         A = hf.readA_sparse(f"{dir}/A_{i}.bin")
         flags = hf.read_flags(f"{dir}/flags_{i}.bin")
         rhs = hf.load_vector(f"{dir}/div_v_star_{i}.bin")
-        sol = hf.load_vector(f"{dir}/pressure_{i}.bin")
+        # sol = hf.load_vector(f"{dir}/pressure_{i}.bin")
 
         A = hf.compressedMat(A, flags)
         rhs = hf.compressedVec(rhs, flags)
@@ -119,5 +108,26 @@ if __name__ == '__main__':
         print(ritz_vals[:20])
         np.save(f"{out}/ritz_{num_ritz_vectors}.npy", ritz_vec)
 
-        # _test_lanczos_algorithm(A, num_ritz_vectors, or)
-        # createResVec(A, rhs, verbose=True)
+np.random.seed(2)
+N = 1024
+DIM = 2
+
+dir = f"{DATA_PATH}/dambreak_N{N}_200"
+os.makedirs(dir, exist_ok=True)
+num_ritz_vectors = 3200
+
+if __name__ == '__main__':
+
+    t0 = time.time()
+    # total_work = range(1, 150)
+    total_work = [92, 94, 95, 93, 109, 110, 111, 112, 113, 125, 126, 127, 128, 129, 130, 131, 143, 144, 145, 146, 147, 148, 149, 150]
+    num_threads = 4
+    chunks = np.array_split(total_work, num_threads)
+    thread_list = []
+    for thr in range(num_threads):
+        thread = Process(target=worker, args=(chunks[thr],))
+        thread_list.append(thread)
+        thread_list[thr].start()
+    for thread in thread_list:
+        thread.join()
+    print('Total time', time.time() - t0)

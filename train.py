@@ -169,7 +169,7 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    suffix += '_smmodeld2'
+    suffix += '_smmodeld3'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
     inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")

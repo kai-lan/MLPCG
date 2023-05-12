@@ -97,7 +97,6 @@ class SmallSMModelD2(BaseModel):
         self.c10 = SmallLinearBlock()
         self.c11 = SmallLinearBlock()
 
-
     def forward(self, image, b):
         b0 = self.pre0(image, b)
         b0 = F.elu(b0)
@@ -123,6 +122,110 @@ class SmallSMModelD2(BaseModel):
         b0 = self.c00(image) * b0 + self.c01(image) * b1
 
         return b0
+
+# _____                               _____
+#      |                             |
+#      |_____                   _____|
+#            |                 |
+#            |_____       _____|
+#                  |     |
+#                  |_____|
+class SmallSMModelD3(BaseModel):
+    def __init__(self):
+        super().__init__()
+        self.pre0 = SmallSMBlock()
+        self.post0 = SmallSMBlock()
+        self.pre1 = SmallSMBlock()
+        self.post1 = SmallSMBlock()
+        self.pre2 = SmallSMBlock()
+        self.post2 = SmallSMBlock()
+        self.l3 = SmallSMBlock()
+
+        self.c00 = SmallLinearBlock()
+        self.c01 = SmallLinearBlock()
+        self.c10 = SmallLinearBlock()
+        self.c11 = SmallLinearBlock()
+        self.c20 = SmallLinearBlock()
+        self.c21 = SmallLinearBlock()
+
+    def forward(self, image, b):
+        b0 = self.pre0(image, b)
+        b0 = F.elu(b0)
+
+        b1 = F.avg_pool2d(b0, (2, 2))
+        image1 = F.max_pool2d(image, (2, 2))
+        b1 = self.pre1(image1, b1)
+        b1 = F.elu(b1)
+
+        b2 = F.avg_pool2d(b1, (2, 2))
+        image2 = F.max_pool2d(image1, (2, 2))
+        b2 = self.pre2(image2, b2)
+        b2 = F.elu(b2)
+
+        b3 = F.avg_pool2d(b2, (2, 2))
+        image3 = F.max_pool2d(image2, (2, 2))
+        b3 = self.l3(image3, b3)
+        b3 = F.elu(b3)
+
+        b3 = F.interpolate(b3, scale_factor=2)
+        b3 = self.post2(image2, b3)
+        b3 = F.elu(b3)
+        b2 = self.c20(image2) * b2 + self.c21(image2) * b3
+
+        b2 = F.interpolate(b2, scale_factor=2)
+        b2 = self.post1(image1, b2)
+        b2 = F.elu(b2)
+        b1 = self.c10(image1) * b1 + self.c11(image1) * b2
+
+        b1 = F.interpolate(b1, scale_factor=2)
+        b1 = self.post0(image, b1)
+        b1 = F.elu(b1)
+        b0 = self.c00(image) * b0 + self.c01(image) * b1
+
+        return b0
+
+# _____                                           _____
+#      |                                         |
+#      |_____                               _____|
+#            |                             |
+#            |_____                   _____|
+#                  |                 |
+#                  |_____............|
+class SmallSMModelDn(BaseModel):
+    def __init__(self, n):
+        super().__init__()
+        self.n = n
+        self.pre = nn.ModuleList()
+        self.post = nn.ModuleList()
+        for _ in range(n):
+            self.pre.append(SmallSMBlock())
+            self.post.append(SmallSMBlock())
+        self.l = SmallSMBlock()
+        self.c0 = nn.ModuleList()
+        self.c1 = nn.ModuleList()
+        for _ in range(n):
+            self.c0.append(SmallLinearBlock())
+            self.c1.append(SmallLinearBlock())
+
+    def forward(self, image, b):
+        x = [F.elu(self.pre[0](image, b))]
+        imgs = [image]
+
+        for i in range(1, self.n):
+            x.append(F.avg_pool2d(x[-1], (2, 2)))
+            imgs.append(F.max_pool2d(imgs[-1], (2, 2)))
+            x[-1] = F.elu(self.pre[i](imgs[-1], x[-1]))
+
+        x.append(F.avg_pool2d(x[-1], (2, 2)))
+        imgs.append(F.max_pool2d(imgs[-1], (2, 2)))
+        x[-1] = F.elu(self.l(imgs[-1], x[-1]))
+
+        for i in range(self.n, 0, -1):
+            x[i] = F.interpolate(x[i], scale_factor=2)
+            x[i] = F.elu(self.post[i-1](imgs[i-1], x[i]))
+            x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
+
+        return x[0]
 
 
 class SMConvBlock(nn.Module):
@@ -245,7 +348,7 @@ if __name__ == '__main__':
     # model = DCDM(2)
     # model = NewModel1()
     # model.eval()
-    # torch.set_grad_enabled(False) # disable autograd globally
+    torch.set_grad_enabled(False) # disable autograd globally
     model.to(torch.device("cuda"))
 
     summary(model, ((1, 256, 256), (1, 1, 256, 256)))
