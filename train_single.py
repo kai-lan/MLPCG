@@ -47,7 +47,8 @@ if __name__ == '__main__':
     suffix = f"frame_{frame}_{image_type}"
 
     A = torch.load(f"{data_path}/A.pt").to_sparse_csr()
-    image = torch.load(f"{data_path}/flags.pt").reshape(1, N, N)
+    print(torch.load(f"{data_path}/flags.pt").shape)
+    image = torch.load(f"{data_path}/flags.pt").view(1, N, N)
     model = SmallSMModelD3()
     model.move_to(cuda)
     optimizer = optim.Adam(model.parameters(), lr=lr)

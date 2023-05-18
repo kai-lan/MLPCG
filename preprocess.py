@@ -16,6 +16,7 @@ N = 64
 # matrices = range(1, 201)
 matrices = [100]
 data_folder = f"{DATA_PATH}/dambreak_N{N}_200"
+print('data folder place :',data_folder)
 # matrices = np.load(f"{data_folder}/train_mat.npy")
 num_ritz_vectors = 100
 num_rhs = num_ritz_vectors
