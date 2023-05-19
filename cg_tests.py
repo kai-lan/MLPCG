@@ -16,6 +16,7 @@ import torch.nn.functional as F
 import scipy.sparse.linalg as slin
 import cupy as cp
 import cupyx.scipy.sparse.linalg as gslin # https://docs.cupy.dev/en/stable/reference/scipy_sparse_linalg.html#module-cupyx.scipy.sparse.linalg
+import pyamg # https://github.com/pyamg/pyamg
 import matplotlib.pyplot as plt
 from lib.read_data import compute_weight
 
@@ -106,3 +107,12 @@ def CG_GPU(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, norm_type
             print(f"Iter {count}, residual {res_history[-1]}")
     x, info = gslin.cg(A, b, x0=x_init, tol=tol, atol=atol, maxiter=max_it, callback=callback)
     return x, res_history
+
+def AMGCG(b, A, x_init, max_it, tol=1e-10, atol=1e-12):
+    ml = pyamg.ruge_stuben_solver(A)
+    residuals = []
+    x = ml.solve(b, x0=x_init, maxiter=max_it, tol=tol, residuals=residuals)
+    b_norm = np.linalg.norm(b)
+    for i in range(len(residuals)):
+        residuals[i] /= b_norm
+    return x, residuals

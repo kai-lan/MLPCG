@@ -142,7 +142,7 @@ if __name__ == '__main__':
     epoch_num = 50
     bc = 'dambreak'
     b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
-    total_matrices = 5 # number of matrices chosen for training
+    total_matrices = 10 # number of matrices chosen for training
     num_ritz = 800
     num_rhs = 400 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
 
     # matrices = np.random.permutation(range(1, 201))[:total_matrices]
-    matrices = np.linspace(1, 200, 5, dtype=int)
+    matrices = np.linspace(1, 200, total_matrices, dtype=int)
     # matrices = np.load(os.path.join(DATA_PATH, f"{bc}_N{N}_200/train_mat.npy"))
     np.save(f"{outdir}/matrices_trained_{total_matrices}.npy", matrices)
     start_time = time.time()

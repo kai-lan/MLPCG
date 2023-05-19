@@ -115,7 +115,7 @@ void Serialize(SparseMatrix<T, OptionsBitFlag, Index>& m, const std::string& fil
   }
 }
 """
-def readA_sparse(filenameA, dtype='d', sparse_type='coo'):
+def readA_sparse(filenameA, dtype='d', sparse_type='csr'):
     '''
     dim: grid points in each dimenstion
     DIM: 2D or 3D
@@ -180,29 +180,39 @@ def expandVec(b, flags):
     return v
 
 if __name__ == '__main__':
-    path = os.path.dirname(os.path.relpath(__file__))
-    frame = 160
+    frame = 88
     N = 64
+    DIM = 3
     prefix = ''
     bc = 'dambreak'
-    file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200", f"div_v_star_{frame}.bin")
-    file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200", f"flags_{frame}.bin")
-    A = readA_sparse(file_A)
+    file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200_{DIM}D", f"A_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200_{DIM}D", f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200_{DIM}D", f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200_{DIM}D", f"flags_{frame}.bin")
+    A = readA_sparse(file_A).tocoo()
     rhs = load_vector(file_rhs)
     sol = load_vector(file_sol)
 
     flags = read_flags(file_flags)
+    r = rhs - A @ sol
+    print(np.linalg.norm(r))
+    print(A.sum(axis=1).min())
+    print(A.shape)
+
+    # with open(f"output/singular_mat/A_{frame}.mtx", 'w') as f:
+    #     f.write(f"{A.shape[0]} {A.shape[1]} {A.nnz}\n")
+    #     for i in range(len(A.data)):
+    #         f.write(f"{A.row[i]+1} {A.col[i]+1} {A.data[i]}\n")
+    # with open(f"output/singular_mat/rhs_{frame}.dat", 'w') as f:
+    #     for i in range(len(rhs)):
+    #         f.write(f"{rhs[i]}\n")
+    # with open(f"output/singular_mat/sol_{frame}.dat", 'w') as f:
+    #     for i in range(len(rhs)):
+    #         f.write(f"{sol[i]}\n")
     # weight = compute_weight(file_flags, N, 2)
     # print(weight)
     # print(A.shape, rhs.shape, sol.shape, flags.shape)
-    import torch
-    x_gt = torch.tensor(sol)
-    b = torch.tensor(rhs)
-    A = torch.sparse_coo_tensor(np.array([A.row, A.col]), A.data, A.shape)
-    r = b - A @ x_gt
-    print(r.norm()/b.norm())
+
     # print(flags.max(), flags.min())
     # file = os.path.join(path,  "..", "data_dcdm", "train_2D_64", f"A_solid.bin")
     # A = readA_sparse(64, file, DIM=2, dtype='f')

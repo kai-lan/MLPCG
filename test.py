@@ -26,15 +26,15 @@ def flip_data(rhs, flags):
 pcg_precision = torch.float32
 torch.set_default_dtype(pcg_precision)
 
-N = 64
-DIM = 3
+N = 1024
+DIM = 2
 norm_type = 'l2'
 
-train_matrices = set(np.load(f"{OUT_PATH}/output_{DIM}D_{N}/matrices_trained_50.npy"))
-frames = set(np.arange(1, 151)) - train_matrices
-frame = list(frames)[10] # Random frame
+# train_matrices = set(np.load(f"{OUT_PATH}/output_{DIM}D_{N}/matrices_trained_50.npy"))
+# frames = set(np.arange(1, 151)) - train_matrices
+# frame = list(frames)[10] # Random frame
 # frame = list(train_matrices)[49]
-frame = 122
+frame = 1
 if DIM == 2:
     scene = f'dambreak_N{N}_200'
 else:
@@ -57,13 +57,13 @@ flags = torch.tensor(flags_sp, dtype=pcg_precision, device=device)
 # ppc = torch.tensor(ppc_sp, dtype=pcg_precision, device=device)
 # levelset = torch.tensor(levelset_sp, dtype=pcg_precision, device=device)
 
-NN = 64
-num_mat = 5
+NN = 256
+num_mat = 50
 num_ritz = 800
 num_rhs = 400
 
 fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_flags_smmodeld4.tar")
-fluidnet_model_res = SmallSMModelDn3D(4)
+fluidnet_model_res = SmallSMModelDn3D(4) if DIM == 3 else SmallSMModelDn(4)
 fluidnet_model_res.move_to(device)
 fluidnet_model_res.load_state_dict(torch.load(fluidnet_model_res_file)['model_state_dict'])
 fluidnet_model_res.eval()
@@ -86,14 +86,20 @@ fluidnet_model_res.eval()
 # fluidnet_model_scaledA.load_state_dict(torch.load(fluidnet_model_scaledA_file)['model_state_dict'])
 # fluidnet_model_scaledA.eval()
 
-################
-# CG
-################
 verbose = False
-cg_max_iter = 1000
+cg_max_iter = 1500
 pcg_max_iter = 200
 tol = 1e-4
 atol = 1e-10 # safe guard for small rhs
+###############
+# AMGCL
+###############
+t0 = timeit.default_timer()
+x_amgcg, res_amgcg = AMGCG(rhs_sp, A_sp, np.zeros_like(rhs_sp), cg_max_iter, tol=tol, atol=atol)
+print("AMGCG took", timeit.default_timer()-t0, 's after', len(res_amgcg), 'iterations', f'to {res_amgcg[-1]}')
+################
+# CG
+################
 t0 = timeit.default_timer()
 x_cg, res_cg = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), cg_max_iter, tol=tol, atol=atol, norm_type=norm_type, verbose=verbose)
 print("CG took", timeit.default_timer()-t0, 's after', len(res_cg), 'iterations', f'to {res_cg[-1]}')
@@ -154,7 +160,7 @@ def torch_timer(loss):
 
 timer_res = torch_timer('res')
 result_res = timer_res.timeit(1)
-print("1024 Small SM D4 took", result_res.times[0], 's after', len(res_fluidnet_res), 'iterations', f'to {res_fluidnet_res[-1]}')
+print(f"{NN} Small SM D4 took", result_res.times[0], 's after', len(res_fluidnet_res), 'iterations', f'to {res_fluidnet_res[-1]}')
 
 # timer_eng = torch_timer('eng')
 # result_eng = timer_eng.timeit(1)
@@ -170,6 +176,7 @@ print("1024 Small SM D4 took", result_res.times[0], 's after', len(res_fluidnet_
 
 import matplotlib.pyplot as plt
 plt.plot(res_fluidnet_res, label=f'{NN} small_sm_d4')
+plt.plot(res_amgcg, label='amgcg')
 # plt.plot(res_fluidnet_eng, label=f'{NN} small_sm')
 # plt.plot(res_fluidnet_scale2, label=f'{NN} fluidnet')
 # plt.plot(res_fluidnet_scaleA, label=f'{NN} small_sm_d4')
