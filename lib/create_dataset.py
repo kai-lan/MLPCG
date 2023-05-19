@@ -15,7 +15,7 @@ Ritz vector for matrix A.
 '''
 #OMP_NUM_THREADS=8 python ....py
 from GLOBAL_VARS import *
-os.environ['OMP_NUM_THREADS'] = '4'
+os.environ['OMP_NUM_THREADS'] = '2'
 import numpy as np
 import scipy
 import time
@@ -109,18 +109,20 @@ def worker(frames):
         np.save(f"{out}/ritz_{num_ritz_vectors}.npy", ritz_vec)
 
 np.random.seed(2)
-N = 1024
+N = 256
 DIM = 2
+scene = 'wedge'
+if DIM == 2:
+    dir = f"{DATA_PATH}/{scene}_N{N}_200"
+else: dir = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
 
-dir = f"{DATA_PATH}/dambreak_N{N}_200"
 os.makedirs(dir, exist_ok=True)
-num_ritz_vectors = 3200
+num_ritz_vectors = 800
 
 if __name__ == '__main__':
 
     t0 = time.time()
-    # total_work = range(1, 150)
-    total_work = [92, 94, 95, 93, 109, 110, 111, 112, 113, 125, 126, 127, 128, 129, 130, 131, 143, 144, 145, 146, 147, 148, 149, 150]
+    total_work = range(1, 2)
     num_threads = 4
     chunks = np.array_split(total_work, num_threads)
     thread_list = []

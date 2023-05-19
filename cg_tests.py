@@ -33,7 +33,7 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
     else: norm = x_init.dot(A @ x_init).item() / 2 - x_init.dot(b)
     res_history = [norm]
     if verbose:
-        print(f"Iter {0}, residual {res_history[-1]}")
+        print(f"Iter {0}, residual {res_history[-1]}, ares {r.norm().item()}")
     p0 = torch.zeros_like(b)
     p1 = torch.zeros_like(b)
     Ap0 = torch.zeros_like(b)
@@ -56,7 +56,7 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
         else: norm = x_sol.dot(A @ x_sol).item() / 2 - x_sol.dot(b)
         res_history.append(norm)
         if verbose:
-            print(f"Iter {i}, residual {res_history[-1]}")
+            print(f"Iter {i}, residual {res_history[-1]}, ares {r.norm().item()}")
         if norm < max(tol, atol/norm_b):
             return x_sol, res_history
     return x_sol, res_history

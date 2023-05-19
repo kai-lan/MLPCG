@@ -9,3 +9,4 @@ fluidnet/lib/__*
 fluidnet/data
 *.png
 __*
+*.txt

@@ -22,6 +22,12 @@ class BaseModel(nn.Module):
     def eval_forward(self, *args, **kargs):
         return self.forward(*args, **kargs)
         # Residual loss
+    def error_loss(self, x, x_):
+        bs = x.shape[0]
+        r = torch.zeros(1).to(x.device)
+        for i in range(bs):
+            r += (x - x_).norm(1)
+        return r / bs
     def residual_loss(self, x, y, A):
         bs = x.shape[0]
         r = torch.zeros(1).to(x.device)

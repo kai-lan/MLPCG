@@ -50,11 +50,11 @@ def train_(image, A, epoch_num, train_loader, validation_loader, model, optimize
     training_loss.append(tot_loss_train)
     validation_loss.append(tot_loss_val)
     time_history.append(time.time() - t0)
-    old_param = None
-    with torch.no_grad():
-        for k, param in enumerate(model.parameters()):
-            if k == 0:  old_param = param.data.ravel()
-            else:       old_param = torch.cat([old_param, param.data.ravel()])
+    # old_param = None
+    # with torch.no_grad():
+    #     for k, param in enumerate(model.parameters()):
+    #         if k == 0:  old_param = param.data.ravel()
+    #         else:       old_param = torch.cat([old_param, param.data.ravel()])
     print(training_loss[-1], validation_loss[-1], f"(0 / {epoch_num})")
 
 
@@ -72,15 +72,15 @@ def train_(image, A, epoch_num, train_loader, validation_loader, model, optimize
             optimizer.step()
 
         dLdw = 0.0
-        new_param = None
-        with torch.no_grad():
-            for k, param in enumerate(model.parameters()):
-                dLdw += param.grad.norm().item()
-                if k == 0:  new_param = param.data.ravel()
-                else:       new_param = torch.cat([new_param, param.data.ravel()])
-        grad_history.append(dLdw)
-        update_history.append((new_param - old_param).norm().item())
-        old_param = new_param
+        # new_param = None
+        # with torch.no_grad():
+        #     for k, param in enumerate(model.parameters()):
+        #         dLdw += param.grad.norm().item()
+        #         if k == 0:  new_param = param.data.ravel()
+        #         else:       new_param = torch.cat([new_param, param.data.ravel()])
+        # grad_history.append(dLdw)
+        # update_history.append((new_param - old_param).norm().item())
+        # old_param = new_param
 
         # Validation
         tot_loss_train, tot_loss_val = validation(train_loader, validation_loader, model, loss_fn, image, A)
@@ -135,14 +135,14 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    N = 256
-    DIM = 2
-    lr = 1.0e-3
+    N = 64
+    DIM = 3
+    lr = 0.001
     epoch_num_per_matrix = 5
     epoch_num = 50
     bc = 'dambreak'
     b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
-    total_matrices = 50 # number of matrices chosen for training
+    total_matrices = 5 # number of matrices chosen for training
     num_ritz = 800
     num_rhs = 400 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
@@ -169,12 +169,19 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    suffix += '_smmodeld3'
+    suffix += '_smmodeld4'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
-    inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")
 
-    model = SmallSMModelD2()
+    if DIM == 2:
+        inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")
+    else:
+        inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200_{DIM}D/preprocessed")
+
+    if DIM == 2:
+        model = SmallSMModelDn(4)
+    else:
+        model = SmallSMModelDn3D(4)
     model.move_to(cuda)
     loss_fn = eval(loss_fn)
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -193,14 +200,16 @@ if __name__ == '__main__':
     perm = np.random.permutation(num_rhs)
 
     def transform(x):
-        x = x.reshape((1, N, N))
+        x = x.reshape((1,)+(N,)*DIM)
         return x
 
-    train_set = MyDataset(None, perm[:train_size], transform, denoised=False)
-    valid_set = MyDataset(None, perm[train_size:], transform, denoised=False)
+    train_set = MyDataset(None, perm[:train_size], transform)
+    valid_set = MyDataset(None, perm[train_size:], transform)
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
-    matrices = np.random.permutation(range(1, 201))[:total_matrices]
+
+    # matrices = np.random.permutation(range(1, 201))[:total_matrices]
+    matrices = np.linspace(1, 200, 5, dtype=int)
     # matrices = np.load(os.path.join(DATA_PATH, f"{bc}_N{N}_200/train_mat.npy"))
     np.save(f"{outdir}/matrices_trained_{total_matrices}.npy", matrices)
     start_time = time.time()
@@ -213,7 +222,7 @@ if __name__ == '__main__':
             train_set.data_folder = os.path.join(f"{inpdir}/{j}")
             valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
             A = torch.load(f"{train_set.data_folder}/A.pt").to_sparse_csr()
-            image = torch.load(f"{train_set.data_folder}/flags.pt").view(1, N, N)
+            image = torch.load(f"{train_set.data_folder}/flags.pt").view((1,)+(N,)*DIM)
             training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
             tl += np.sum(training_loss_)
             vl += np.sum(validation_loss_)
