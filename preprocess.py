@@ -11,18 +11,18 @@ warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in
 torch.set_grad_enabled(False)
 
 DIM = 2
-N = 256
+N = 512
 # scale = 2
 
 
 matrices = range(1, 2)
-scene = 'smoke'
+scene = 'wedge'
 if DIM == 2:
     data_folder = f"{DATA_PATH}/{scene}_N{N}_200"
 else:
     data_folder = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
 # matrices = np.load(f"{data_folder}/train_mat.npy")
-num_ritz_vectors = 800
+num_ritz_vectors = 3200
 num_rhs = 800
 
 def createTrainingData(N, DIM, ritz_vectors, sample_size, fluid_cells, outdir, suffix=''):
@@ -48,10 +48,11 @@ def createTrainingData(N, DIM, ritz_vectors, sample_size, fluid_cells, outdir, s
             b[fluid_cells] = torch.tensor(b_rhs_temp[i-l_b], dtype=torch.float32)
             torch.save(b, os.path.join(outdir, f"b_{i}{suffix}.pt"))
 
-def createRandomVec(N, DIM, sample_size, air_cells, outdir, suffix='_rand'):
+def createRandomVec(N, DIM, sample_size, A, air_cells, outdir, suffix='_rand'):
     for i in range(sample_size):
         b = torch.randn(N**DIM)
         b[air_cells] = 0
+        b = A @ b
         b /= b.norm()
         torch.save(b, f"{outdir}/b_{i}{suffix}.pt")
 
@@ -131,7 +132,7 @@ def worker(indices):
 
         ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}.npy")
         createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder)
-        createRandomVec(N, DIM, num_rhs, air_cells, out_folder)
+        # createRandomVec(N, DIM, num_rhs, A, air_cells, out_folder)
         # createPerturbedVecFromRHS(N, DIM, rhs_np, ritz_vec, num_rhs, fluid_cells, out_folder)
 
 

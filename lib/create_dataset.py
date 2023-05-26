@@ -89,7 +89,10 @@ def createRawData(ritz_vectors, sample_size, flags, outdir):
         s = sparse.coo_matrix((ritz_vectors[i], (padding, np.zeros_like(padding))), shape=flags.shape+(1,), dtype=np.float32)
         with open(f"{outdir}/b_{i}.npz", 'wb') as f:
             sparse.save_npz(f, s)
-
+def createFourierRandVecs(N, DIM, num_bases):
+    bases = []
+    x, y = np.meshgrid(np.linspace(1/(N+1), N/(N+1), N), np.linspace(1/(N+1), N/(N+1), N))
+    print(x.shape, y.shape)
 def worker(frames):
     print('Process id', os.getpid())
     for i in frames:
@@ -103,27 +106,28 @@ def worker(frames):
 
         A = hf.compressedMat(A, flags)
         rhs = hf.compressedVec(rhs, flags)
+        # createFourierRandVecs(N, DIM, 200)
         # rhs = np.random.rand(A.shape[0])
         ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors)
         print(ritz_vals[:20])
         np.save(f"{out}/ritz_{num_ritz_vectors}.npy", ritz_vec)
 
 np.random.seed(2)
-N = 256
+N = 800
 DIM = 2
-scene = 'wedge'
+scene = 'dambreak'
 if DIM == 2:
     dir = f"{DATA_PATH}/{scene}_N{N}_200"
 else: dir = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
 
 os.makedirs(dir, exist_ok=True)
-num_ritz_vectors = 800
+num_ritz_vectors = 2500
 
 if __name__ == '__main__':
 
     t0 = time.time()
     total_work = range(1, 2)
-    num_threads = 4
+    num_threads = 1
     chunks = np.array_split(total_work, num_threads)
     thread_list = []
     for thr in range(num_threads):

@@ -10,6 +10,7 @@ class SmallSMBlock(nn.Module):
         self.KL = nn.Conv2d(1, 9, kernel_size=3, padding='same')
     def forward(self, image, x): # 1 x N x N, bs x 1 x N x N
         K = self.KL(image) # 1 x N x N -> 9 x N x N
+        # F.elu_(K) # nonlinear
         K = K.permute((1, 2, 0)) # 9 x N x N -> N x N x 9
         K = K.unflatten(2, (3, 3)) # N x N x 9 -> N x N x 3 x 3
         x = F.pad(x, (1, 1, 1, 1)) # bs x 1 x N x N -> bs x 1 x (N+2) x (N+2)
@@ -205,26 +206,66 @@ class SmallSMModelDn(BaseModel):
             self.c1.append(SmallLinearBlock())
 
     def forward(self, image, b):
-        # x = [self.pre[0](image, b)]
         x = [F.elu(self.pre[0](image, b))]
         imgs = [image]
 
         for i in range(1, self.n):
             x.append(F.avg_pool2d(x[-1], (2, 2)))
             imgs.append(F.max_pool2d(imgs[-1], (2, 2)))
-            # x[-1] = self.pre[i](imgs[-1], x[-1])
             x[-1] = F.elu(self.pre[i](imgs[-1], x[-1]))
 
         x.append(F.avg_pool2d(x[-1], (2, 2)))
         imgs.append(F.max_pool2d(imgs[-1], (2, 2)))
-        # x[-1] = self.l(imgs[-1], x[-1])
         x[-1] = F.elu(self.l(imgs[-1], x[-1]))
 
         for i in range(self.n, 0, -1):
             x[i] = F.interpolate(x[i], scale_factor=2)
-            # x[i] = self.post[i-1](imgs[i-1], x[i])
             x[i] = F.elu(self.post[i-1](imgs[i-1], x[i]))
             x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
+
+        return x[0]
+
+# Submanifold Sparse Convolutions
+class SparseSMModelDn(BaseModel):
+    def __init__(self, n):
+        super().__init__()
+        self.n = n
+        self.pre = nn.ModuleList()
+        self.post = nn.ModuleList()
+        for _ in range(n):
+            self.pre.append(SmallSMBlock())
+            self.post.append(SmallSMBlock())
+        self.l = SmallSMBlock()
+        self.c0 = nn.ModuleList()
+        self.c1 = nn.ModuleList()
+        for _ in range(n):
+            self.c0.append(SmallLinearBlock())
+            self.c1.append(SmallLinearBlock())
+
+    def forward(self, image, b):
+        x = [F.elu(self.pre[0](image, b))]
+        x[0].masked_fill_(abs(image - 2) > 1e-12, 0)
+
+        imgs = [image]
+
+        for i in range(1, self.n):
+
+            x.append(F.avg_pool2d(x[-1], (2, 2)))
+            imgs.append(F.max_pool2d(imgs[-1], (2, 2)))
+            x[-1] = F.elu(self.pre[i](imgs[-1], x[-1]))
+            x[-1].masked_fill_((imgs[-1] > 2.5)|(imgs[-1] < 1.5), 0)
+
+        x.append(F.avg_pool2d(x[-1], (2, 2)))
+        imgs.append(F.max_pool2d(imgs[-1], (2, 2)))
+        x[-1] = F.elu(self.l(imgs[-1], x[-1]))
+        x[-1].masked_fill_((imgs[-1] > 2.5)|(imgs[-1] < 1.5), 0)
+
+        for i in range(self.n, 0, -1):
+            x[i] = F.interpolate(x[i], scale_factor=2)
+            x[i] = F.elu(self.post[i-1](imgs[i-1], x[i]))
+            x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
+
+            x[i-1].masked_fill_(abs(imgs[i-1] - 2) > 1e-12, 0)
 
         return x[0]
 

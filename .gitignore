@@ -10,3 +10,4 @@ fluidnet/data
 *.png
 __*
 *.txt
+*.npy

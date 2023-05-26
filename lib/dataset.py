@@ -11,7 +11,9 @@ class MyDataset(Dataset):
         self.suffix = suffix
     def __getitem__(self, index):
         index = self.perm[index]
-        if self.suffix == 'mixed':
+        if self.suffix == 'dynamic':
+            x = torch.load(f"{self.data_folder}/r_{index}.pt")
+        elif self.suffix == 'mixed':
             suffix = np.random.choice(['', '_rand'])
             x = torch.load(f"{self.data_folder}/b_{index}{suffix}.pt")
         elif self.suffix == 'rhs':

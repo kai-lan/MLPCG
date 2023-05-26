@@ -34,7 +34,8 @@ norm_type = 'l2'
 # frames = set(np.arange(1, 151)) - train_matrices
 # frame = list(frames)[10] # Random frame
 # frame = list(train_matrices)[49]
-frame = 1
+frame = 2
+
 if DIM == 2:
     scene = f'dambreak_N{N}_200'
 else:
@@ -51,19 +52,20 @@ flags_sp = read_flags(os.path.join(dambreak_path, f"flags_{frame}.bin"))
 # levelset_sp = load_vector(f"{dambreak_path}/levelset_{frame}.bin")
 
 device = torch.device('cuda')
-A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=pcg_precision, device=device)
-rhs = torch.tensor(rhs_sp, dtype=pcg_precision, device=device)
-flags = torch.tensor(flags_sp, dtype=pcg_precision, device=device)
+A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float64, device=device)
+rhs = torch.tensor(rhs_sp, dtype=torch.float64, device=device)
+flags = torch.tensor(flags_sp, dtype=torch.float64, device=device)
 # ppc = torch.tensor(ppc_sp, dtype=pcg_precision, device=device)
 # levelset = torch.tensor(levelset_sp, dtype=pcg_precision, device=device)
 
-NN = 256
+NN = 1024
 num_mat = 50
-num_ritz = 800
+num_ritz = 3200
 num_rhs = 400
 
-fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_flags_smmodeld4.tar")
-fluidnet_model_res = SmallSMModelDn3D(4) if DIM == 3 else SmallSMModelDn(4)
+fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_single_{DIM}D_{NN}", "checkpt_dambreak_frame_1_rhs_800_d6_f_2D.tar")
+# fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_flags_smmodeld4.tar")
+fluidnet_model_res = SmallSMModelDn3D(4) if DIM == 3 else SmallSMModelDn(6)
 fluidnet_model_res.move_to(device)
 fluidnet_model_res.load_state_dict(torch.load(fluidnet_model_res_file)['model_state_dict'])
 fluidnet_model_res.eval()
@@ -130,7 +132,7 @@ def fluidnet_predict(fluidnet_model, image):
     def predict(r):
         with torch.no_grad():
             r = normalize(r, dim=0)
-            x = fluidnet_model.eval_forward(image.view((1,)+(N,)*DIM), r.view((1, 1)+(N,)*DIM)).flatten()
+            x = fluidnet_model.eval_forward(image.view((1,)+(N,)*DIM).float(), r.view((1, 1)+(N,)*DIM).float()).flatten().double()
         return x
     return predict
 

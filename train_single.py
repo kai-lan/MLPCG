@@ -7,6 +7,9 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from sm_model import *
 from model import *
+import cupyx.scipy.sparse as cpsp
+from cupyx.profiler import benchmark as cuda_benchmark
+import torch.utils.benchmark as torch_benchmark
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -19,6 +22,7 @@ if __name__ == '__main__':
     from train import train_, saveData, loadData
     import time, timeit
     import warnings
+
     warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
     torch.set_default_dtype(torch.float32)
     # Make training reproducible
@@ -27,20 +31,21 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    N = 64
-    DIM = 3
-    resume = False
+    N = 512
+    DIM = 2
+    resume = True
     for_train = True
     for_test = True
-    num_rhs = 400
+    num_rhs = 800
     frame = 1
-    scene = 'dambreak'
+    scene = 'wedge'
     dim2 = N**DIM
     lr = 0.001
     epoch_num = 100
     iters = 9
 
     cuda = torch.device("cuda") # Use CUDA for training
+    cpu = torch.device("cpu")
 
     image_type = 'flags'
     # num_ritz = 200
@@ -63,15 +68,15 @@ if __name__ == '__main__':
     flags_sp = read_flags(os.path.join(data_path, f"flags_{frame}.bin"))
 
     A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float32)
-    rhs = torch.tensor(rhs_sp, dtype=torch.float32, device=cuda)
-    image = torch.tensor(flags_sp, dtype=torch.float32, device=cuda).reshape((1,)+(N,)*DIM)
+    rhs = torch.tensor(rhs_sp, dtype=torch.float32)
+    image = torch.tensor(flags_sp, dtype=torch.float32).reshape((1,)+(N,)*DIM)
     # A = torch.load(f"{data_path}/A.pt").to_sparse_csr()
     # image = torch.load(f"{data_path}/flags.pt").reshape((1,)+(N,)*DIM)
     # image.masked_fill_(image==3, 0)
     # image.masked_fill_(image==2, 1)
 
     if DIM == 2:
-        model = SmallSMModelDn(4)
+        model = SmallSMModelDn(6)
         # model = FluidNet()
     else:
         model = SmallSMModelDn3D(4)
@@ -92,21 +97,26 @@ if __name__ == '__main__':
     loss_fn = model.residual_loss
 
 
-    train_size = round(0.8 * num_rhs)
-    perm = np.random.permutation(num_rhs)
+    # num_rhs = 0 # if for_train else 0
     def transform(x):
         x = x.reshape((1,)+(N,)*DIM)
         return x
+    rhs_path = f"{data_path}/preprocessed/{frame}"
 
-    train_set = MyDataset(f"{data_path}/preprocessed/{frame}", perm[:train_size], transform, suffix='') # 'k' for Krylov vectors: b, Ab, A^2 b, A^3 b
-    valid_set = MyDataset(f"{data_path}/preprocessed/{frame}", perm[train_size:], transform, suffix='')
+    train_set = MyDataset(rhs_path, None, transform, suffix='') # 'k' for Krylov vectors: b, Ab, A^2 b, A^3 b
+    valid_set = MyDataset(rhs_path, None, transform, suffix='')
 
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
 
+
     if not for_train and for_test: iters = 2
     for _ in range(1, iters):
         if for_train:
+            train_size = round(0.8 * num_rhs)
+            perm = np.random.permutation(num_rhs)
+            train_set.perm = perm[:train_size]
+            valid_set.perm = perm[train_size:]
             model.train()
             start = time.time()
             training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, epoch_num, train_loader, valid_loader, model, optimizer, loss_fn)
@@ -147,20 +157,53 @@ if __name__ == '__main__':
             def predict(r):
                 with torch.no_grad():
                     r = nn.functional.normalize(r, dim=0)
-                    x = model.eval_forward(image.reshape((1,)+(N,)*DIM), r.reshape((1, 1)+(N,)*DIM)).flatten()
+                    x = model.eval_forward(image.reshape((1,)+(N,)*DIM).float(), r.reshape((1, 1)+(N,)*DIM).float()).flatten().double()
                 return x
 
-            x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), predict, max_it=100, tol=1e-4, verbose=True)
-            print("Fluidnet", res_fluidnet_res[-1])
+            x_fluidnet_res, res_fluidnet_res = None, None
+            def torch_benchmark_dcdm_res(model):
+                global x_fluidnet_res, res_fluidnet_res
+                x_fluidnet_res, res_fluidnet_res = dcdm(rhs.double(), A.double(), torch.zeros_like(rhs).double(), predict, max_it=100, tol=1e-4, verbose=True)
+
+            def torch_timer(loss):
+                return torch_benchmark.Timer(
+                stmt=f'torch_benchmark_dcdm_{loss}(model)',
+                setup=f'from __main__ import torch_benchmark_dcdm_{loss}',
+                globals={'model':eval("model")})
+            timer_res = torch_timer('res')
+            result_res = timer_res.timeit(1)
+            print(f"MLPCG took", result_res.times[0], 's after', len(res_fluidnet_res), 'iterations', f'to {res_fluidnet_res[-1]}')
+
+            # print("MLPCG", res_fluidnet_res[-1])
+            # x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), predict, max_it=100, tol=1e-4, verbose=True)
 
             t0 = timeit.default_timer()
-            x, res_history = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), max_it=3000, tol=1e-4, verbose=False)
-            print("CG took", timeit.default_timer()-t0, 's after', len(res_history), 'iterations', res_history[-1])
+            x_amgcg, res_amgcg = AMGCG(rhs_sp.astype(np.float64), A_sp.astype(np.float64), np.zeros_like(rhs_sp).astype(np.float64), 300, tol=1e-4)
+            print("AMGCG took", timeit.default_timer()-t0, 's after', len(res_amgcg), 'iterations', f'to {res_amgcg[-1]}')
+            # if for_train:
+            #     r = rhs - A @ x_fluidnet_res
+            #     r /= rhs.norm()
+            #     r = r.to(cpu)
+            #     torch.save(r, f"{data_path}/preprocessed/{frame}/r_{num_rhs}.pt")
+            #     num_rhs += 1
+            #     print('New residual vector saved', num_rhs, 'in total now.')
+
+            t0 = timeit.default_timer()
+            rhs_cp, A_cp = cp.array(rhs_sp, dtype=np.float64), cpsp.csr_matrix(A_sp, dtype=np.float64)
+            x_cg_cp, res_cg_cp = None, None
+            def cuda_benchmark_cg():
+                global x_cg_cp, res_cg_cp
+                x_cg_cp, res_cg_cp = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), 3000, tol=1e-4, verbose=False)
+            result = cuda_benchmark(cuda_benchmark_cg, n_repeat=1)
+            # x, res_history = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), max_it=3000, tol=1e-4, verbose=False)
+            print("CUDA CG took", result.gpu_times[0][0], 's after', len(res_cg_cp), 'iterations', f'to {res_cg_cp[-1]}')
+
+
             if for_train:
                 with open(f"train_info_N{N}_{suffix}.txt", 'a') as f:
-                    f.write(f"{_*epoch_num}, {len(res_fluidnet_res)-1}, {len(res_history)}\n")
+                    f.write(f"{_*epoch_num}, {len(res_fluidnet_res)-1}, {len(res_cg_cp)}\n")
             plt.clf()
-            plt.plot(res_history, label='CG')
+            plt.plot(res_cg_cp, label='CG')
             plt.plot(res_fluidnet_res, label='MLPCG')
             plt.legend()
             plt.savefig(f"test_loss_{N}.png")
