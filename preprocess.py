@@ -1,29 +1,31 @@
 import os, sys
 sys.path.insert(1, 'lib')
 os.environ['OMP_NUM_THREADS'] = '4'
+os.environ['NUMBA_NUM_THREADS'] = '4'
 import torch
 from lib.read_data import *
 from tqdm import tqdm
 from multiprocessing import Process
+from numba import njit, prange
 import time
 import warnings
 warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
 torch.set_grad_enabled(False)
 
 DIM = 2
-N = 512
+N = 256
 # scale = 2
 
 
 matrices = range(1, 2)
-scene = 'wedge'
+scene = 'dambreak'
 if DIM == 2:
     data_folder = f"{DATA_PATH}/{scene}_N{N}_200"
 else:
     data_folder = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
 # matrices = np.load(f"{data_folder}/train_mat.npy")
-num_ritz_vectors = 3200
-num_rhs = 800
+num_ritz_vectors = 800
+num_rhs = 400
 
 def createTrainingData(N, DIM, ritz_vectors, sample_size, fluid_cells, outdir, suffix=''):
     # small_matmul_size = 100 # Small mat size for temp data
@@ -93,6 +95,34 @@ def createKrylovVec(N, DIM, x0, sample_size, fluid_cells, A, outdir, suffix='_k'
         b /= b.norm()
         torch.save(b, f"{outdir}/b_{i}{suffix}.pt")
 
+def createFourierVecs(N, DIM, num_modes_per_dir, sample_size, fluid_cells, outdir, suffix='_fourier'):
+    num_modes = num_modes_per_dir**DIM
+    eigen_modes = np.zeros((num_modes, len(fluid_cells)))
+    x = np.linspace(0.5/N, (N-0.5)/N, N)
+    X, Y = np.meshgrid(x, x)
+    c = 5
+    @njit(parallel=True)
+    def iter_part(eigen_modes):
+        for n in range(num_modes_per_dir):
+            for m in range(num_modes_per_dir):
+        # for nm in range(2*num_modes_per_dir-1):
+        #     for n in range(max(0, nm-(num_modes_per_dir-1)), min(nm+1, num_modes_per_dir)):
+        #         m = nm - n
+                z = (np.cos((c*n+1)*np.pi*X) * np.cos((c*m+1)*np.pi*Y)).ravel()
+                eigen_modes[n * num_modes_per_dir + m, :] = z[fluid_cells]
+    iter_part(eigen_modes)
+    coeff = np.random.normal(0, 1, (sample_size, num_modes))
+    # cut_idx = int(num_modes * 0.6)
+    # coeff[:, :cut_idx] *= 0.9
+    result = coeff @ eigen_modes
+    np.save(f"{outdir}/fourier.npy", eigen_modes)
+    for i in range(sample_size):
+        # b = torch.zeros(N**DIM, dtype=torch.float32)
+        # b[fluid_cells] = torch.tensor(result[i], dtype=torch.float32)
+        b = torch.tensor(result[i], dtype=torch.float32)
+        b /= b.norm()
+        torch.save(b, f"{outdir}/b_{i}{suffix}.pt")
+
 def worker(indices):
     print('Process id', os.getpid())
 
@@ -103,9 +133,11 @@ def worker(indices):
         flags = read_flags(os.path.join(data_folder, f"flags_{index}.bin"))
         fluid_cells = np.where(flags == 2)[0]
         air_cells = np.where(flags == 3)[0]
-        # ppc = read_ppc(os.path.join(data_folder, f"active_cells_{index}.bin"), os.path.join(data_folder, f"ppc_{index}.bin"), N, DIM)
 
-        # levelset = load_vector(os.path.join(data_folder, f"levelset_{index}.bin"))
+        fluid_cells_md = np.where(flags.reshape((N,)*DIM) == 2)
+        # print(fluid_cells_md.shape)
+        np.save(f"{out_folder}/fluid_cells.npy", fluid_cells)
+        np.save(f"{out_folder}/fluid_cells_md.npy", fluid_cells_md)
 
         A = readA_sparse(os.path.join(data_folder, f"A_{index}.bin"), sparse_type='csr')
 
@@ -115,6 +147,7 @@ def worker(indices):
 
         flags = torch.tensor(flags, dtype=torch.float32)
         torch.save(flags, os.path.join(out_folder, f"flags.pt"))
+
 
         rhs = torch.tensor(rhs_np, dtype=torch.float32)
         torch.save(rhs, os.path.join(out_folder, f"rhs.pt"))
@@ -130,8 +163,9 @@ def worker(indices):
         # levelset = torch.tensor(levelset, dtype=torch.float32)
         # torch.save(levelset, os.path.join(out_folder, f"levelset.pt"))
 
-        ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}.npy")
-        createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder)
+        # createFourierVecs(N, DIM, 50, 400, fluid_cells, out_folder)
+        # ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}.npy")
+        # createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder)
         # createRandomVec(N, DIM, num_rhs, A, air_cells, out_folder)
         # createPerturbedVecFromRHS(N, DIM, rhs_np, ritz_vec, num_rhs, fluid_cells, out_folder)
 
@@ -140,7 +174,7 @@ if __name__ == '__main__':
     t0 = time.time()
     # total_work = range(start, end)
     total_work = matrices
-    num_threads = 4
+    num_threads = 1
     chunks = np.array_split(total_work, num_threads)
     thread_list = []
     for thr in range(num_threads):

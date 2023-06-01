@@ -82,7 +82,7 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
 def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, norm_type='l2'):
     count = 0
     norm_b = np.linalg.norm(b)
-    np.save(f"res_0.npy", b)
+    # np.save(f"res_0.npy", b)
     if norm_type == 'l2': norm = np.linalg.norm(b - A @ x_init) / norm_b
     else: norm = x_init.dot(A @ x_init) / 2 - x_init.dot(b)
     res_history = [norm]
@@ -92,7 +92,7 @@ def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, norm_type='l2
         nonlocal count
         count += 1
         r = b - A @ x
-        np.save(f"res_{count}.npy", r)
+        # np.save(f"res_{count}.npy", r)
         if norm_type == 'l2': norm = np.linalg.norm(b - A @ x) / norm_b
         else: norm = x.dot(A @ x) / 2 - x.dot(b)
         res_history.append(norm)

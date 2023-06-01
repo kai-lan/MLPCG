@@ -113,7 +113,7 @@ def worker(frames):
         np.save(f"{out}/ritz_{num_ritz_vectors}.npy", ritz_vec)
 
 np.random.seed(2)
-N = 800
+N = 256
 DIM = 2
 scene = 'dambreak'
 if DIM == 2:
@@ -121,12 +121,13 @@ if DIM == 2:
 else: dir = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
 
 os.makedirs(dir, exist_ok=True)
-num_ritz_vectors = 2500
+num_ritz_vectors = 800
 
 if __name__ == '__main__':
 
     t0 = time.time()
-    total_work = range(1, 2)
+    # total_work = np.linspace(1, 200, 10, dtype=int)
+    total_work = [100]
     num_threads = 1
     chunks = np.array_split(total_work, num_threads)
     thread_list = []

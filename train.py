@@ -60,12 +60,21 @@ def train_(image, A, epoch_num, train_loader, validation_loader, model, optimize
 
     for i in range(1, epoch_num+1):
         # Training
-        for ii, data in enumerate(train_loader, 1):# data: (bs, 2, N, N)
+        for ii, data in enumerate(train_loader, 1):
             data = data.to(model.device)
             x_pred = model(image, data)
+            # x_pred1 = model(image, x_pred)
             x_pred = x_pred.squeeze(dim=1).flatten(1) # (bs, 1, N, N) -> (bs, N, N) -> (bs, N*N)
+            # x_pred1 = x_pred1.squeeze(dim=1).flatten(1) # (bs, 1, N, N) -> (bs, N, N) -> (bs, N*N)
             data = data.squeeze(dim=1).flatten(1)
+            r = torch.zeros_like(x_pred)
+            x = x_pred
+            for j in range(data.shape[0]):
+                Ax = A @ x[j]
+                alpha = x[j].dot(data[j]) / x[j].dot(Ax)
+                r[j] = data[j] - alpha * Ax
             loss = loss_fn(x_pred, data, A)
+            # loss += 0.1*(data * r).sum(dim=(1,)).mean()
 
             optimizer.zero_grad()
             loss.backward()
@@ -169,7 +178,7 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    suffix += '_smmodeld4'
+    suffix += '_smmodeld2_nonlinearK'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 
@@ -181,7 +190,7 @@ if __name__ == '__main__':
     if DIM == 2:
         model = SmallSMModelDn(4)
     else:
-        model = SmallSMModelDn3D(4)
+        model = SmallSMModelDn3D(2)
     model.move_to(cuda)
     loss_fn = eval(loss_fn)
     optimizer = optim.Adam(model.parameters(), lr=lr)

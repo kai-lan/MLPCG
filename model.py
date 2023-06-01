@@ -30,10 +30,19 @@ class BaseModel(nn.Module):
         return r / bs
     def residual_loss(self, x, y, A):
         bs = x.shape[0]
+        N = A.shape[0]
         r = torch.zeros(1).to(x.device)
         for i in range(bs):
-            r += (y[i] - A @ x[i]).norm() # No need to compute relative residual because inputs are all unit vectors
+            r_norm = (y[i] - A @ x[i]).norm()
+            r += r_norm # No need to compute relative residual because inputs are all unit vectors
         return r / bs
+    def squared_loss(self, x, y, A):
+        bs = x.shape[0]
+        r = torch.zeros(1).to(x.device)
+        for i in range(bs):
+            r += (y[i] - A @ x[i]).square().sum() # No need to compute relative residual because inputs are all unit vectors
+        return r / bs
+
     # Energy loss: negative decreasing
     def energy_loss(self, x, b, A):
         bs = x.shape[0]
@@ -48,7 +57,7 @@ class BaseModel(nn.Module):
         for i in range(bs):
             Ax = A @ x[i]
             alpha = x[i].dot(y[i]) / x[i].dot(Ax)
-            r = (y[i] - alpha * Ax).square().sum()
+            r = (y[i] - alpha * Ax).norm() #.square().sum()
             result += r
         return result / bs
     def scaled_loss_A(self, x, y, A): # bs x dim x dim (x dim)

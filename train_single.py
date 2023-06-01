@@ -31,18 +31,18 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    N = 512
+    N = 256
     DIM = 2
-    resume = True
+    resume = False
     for_train = True
     for_test = True
-    num_rhs = 800
+    num_rhs = 400
     frame = 1
-    scene = 'wedge'
+    scene = 'dambreak'
     dim2 = N**DIM
     lr = 0.001
     epoch_num = 100
-    iters = 9
+    iters = 12
 
     cuda = torch.device("cuda") # Use CUDA for training
     cpu = torch.device("cpu")
@@ -97,14 +97,20 @@ if __name__ == '__main__':
     loss_fn = model.residual_loss
 
 
-    # num_rhs = 0 # if for_train else 0
-    def transform(x):
-        x = x.reshape((1,)+(N,)*DIM)
-        return x
     rhs_path = f"{data_path}/preprocessed/{frame}"
+    fluid_cells = np.load(f"{rhs_path}/fluid_cells.npy")
+    # fluid_cells_md = np.load(f"{rhs_path}/fluid_cells_md.npy")
 
-    train_set = MyDataset(rhs_path, None, transform, suffix='') # 'k' for Krylov vectors: b, Ab, A^2 b, A^3 b
-    valid_set = MyDataset(rhs_path, None, transform, suffix='')
+    def transform(x):
+        b = torch.zeros(N**DIM, dtype=torch.float32)
+        # b = torch.sparse_coo_tensor(fluid_cells_md, x, (N,)*DIM)
+        b[fluid_cells] = x
+        b = b.reshape((1,)+(N,)*DIM)
+        # b = b.unsqueeze(0)
+        return b
+
+    train_set = MyDataset(rhs_path, None, transform, suffix='_fourier')
+    valid_set = MyDataset(rhs_path, None, transform, suffix='_fourier')
 
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
@@ -152,6 +158,7 @@ if __name__ == '__main__':
             image = image.to(cuda)
             A = A.to(cuda)
             rhs = rhs.to(cuda)
+            # rhs_sp = rhs.cpu().numpy()
             # air = torch.argwhere(image.ravel() == 3)
 
             def predict(r):
@@ -181,7 +188,7 @@ if __name__ == '__main__':
             x_amgcg, res_amgcg = AMGCG(rhs_sp.astype(np.float64), A_sp.astype(np.float64), np.zeros_like(rhs_sp).astype(np.float64), 300, tol=1e-4)
             print("AMGCG took", timeit.default_timer()-t0, 's after', len(res_amgcg), 'iterations', f'to {res_amgcg[-1]}')
             # if for_train:
-            #     r = rhs - A @ x_fluidnet_res
+            #     r = rhs - A @ x_fluidnet_res.float()
             #     r /= rhs.norm()
             #     r = r.to(cpu)
             #     torch.save(r, f"{data_path}/preprocessed/{frame}/r_{num_rhs}.pt")
