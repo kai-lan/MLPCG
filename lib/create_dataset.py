@@ -66,11 +66,14 @@ def _test_lanczos_algorithm(A, num_ritz_vec, orthogonal):
     Es.append(np.linalg.norm(E))
     print(np.linalg.norm(E))
 
-def createRitzVec(A, rhs, num_ritz_vectors):
+def createRitzVec(A, rhs, num_ritz_vectors, ortho=True):
     # Creating Lanczos Vectors:
     print("Lanczos Iteration is running...")
     start = time.time()
-    W, diagonal, sub_diagonal = _lanczos_algorithm(A, rhs, num_ritz_vectors, np.inf)
+    if ortho:
+        W, diagonal, sub_diagonal = _lanczos_algorithm(A, rhs, num_ritz_vectors, np.inf)
+    else:
+        W, diagonal, sub_diagonal = _lanczos_algorithm(A, rhs, num_ritz_vectors, 0)
     print("Lanczos Iteration took", time.time() - start, 's')
     # Calculating eigenvectors of the tridiagonal matrix: only return eigvals > 1e-8
     print("Calculating eigenvectors of the tridiagonal matrix")
@@ -108,12 +111,12 @@ def worker(frames):
         rhs = hf.compressedVec(rhs, flags)
         # createFourierRandVecs(N, DIM, 200)
         # rhs = np.random.rand(A.shape[0])
-        ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors)
+        ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors, ortho=False)
         print(ritz_vals[:20])
-        np.save(f"{out}/ritz_{num_ritz_vectors}.npy", ritz_vec)
+        np.save(f"{out}/ritz_{num_ritz_vectors}_no_ortho.npy", ritz_vec)
 
 np.random.seed(2)
-N = 256
+N = 1024
 DIM = 2
 scene = 'dambreak'
 if DIM == 2:
@@ -121,13 +124,13 @@ if DIM == 2:
 else: dir = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
 
 os.makedirs(dir, exist_ok=True)
-num_ritz_vectors = 800
+num_ritz_vectors = 1600
 
 if __name__ == '__main__':
 
     t0 = time.time()
     # total_work = np.linspace(1, 200, 10, dtype=int)
-    total_work = [100]
+    total_work = [1]
     num_threads = 1
     chunks = np.array_split(total_work, num_threads)
     thread_list = []
