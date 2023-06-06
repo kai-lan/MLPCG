@@ -12,9 +12,9 @@ import warnings
 warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
 torch.set_grad_enabled(False)
 
-DIM = 2
-N = 1024
-# scale = 2
+DIM = 3
+N = 64
+ortho = True
 
 
 matrices = range(1, 2)
@@ -47,7 +47,7 @@ def createTrainingData(N, DIM, ritz_vectors, sample_size, fluid_cells, outdir, s
         for i in range(l_b, r_b):
             b_rhs_temp[i-l_b] = b_rhs_temp[i-l_b]/np.linalg.norm(b_rhs_temp[i-l_b])
             # b = torch.zeros(N**DIM, dtype=torch.float32)
-            b = torch.tensor(b_rhs_temp[i-l_b], dtype=torch.float32)
+            b = torch.tensor(b_rhs_temp[i-l_b], dtype=torch.float32).cuda()
             torch.save(b, os.path.join(outdir, f"b_{i}{suffix}.pt"))
 
 def createRandomVec(N, DIM, sample_size, A, air_cells, outdir, suffix='_rand'):
@@ -192,17 +192,11 @@ def worker(indices):
         sol = torch.tensor(sol, dtype=torch.float32)
         torch.save(sol, os.path.join(out_folder, f"sol.pt"))
 
-        # createKrylovVec(N, DIM, rhs, 100, fluid_cells, A_comp, out_folder)
-        # ppc = torch.tensor(ppc, dtype=torch.float32)
-        # ppc[ppc < 3] = 0
-        # torch.save(ppc, os.path.join(out_folder, f"ppc.pt"))
-
-        # levelset = torch.tensor(levelset, dtype=torch.float32)
-        # torch.save(levelset, os.path.join(out_folder, f"levelset.pt"))
-
         # createFourierVecs(N, DIM, 5, 400, flags_sp, A_sp, out_folder)
-        ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}_no_ortho.npy")
-        createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder, suffix='_no_ortho')
+        suffix = '' if ortho else '_no_ortho'
+        ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}{suffix}.npy")
+
+        createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder, suffix=suffix)
         # createRandomVec(N, DIM, num_rhs, A, air_cells, out_folder)
         # createPerturbedVecFromRHS(N, DIM, rhs_np, ritz_vec, num_rhs, fluid_cells, out_folder)
 

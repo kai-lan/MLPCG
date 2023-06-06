@@ -22,34 +22,38 @@ if __name__ == '__main__':
     from train import train_, saveData, loadData
     import time, timeit
     import warnings
-
+    # import logging
+    # logging.basicConfig(level=logging.DEBUG)
     warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
-    torch.set_default_dtype(torch.float32)
+    dtype = torch.float32
+    torch.set_default_dtype(dtype)
     # Make training reproducible
     np.random.seed(0)
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+    # torch.jit.enable_onednn_fusion(True)
+    # torch.cuda.set_sync_debug_mode(debug_mode)
 
-    N = 256
-    DIM = 2
+    N = 64
+    DIM = 3
     resume = False
     for_train = True
     for_test = True
-    num_rhs = 400
+    num_rhs = 800
     frame = 1
     scene = 'dambreak'
     dim2 = N**DIM
     lr = 0.001
-    epoch_num = 100
-    iters = 12
+    epoch_num = 5
+    iters = 2
 
     cuda = torch.device("cuda") # Use CUDA for training
     cpu = torch.device("cpu")
 
     image_type = 'flags'
     # num_ritz = 200
-    b_size = 20
+    b_size = 16
 
 
     if DIM == 2:
@@ -58,7 +62,7 @@ if __name__ == '__main__':
         data_path = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
 
     print(f'testing on {data_path}')
-    outdir = os.path.join(OUT_PATH, f"output_single_{DIM}D_{N}")
+    outdir = os.path.join(OUT_PATH, f"output_single_{DIM}D_{N}_benchmark")
     os.makedirs(outdir, exist_ok=True)
 
     suffix = f"{scene}_frame_{frame}_rhs_{num_rhs}_{DIM}D"
@@ -67,9 +71,9 @@ if __name__ == '__main__':
     rhs_sp = load_vector(os.path.join(data_path, f"div_v_star_{frame}.bin")).astype(np.float64)
     flags_sp = read_flags(os.path.join(data_path, f"flags_{frame}.bin"))
 
-    A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float32)
-    rhs = torch.tensor(rhs_sp, dtype=torch.float32)
-    image = torch.tensor(flags_sp, dtype=torch.float32).reshape((1,)+(N,)*DIM)
+    A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=dtype, device=cuda)
+    rhs = torch.tensor(rhs_sp, dtype=dtype, device=cuda)
+    image = torch.tensor(flags_sp, dtype=dtype, device=cuda).reshape((1,)+(N,)*DIM)
     # A = torch.load(f"{data_path}/A.pt").to_sparse_csr()
     # image = torch.load(f"{data_path}/flags.pt").reshape((1,)+(N,)*DIM)
     # image.masked_fill_(image==3, 0)
@@ -79,7 +83,7 @@ if __name__ == '__main__':
         model = SmallSMModelDn(6)
         # model = FluidNet()
     else:
-        model = SmallSMModelDn3D(4)
+        model = SmallSMModelDn3D(2)
 
     model.move_to(cuda)
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -102,15 +106,15 @@ if __name__ == '__main__':
     # fluid_cells_md = np.load(f"{rhs_path}/fluid_cells_md.npy")
 
     def transform(x):
-        b = torch.zeros(N**DIM, dtype=torch.float32)
+        b = torch.zeros(N**DIM, dtype=dtype).cuda()
         # b = torch.sparse_coo_tensor(fluid_cells_md, x, (N,)*DIM)
-        b[fluid_cells] = x
+        b[fluid_cells] = x.to(dtype)
         b = b.reshape((1,)+(N,)*DIM)
         # b = b.unsqueeze(0)
         return b
 
-    train_set = MyDataset(rhs_path, None, transform, suffix='_fourier')
-    valid_set = MyDataset(rhs_path, None, transform, suffix='_fourier')
+    train_set = MyDataset(rhs_path, None, transform, suffix='')
+    valid_set = MyDataset(rhs_path, None, transform, suffix='')
 
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
@@ -146,6 +150,8 @@ if __name__ == '__main__':
             plt.clf()
             plt.plot(update_history)
             plt.savefig(f"train_update_{N}_{DIM}D.png")
+        if for_train:
+            print("Training time", end-start)
         if for_test:
             checkpt = torch.load(f"{outdir}/checkpt_{suffix}.tar")
             print(f'loading model on {outdir}/checkpt_{suffix}.tar')
@@ -164,13 +170,13 @@ if __name__ == '__main__':
             def predict(r):
                 with torch.no_grad():
                     r = nn.functional.normalize(r, dim=0)
-                    x = model.eval_forward(image.reshape((1,)+(N,)*DIM).float(), r.reshape((1, 1)+(N,)*DIM).float()).flatten().double()
+                    x = model.eval_forward(image.reshape((1,)+(N,)*DIM).to(dtype), r.reshape((1, 1)+(N,)*DIM).to(dtype)).flatten().double()
                 return x
 
             x_fluidnet_res, res_fluidnet_res = None, None
             def torch_benchmark_dcdm_res(model):
                 global x_fluidnet_res, res_fluidnet_res
-                x_fluidnet_res, res_fluidnet_res = dcdm(rhs.double(), A.double(), torch.zeros_like(rhs).double(), predict, max_it=100, tol=1e-4, verbose=True)
+                x_fluidnet_res, res_fluidnet_res = dcdm(rhs.double(), A.double(), torch.zeros_like(rhs).double(), predict, max_it=100, tol=1e-4, verbose=False)
 
             def torch_timer(loss):
                 return torch_benchmark.Timer(
@@ -214,5 +220,3 @@ if __name__ == '__main__':
             plt.plot(res_fluidnet_res, label='MLPCG')
             plt.legend()
             plt.savefig(f"test_loss_{N}.png")
-        if for_train:
-            print("Training time", end-start)

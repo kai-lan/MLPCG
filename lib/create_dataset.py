@@ -111,17 +111,24 @@ def worker(frames):
         rhs = hf.compressedVec(rhs, flags)
         # createFourierRandVecs(N, DIM, 200)
         # rhs = np.random.rand(A.shape[0])
-        ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors, ortho=False)
-        print(ritz_vals[:20])
-        np.save(f"{out}/ritz_{num_ritz_vectors}_no_ortho.npy", ritz_vec)
+        ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors, ortho=ortho)
+        # print(ritz_vals)
+        # eig_vals, eig_vec = slin.eigsh(A, num_ritz_vectors, v0=rhs, which='BE')
+        # print(eig_vals)
+        # print(np.linalg.norm(eig_vec @ eig_vec.T))
+        if ortho:
+            np.save(f"{out}/ritz_{num_ritz_vectors}.npy", ritz_vec)
+        else:
+            np.save(f"{out}/ritz_{num_ritz_vectors}_no_ortho.npy", ritz_vec)
 
 np.random.seed(2)
-N = 1024
-DIM = 2
+N = 128
+DIM = 3
 scene = 'dambreak'
 if DIM == 2:
     dir = f"{DATA_PATH}/{scene}_N{N}_200"
 else: dir = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
+ortho = False
 
 os.makedirs(dir, exist_ok=True)
 num_ritz_vectors = 1600

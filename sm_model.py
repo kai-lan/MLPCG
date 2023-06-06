@@ -3,11 +3,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 from model import BaseModel
 import numpy as np
+from opt_einsum import contract
+
 
 class SmallSMBlock(nn.Module):
     def __init__(self):
         super().__init__()
-        self.KL = nn.Conv2d(1, 9, kernel_size=3, padding='same')
+        self.KL = nn.Conv2d(1, 9, kernel_size=3, padding='same', bias=True)
+    def forward1(self, image, x): # 1 x N x N, bs x 1 x N x N
+        N = x.shape[-1]
+        y = torch.zeros_like(x)
+        image = F.pad(image, (1,)*4)
+        x = F.pad(x, (1,)*4)
+        for i in range(1, N+1):
+            for j in range(1, N+1):
+                K = ((self.KL.weight.squeeze() * image[0, i-1:i+2, j-1:j+2])).sum(dim=(1, 2)) + self.KL.bias
+                K = K.view((3, 3))
+                xx = x[:, 0, i-1:i+2, j-1:j+2]
+                y[:, 0, i-1, j-1] = (xx * K).sum(dim=(-2, -1))
+        return y
     def forward(self, image, x): # 1 x N x N, bs x 1 x N x N
         K = self.KL(image) # 1 x N x N -> 9 x N x N
         # F.elu_(K) # nonlinear
@@ -15,18 +29,33 @@ class SmallSMBlock(nn.Module):
         K = K.unflatten(2, (3, 3)) # N x N x 9 -> N x N x 3 x 3
         x = F.pad(x, (1, 1, 1, 1)) # bs x 1 x N x N -> bs x 1 x (N+2) x (N+2)
         x = x.unfold(2, 3, 1).unfold(3, 3, 1) # bs x 1 x (N+2) x (N+2) -> bs x 1 x N x N x 3 x 3
-        y = (x * K).sum(dim=(-2, -1)) # bs x 1 x N x N x 3 x 3, N x N x 3 x 3 -> bs x 1 x N x N
+        y = (x * K).sum(dim=(-2, -1))
         return y
 
 class SmallSMBlock3D(nn.Module):
     def __init__(self):
         super().__init__()
-        self.KL = nn.Conv3d(1, 27, kernel_size=3, padding='same')
+        self.KL = nn.Conv3d(1, 27, kernel_size=3, padding='same', bias=True)
+
     def forward(self, image, x): # 1 x N x N x N, bs x 1 x N x N x N
+        y = torch.zeros_like(x)
+        N = x.shape[-1]
+        x = F.pad(x, (1,)*6) # bs x 1 x N x N x N -> bs x 1 x (N+2) x (N+2) x (N+2)
+        image = F.pad(image, (1,)*6)
+        for i in range(1, N+1):
+            for j in range(1, N+1):
+                for k in range(1, N+1):
+                    K = ((self.KL.weight.squeeze() * image[0, i-1:i+2, j-1:j+2, k-1:k+2])).sum(dim=(1, 2, 3)) + self.KL.bias
+                    K = K.view(3, 3, 3)
+                    xx = x[:, 0, i-1:i+2, j-1:j+2, k-1:k+2]
+                    y[:, 0, i-1, j-1, k-1] = (xx * K).sum(dim=(-3, -2, -1))
+        return y
+
+    def __forward(self, image, x): # 1 x N x N x N, bs x 1 x N x N x N
         K = self.KL(image) # 1 x N x N x N -> 27 x N x N x N
         K = K.permute((1, 2, 3, 0)) # 27 x N x N x N -> N x N x N x 27
         K = K.unflatten(3, (3, 3, 3)) # N x N x N x 27 -> N x N x N x 3 x 3 x 3
-        F.elu_(K) # nonlinear
+        # F.elu_(K) # nonlinear
         x = F.pad(x, (1, 1, 1, 1, 1, 1)) # bs x 1 x N x N x N -> bs x 1 x (N+2) x (N+2) x (N+2)
         x = x.unfold(2, 3, 1).unfold(3, 3, 1).unfold(4, 3, 1) # bs x 1 x (N+2) x (N+2) x (N+2) -> bs x 1 x N x N x N x 3 x 3 x 3
         y = (x * K).sum(dim=(-3, -2, -1)) # bs x 1 x N x N x N x 3 x 3 x 3, N x N x N x 3 x 3 x 3 -> bs x 1 x N x N x N
@@ -534,23 +563,16 @@ if __name__ == '__main__':
     flags = torch.tensor(read_flags(file_flags), dtype=torch.float32)
     sol = torch.tensor(load_vector(file_sol), dtype=torch.float32)
 
-    x = torch.stack([rhs, flags]).reshape(1, 2, N, N).to(torch.device('cuda'))
+    # x = torch.stack([rhs, flags]).reshape(1, 2, N, N).to(torch.device('cuda'))
 
-    model = SmallSMModelDn(4)
-    # model = DCDM(2)
-    # model = NewModel1()
-    # model.eval()
     torch.set_grad_enabled(False) # disable autograd globally
-    # model.to(torch.device("cuda"))
 
-    # summary(model, ((1, 256, 256), (1, 1, 256, 256)))
-    # y = model(flags.reshape(1, N, N), rhs.reshape(1, 1, N, N))
-    # loss = model.residual_loss(x, y, A)
-    # print(y.shape)
-    tot_param = 0
-    for name, param in model.named_parameters():
-        print(name, param.numpy().shape)
-        tot_param += np.prod(param.numpy().shape)
-    print()
-    print('Total param:', tot_param)
-    # print(model)
+    model = SmallSMBlock3D() #.cuda()
+    # image = torch.randint(2, 4, (1, 3, 3, 3)).float() #.cuda()
+    image = torch.randn(1, 3, 3, 3) #.cuda()
+    x = torch.randn((1, 1, 3, 3, 3)) #.cuda()
+    yy = model.forward1(image, x)
+    # yyy = model.forward2(image, x)
+    y = model(image, x)
+    print((y - yy).norm())
+

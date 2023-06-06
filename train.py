@@ -27,18 +27,19 @@ def validation(train_loader, validation_loader, model, loss_fn, image, A):
     tot_loss_train, tot_loss_val = 0, 0
     with torch.no_grad():
         for data in train_loader:
-            data = data.to(model.device)
+            # print(data.device)
+            data = data.to(model.device, non_blocking=True)
             x_pred = model(image, data) # input: (bs, 1, dim, dim)
-            tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
+            tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
         for data in validation_loader:
-            data = data.to(model.device)
+            data = data.to(model.device, non_blocking=True)
             x_pred = model(image, data) # input: (bs, 1, dim, dim)
-            tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
-    return tot_loss_train, tot_loss_val
+            tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
+    return tot_loss_train.item(), tot_loss_val.item()
 
 def train_(image, A, epoch_num, train_loader, validation_loader, model, optimizer, loss_fn):
-    A = A.to(model.device)
-    image = image.to(model.device)
+    # A = A.to(model.device)
+    # image = image.to(model.device)
     training_loss = []
     validation_loss = []
     time_history = []
@@ -61,7 +62,8 @@ def train_(image, A, epoch_num, train_loader, validation_loader, model, optimize
     for i in range(1, epoch_num+1):
         # Training
         for ii, data in enumerate(train_loader, 1):
-            data = data.to(model.device)
+            # print(data.device)
+            # data = data.to(model.device, non_blocking=True)
             x_pred = model(image, data)
             # x_pred1 = model(image, x_pred)
             x_pred = x_pred.squeeze(dim=1).flatten(1) # (bs, 1, N, N) -> (bs, N, N) -> (bs, N*N)
@@ -76,7 +78,7 @@ def train_(image, A, epoch_num, train_loader, validation_loader, model, optimize
             loss = loss_fn(x_pred, data, A)
             # loss += 0.1*(data * r).sum(dim=(1,)).mean()
 
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
 
