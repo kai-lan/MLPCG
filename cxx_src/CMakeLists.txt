@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.10)
 
 project(runUnitTests)
 
-#set(CMAKE_BUILD_TYPE Release)
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
+#set(CMAKE_BUILD_TYPE Debug)
 
 set(USE_PARTIO ON)
 set(USE_CUDA ON)
