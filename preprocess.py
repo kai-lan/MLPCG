@@ -17,12 +17,14 @@ N = 64
 ortho = True
 
 
+
 matrices = range(1, 2)
 scene = 'dambreak'
 if DIM == 2:
     data_folder = f"{DATA_PATH}/{scene}_N{N}_200"
 else:
     data_folder = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
+
 # matrices = np.load(f"{data_folder}/train_mat.npy")
 num_ritz_vectors = 1600
 num_rhs = 800

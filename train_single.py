@@ -65,6 +65,7 @@ if __name__ == '__main__':
     outdir = os.path.join(OUT_PATH, f"output_single_{DIM}D_{N}_benchmark")
     os.makedirs(outdir, exist_ok=True)
 
+
     suffix = f"{scene}_frame_{frame}_rhs_{num_rhs}_{DIM}D"
 
     A_sp = readA_sparse(os.path.join(data_path, f"A_{frame}.bin")).astype(np.float64)
@@ -220,3 +221,7 @@ if __name__ == '__main__':
             plt.plot(res_fluidnet_res, label='MLPCG')
             plt.legend()
             plt.savefig(f"test_loss_{N}.png")
+            
+        if for_train:
+            print("Training time", end-start)
+

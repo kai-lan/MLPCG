@@ -103,6 +103,7 @@ def worker(frames):
         out = f"{dir}/preprocessed/{i}"
         os.makedirs(out, exist_ok=True)
         A = hf.readA_sparse(f"{dir}/A_{i}.bin")
+        print(A.shape)
         flags = hf.read_flags(f"{dir}/flags_{i}.bin")
         rhs = hf.load_vector(f"{dir}/div_v_star_{i}.bin")
         # sol = hf.load_vector(f"{dir}/pressure_{i}.bin")
@@ -122,6 +123,7 @@ def worker(frames):
             np.save(f"{out}/ritz_{num_ritz_vectors}_no_ortho.npy", ritz_vec)
 
 np.random.seed(2)
+
 N = 128
 DIM = 3
 scene = 'dambreak'
@@ -130,8 +132,11 @@ if DIM == 2:
 else: dir = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
 ortho = False
 
+
 os.makedirs(dir, exist_ok=True)
+
 num_ritz_vectors = 1600
+
 
 if __name__ == '__main__':
 
@@ -139,6 +144,7 @@ if __name__ == '__main__':
     # total_work = np.linspace(1, 200, 10, dtype=int)
     total_work = [1]
     num_threads = 1
+
     chunks = np.array_split(total_work, num_threads)
     thread_list = []
     for thr in range(num_threads):
