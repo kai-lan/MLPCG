@@ -15,7 +15,7 @@ Ritz vector for matrix A.
 '''
 #OMP_NUM_THREADS=8 python ....py
 from GLOBAL_VARS import *
-os.environ['OMP_NUM_THREADS'] = '4'
+os.environ['OMP_NUM_THREADS'] = '2'
 import numpy as np
 import scipy
 import time
@@ -66,11 +66,14 @@ def _test_lanczos_algorithm(A, num_ritz_vec, orthogonal):
     Es.append(np.linalg.norm(E))
     print(np.linalg.norm(E))
 
-def createRitzVec(A, rhs, num_ritz_vectors):
+def createRitzVec(A, rhs, num_ritz_vectors, ortho=True):
     # Creating Lanczos Vectors:
     print("Lanczos Iteration is running...")
     start = time.time()
-    W, diagonal, sub_diagonal = _lanczos_algorithm(A, rhs, num_ritz_vectors, np.inf)
+    if ortho:
+        W, diagonal, sub_diagonal = _lanczos_algorithm(A, rhs, num_ritz_vectors, np.inf)
+    else:
+        W, diagonal, sub_diagonal = _lanczos_algorithm(A, rhs, num_ritz_vectors, 0)
     print("Lanczos Iteration took", time.time() - start, 's')
     # Calculating eigenvectors of the tridiagonal matrix: only return eigvals > 1e-8
     print("Calculating eigenvectors of the tridiagonal matrix")
@@ -89,7 +92,10 @@ def createRawData(ritz_vectors, sample_size, flags, outdir):
         s = sparse.coo_matrix((ritz_vectors[i], (padding, np.zeros_like(padding))), shape=flags.shape+(1,), dtype=np.float32)
         with open(f"{outdir}/b_{i}.npz", 'wb') as f:
             sparse.save_npz(f, s)
-
+def createFourierRandVecs(N, DIM, num_bases):
+    bases = []
+    x, y = np.meshgrid(np.linspace(1/(N+1), N/(N+1), N), np.linspace(1/(N+1), N/(N+1), N))
+    print(x.shape, y.shape)
 def worker(frames):
     print('Process id', os.getpid())
     for i in frames:
@@ -104,26 +110,41 @@ def worker(frames):
 
         A = hf.compressedMat(A, flags)
         rhs = hf.compressedVec(rhs, flags)
+        # createFourierRandVecs(N, DIM, 200)
         # rhs = np.random.rand(A.shape[0])
-        ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors)
-        print(ritz_vals[:20])
-        np.save(f"{out}/ritz_{num_ritz_vectors}.npy", ritz_vec)
+        ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors, ortho=ortho)
+        # print(ritz_vals)
+        # eig_vals, eig_vec = slin.eigsh(A, num_ritz_vectors, v0=rhs, which='BE')
+        # print(eig_vals)
+        # print(np.linalg.norm(eig_vec @ eig_vec.T))
+        if ortho:
+            np.save(f"{out}/ritz_{num_ritz_vectors}.npy", ritz_vec)
+        else:
+            np.save(f"{out}/ritz_{num_ritz_vectors}_no_ortho.npy", ritz_vec)
 
 np.random.seed(2)
-N = 64
-DIM = 2
 
-dir = f"{DATA_PATH}/dambreak_N{N}_200"
+N = 128
+DIM = 3
+scene = 'dambreak'
+if DIM == 2:
+    dir = f"{DATA_PATH}/{scene}_N{N}_200"
+else: dir = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
+ortho = False
+
+
 os.makedirs(dir, exist_ok=True)
-print(dir)
-num_ritz_vectors = 100#3200
+
+num_ritz_vectors = 1600
+
 
 if __name__ == '__main__':
 
     t0 = time.time()
-    total_work = range(10, 150, 10)
-    #total_work = [100,92, 94, 95, 93, 109, 110, 111, 112, 113, 125, 126, 127, 128, 129, 130, 131, 143, 144, 145, 146, 147, 148, 149, 150]
-    num_threads = 4
+    # total_work = np.linspace(1, 200, 10, dtype=int)
+    total_work = [1]
+    num_threads = 1
+
     chunks = np.array_split(total_work, num_threads)
     thread_list = []
     for thr in range(num_threads):
