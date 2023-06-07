@@ -3,18 +3,62 @@ import torch.nn as nn
 import torch.nn.functional as F
 from model import BaseModel
 import numpy as np
+from opt_einsum import contract
+
 
 class SmallSMBlock(nn.Module):
     def __init__(self):
         super().__init__()
-        self.KL = nn.Conv2d(1, 9, kernel_size=3, padding='same')
+        self.KL = nn.Conv2d(1, 9, kernel_size=3, padding='same', bias=True)
+    def forward1(self, image, x): # 1 x N x N, bs x 1 x N x N
+        N = x.shape[-1]
+        y = torch.zeros_like(x)
+        image = F.pad(image, (1,)*4)
+        x = F.pad(x, (1,)*4)
+        for i in range(1, N+1):
+            for j in range(1, N+1):
+                K = ((self.KL.weight.squeeze() * image[0, i-1:i+2, j-1:j+2])).sum(dim=(1, 2)) + self.KL.bias
+                K = K.view((3, 3))
+                xx = x[:, 0, i-1:i+2, j-1:j+2]
+                y[:, 0, i-1, j-1] = (xx * K).sum(dim=(-2, -1))
+        return y
     def forward(self, image, x): # 1 x N x N, bs x 1 x N x N
         K = self.KL(image) # 1 x N x N -> 9 x N x N
+        # F.elu_(K) # nonlinear
         K = K.permute((1, 2, 0)) # 9 x N x N -> N x N x 9
         K = K.unflatten(2, (3, 3)) # N x N x 9 -> N x N x 3 x 3
         x = F.pad(x, (1, 1, 1, 1)) # bs x 1 x N x N -> bs x 1 x (N+2) x (N+2)
         x = x.unfold(2, 3, 1).unfold(3, 3, 1) # bs x 1 x (N+2) x (N+2) -> bs x 1 x N x N x 3 x 3
-        y = (x * K).sum(dim=(-2, -1)) # bs x 1 x N x N x 3 x 3, N x N x 3 x 3 -> bs x 1 x N x N
+        y = (x * K).sum(dim=(-2, -1))
+        return y
+
+class SmallSMBlock3D(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.KL = nn.Conv3d(1, 27, kernel_size=3, padding='same', bias=True)
+
+    def forward(self, image, x): # 1 x N x N x N, bs x 1 x N x N x N
+        y = torch.zeros_like(x)
+        N = x.shape[-1]
+        x = F.pad(x, (1,)*6) # bs x 1 x N x N x N -> bs x 1 x (N+2) x (N+2) x (N+2)
+        image = F.pad(image, (1,)*6)
+        for i in range(1, N+1):
+            for j in range(1, N+1):
+                for k in range(1, N+1):
+                    K = ((self.KL.weight.squeeze() * image[0, i-1:i+2, j-1:j+2, k-1:k+2])).sum(dim=(1, 2, 3)) + self.KL.bias
+                    K = K.view(3, 3, 3)
+                    xx = x[:, 0, i-1:i+2, j-1:j+2, k-1:k+2]
+                    y[:, 0, i-1, j-1, k-1] = (xx * K).sum(dim=(-3, -2, -1))
+        return y
+
+    def __forward(self, image, x): # 1 x N x N x N, bs x 1 x N x N x N
+        K = self.KL(image) # 1 x N x N x N -> 27 x N x N x N
+        K = K.permute((1, 2, 3, 0)) # 27 x N x N x N -> N x N x N x 27
+        K = K.unflatten(3, (3, 3, 3)) # N x N x N x 27 -> N x N x N x 3 x 3 x 3
+        # F.elu_(K) # nonlinear
+        x = F.pad(x, (1, 1, 1, 1, 1, 1)) # bs x 1 x N x N x N -> bs x 1 x (N+2) x (N+2) x (N+2)
+        x = x.unfold(2, 3, 1).unfold(3, 3, 1).unfold(4, 3, 1) # bs x 1 x (N+2) x (N+2) x (N+2) -> bs x 1 x N x N x N x 3 x 3 x 3
+        y = (x * K).sum(dim=(-3, -2, -1)) # bs x 1 x N x N x N x 3 x 3 x 3, N x N x N x 3 x 3 x 3 -> bs x 1 x N x N x N
         return y
 
 # _____       _____
@@ -29,17 +73,14 @@ class SmallSMModelLegacy(BaseModel):
         self.c00 = nn.Conv2d(1, 1, kernel_size=1)
         self.c01 = nn.Conv2d(1, 1, kernel_size=1)
     def forward(self, image, b):
-        b0 = self.L0(image, b)
-        b0 = F.elu(b0)
+        b0 = F.elu(self.L0(image, b))
 
         b1 = F.avg_pool2d(b0, (2, 2))
         image0 = F.max_pool2d(image, (2, 2))
-        b1 = self.L10(image0, b1)
-        b1 = F.elu(b1)
+        b1 = F.elu(self.L10(image0, b1))
 
         b1 = F.interpolate(b1, scale_factor=2)
-        b1 = self.L11(image, b1)
-        b1 = F.elu(b1)
+        b1 = F.elu(self.L11(image, b1))
         x = self.c00(b0) + self.c01(b1)
         return x
 
@@ -49,6 +90,14 @@ class SmallLinearBlock(nn.Module):
         self.KL = nn.Conv2d(1, 9, kernel_size=3, padding='same')
     def forward(self, image):
         K = self.KL(image) # 1 x N x N -> 9 x N x N
+        return K.mean()
+
+class SmallLinearBlock3D(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.KL = nn.Conv3d(1, 27, kernel_size=3, padding='same')
+    def forward(self, image):
+        K = self.KL(image) # 1 x N x N x N -> 27 x N x N x N
         return K.mean()
 
 # ----pre0----          ----post1----
@@ -63,17 +112,14 @@ class SmallSMModel(BaseModel):
         self.c00 = SmallLinearBlock()
         self.c01 = SmallLinearBlock()
     def forward(self, image, b):
-        b0 = self.pre0(image, b)
-        b0 = F.elu(b0)
+        b0 = F.elu(self.pre0(image, b))
 
         b1 = F.avg_pool2d(b0, (2, 2))
         image1 = F.max_pool2d(image, (2, 2))
-        b1 = self.post1(image1, b1)
-        b1 = F.elu(b1)
+        b1 = F.elu(self.post1(image1, b1))
 
         b1 = F.interpolate(b1, scale_factor=2)
-        b1 = self.pre1(image, b1)
-        b1 = F.elu(b1)
+        b1 = F.elu(self.pre1(image, b1))
 
         x = self.c00(image) * b0 + self.c01(image) * b1
         return x
@@ -98,27 +144,22 @@ class SmallSMModelD2(BaseModel):
         self.c11 = SmallLinearBlock()
 
     def forward(self, image, b):
-        b0 = self.pre0(image, b)
-        b0 = F.elu(b0)
+        b0 = F.elu(self.pre0(image, b))
 
         b1 = F.avg_pool2d(b0, (2, 2))
         image1 = F.max_pool2d(image, (2, 2))
-        b1 = self.pre1(image1, b1)
-        b1 = F.elu(b1)
+        b1 = F.elu(self.pre1(image1, b1))
 
         b2 = F.avg_pool2d(b1, (2, 2))
         image2 = F.max_pool2d(image1, (2, 2))
-        b2 = self.l2(image2, b2)
-        b2 = F.elu(b2)
+        b2 = F.elu(self.l2(image2, b2))
 
         b2 = F.interpolate(b2, scale_factor=2)
-        b2 = self.post1(image1, b2)
-        b2 = F.elu(b2)
+        b2 = F.elu(self.post1(image1, b2))
         b1 = self.c10(image1) * b1 + self.c11(image1) * b2
 
         b1 = F.interpolate(b1, scale_factor=2)
-        b1 = self.post0(image, b1)
-        b1 = F.elu(b1)
+        b1 = F.elu(self.post0(image, b1))
         b0 = self.c00(image) * b0 + self.c01(image) * b1
 
         return b0
@@ -149,48 +190,35 @@ class SmallSMModelD3(BaseModel):
         self.c21 = SmallLinearBlock()
 
     def forward(self, image, b):
-        b0 = self.pre0(image, b)
-        b0 = F.elu(b0)
+        b0 = F.elu(self.pre0(image, b))
 
         b1 = F.avg_pool2d(b0, (2, 2))
         image1 = F.max_pool2d(image, (2, 2))
-        b1 = self.pre1(image1, b1)
-        b1 = F.elu(b1)
+        b1 = F.elu(self.pre1(image1, b1))
 
         b2 = F.avg_pool2d(b1, (2, 2))
         image2 = F.max_pool2d(image1, (2, 2))
-        b2 = self.pre2(image2, b2)
-        b2 = F.elu(b2)
+        b2 = F.elu(self.pre2(image2, b2))
 
         b3 = F.avg_pool2d(b2, (2, 2))
         image3 = F.max_pool2d(image2, (2, 2))
-        b3 = self.l3(image3, b3)
-        b3 = F.elu(b3)
+        b3 = F.elu(self.l3(image3, b3))
 
         b3 = F.interpolate(b3, scale_factor=2)
-        b3 = self.post2(image2, b3)
-        b3 = F.elu(b3)
+        b3 = F.elu(self.post2(image2, b3))
         b2 = self.c20(image2) * b2 + self.c21(image2) * b3
 
         b2 = F.interpolate(b2, scale_factor=2)
-        b2 = self.post1(image1, b2)
-        b2 = F.elu(b2)
+        b2 = F.elu(self.post1(image1, b2))
         b1 = self.c10(image1) * b1 + self.c11(image1) * b2
 
         b1 = F.interpolate(b1, scale_factor=2)
-        b1 = self.post0(image, b1)
-        b1 = F.elu(b1)
+        b1 = F.elu(self.post0(image, b1))
         b0 = self.c00(image) * b0 + self.c01(image) * b1
 
         return b0
 
-# _____                                           _____
-#      |                                         |
-#      |_____                               _____|
-#            |                             |
-#            |_____                   _____|
-#                  |                 |
-#                  |_____............|
+# General SmallSM model for any number of coarsening levels
 class SmallSMModelDn(BaseModel):
     def __init__(self, n):
         super().__init__()
@@ -208,25 +236,218 @@ class SmallSMModelDn(BaseModel):
             self.c1.append(SmallLinearBlock())
 
     def forward(self, image, b):
-        x = [F.elu(self.pre[0](image, b))]
+        x = [self.pre[0](image, b)]
+        # x = [F.elu(self.pre[0](image, b))]
         imgs = [image]
 
         for i in range(1, self.n):
             x.append(F.avg_pool2d(x[-1], (2, 2)))
+            imgs.append(F.avg_pool2d(imgs[-1], (2, 2)))
+            x[-1] = self.pre[i](imgs[-1], x[-1])
+            # x[-1] = F.elu(self.pre[i](imgs[-1], x[-1]))
+
+        x.append(F.avg_pool2d(x[-1], (2, 2)))
+        imgs.append(F.avg_pool2d(imgs[-1], (2, 2)))
+        x[-1] = self.l(imgs[-1], x[-1])
+        # x[-1] = F.elu(self.l(imgs[-1], x[-1]))
+
+        for i in range(self.n, 0, -1):
+            x[i] = F.interpolate(x[i], scale_factor=2)
+            x[i] = self.post[i-1](imgs[i-1], x[i])
+            # x[i] = F.elu(self.post[i-1](imgs[i-1], x[i]))
+            x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
+
+        return x[0]
+
+# Submanifold Sparse Convolutions
+class SparseSMModelDn(BaseModel):
+    def __init__(self, n):
+        super().__init__()
+        self.n = n
+        self.pre = nn.ModuleList()
+        self.post = nn.ModuleList()
+        for _ in range(n):
+            self.pre.append(SmallSMBlock())
+            self.post.append(SmallSMBlock())
+        self.l = SmallSMBlock()
+        self.c0 = nn.ModuleList()
+        self.c1 = nn.ModuleList()
+        for _ in range(n):
+            self.c0.append(SmallLinearBlock())
+            self.c1.append(SmallLinearBlock())
+
+    def forward(self, image, b):
+        x = [F.elu(self.pre[0](image, b))]
+        x[0].masked_fill_(abs(image - 2) > 1e-12, 0)
+
+        imgs = [image]
+
+        for i in range(1, self.n):
+
+            x.append(F.avg_pool2d(x[-1], (2, 2)))
             imgs.append(F.max_pool2d(imgs[-1], (2, 2)))
             x[-1] = F.elu(self.pre[i](imgs[-1], x[-1]))
+            x[-1].masked_fill_((imgs[-1] > 2.5)|(imgs[-1] < 1.5), 0)
 
         x.append(F.avg_pool2d(x[-1], (2, 2)))
         imgs.append(F.max_pool2d(imgs[-1], (2, 2)))
         x[-1] = F.elu(self.l(imgs[-1], x[-1]))
+        x[-1].masked_fill_((imgs[-1] > 2.5)|(imgs[-1] < 1.5), 0)
 
         for i in range(self.n, 0, -1):
             x[i] = F.interpolate(x[i], scale_factor=2)
             x[i] = F.elu(self.post[i-1](imgs[i-1], x[i]))
             x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
 
+            x[i-1].masked_fill_(abs(imgs[i-1] - 2) > 1e-12, 0)
+
         return x[0]
 
+# 3D: General SmallSM model for any number of coarsening levels
+class SmallSMModelDn3D(BaseModel):
+    def __init__(self, n):
+        super().__init__()
+        self.n = n
+        self.pre = nn.ModuleList()
+        self.post = nn.ModuleList()
+        for _ in range(n):
+            self.pre.append(SmallSMBlock3D())
+            self.post.append(SmallSMBlock3D())
+        self.l = SmallSMBlock3D()
+        self.c0 = nn.ModuleList()
+        self.c1 = nn.ModuleList()
+        for _ in range(n):
+            self.c0.append(SmallLinearBlock3D())
+            self.c1.append(SmallLinearBlock3D())
+
+    def forward(self, image, b):
+        x = [self.pre[0](image, b)]
+        # x = [F.elu(self.pre[0](image, b))]
+        imgs = [image]
+
+        for i in range(1, self.n):
+            x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
+            imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+            x[-1] = self.pre[i](imgs[-1], x[-1])
+            # x[-1] = F.elu(self.pre[i](imgs[-1], x[-1]))
+
+        x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
+        imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+        x[-1] = self.l(imgs[-1], x[-1])
+        # x[-1] = F.elu(self.l(imgs[-1], x[-1]))
+
+        for i in range(self.n, 0, -1):
+            x[i] = F.interpolate(x[i], scale_factor=2)
+            x[i] = self.post[i-1](imgs[i-1], x[i])
+            # x[i] = F.elu(self.post[i-1](imgs[i-1], x[i]))
+            x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
+
+        return x[0]
+
+# For multiple channels
+class MultiSMBlock(nn.Module):
+    def __init__(self, nc):
+        super().__init__()
+        self.KL = nn.Conv2d(1, 9*nc, kernel_size=3, padding='same')
+        self.nc = nc
+    def forward(self, image, x): # 1 x N x N, bs x 1 x N x N
+        K = self.KL(image) # 1 x N x N -> (2 x 9) x N x N
+        K = K.unflatten(0, (self.nc, 9)) # (2 x 9) x N x N -> 2 x 9 x N x N
+        K = K.permute((0, 2, 3, 1)) # 2 x 9 x N x N -> 2 x N x N x 9
+        K = K.unflatten(-1, (3, 3)) # 2 x N x N x 9 -> 2 x N x N x 3 x 3
+        x = F.pad(x, (1, 1, 1, 1)) # bs x 1 x N x N -> bs x 1 x (N+2) x (N+2)
+        x = x.unfold(2, 3, 1).unfold(3, 3, 1) # bs x 1 x (N+2) x (N+2) -> bs x 1 x N x N x 3 x 3
+        y = (x * K).sum(dim=(-2, -1)) # bs x 1 x N x N x 3 x 3, 2 x N x N x 3 x 3 -> bs x 2 x N x N
+        return y
+
+# multiple channels
+class MultiSMModelD2(BaseModel):
+    def __init__(self, nc=3):
+        super().__init__()
+        self.pre0 = MultiSMBlock(nc)
+        self.post0 = MultiSMBlock(nc)
+        self.pre1 = MultiSMBlock(nc)
+        self.post1 = MultiSMBlock(nc)
+        self.l2 = MultiSMBlock(nc)
+
+        self.c00 = SmallLinearBlock()
+        self.c01 = SmallLinearBlock()
+        self.c10 = SmallLinearBlock()
+        self.c11 = SmallLinearBlock()
+
+        self.last = nn.Conv2d(nc, 1, kernel_size=1)
+
+    def forward(self, image, b):
+        b0 = F.elu(self.pre0(image, b))
+
+        b1 = F.avg_pool2d(b0, (2, 2))
+        image1 = F.max_pool2d(image, (2, 2))
+        b1 = F.elu(self.pre1(image1, b1))
+
+        b2 = F.avg_pool2d(b1, (2, 2))
+        image2 = F.max_pool2d(image1, (2, 2))
+        b2 = F.elu(self.l2(image2, b2))
+
+        b2 = F.interpolate(b2, scale_factor=2)
+        b2 = F.elu(self.post1(image1, b2))
+        b1 = self.c10(image1) * b1 + self.c11(image1) * b2
+
+        b1 = F.interpolate(b1, scale_factor=2)
+        b1 = F.elu(self.post0(image, b1))
+        b0 = self.c00(image) * b0 + self.c01(image) * b1
+
+        b0 = self.last(b0)
+        return b0
+
+class MultiSMModelD3(BaseModel):
+    def __init__(self, nc=3):
+        super().__init__()
+        self.pre0 = MultiSMBlock(nc)
+        self.post0 = MultiSMBlock(nc)
+        self.pre1 = MultiSMBlock(nc)
+        self.post1 = MultiSMBlock(nc)
+        self.pre2 = MultiSMBlock(nc)
+        self.post2 = MultiSMBlock(nc)
+        self.l3 = MultiSMBlock(nc)
+
+        self.c00 = SmallLinearBlock()
+        self.c01 = SmallLinearBlock()
+        self.c10 = SmallLinearBlock()
+        self.c11 = SmallLinearBlock()
+        self.c20 = SmallLinearBlock()
+        self.c21 = SmallLinearBlock()
+
+        self.last = nn.Conv2d(nc, 1, kernel_size=1)
+
+    def forward(self, image, b):
+        b0 = F.elu(self.pre0(image, b))
+
+        b1 = F.avg_pool2d(b0, (2, 2))
+        image1 = F.max_pool2d(image, (2, 2))
+        b1 = F.elu(self.pre1(image1, b1))
+
+        b2 = F.avg_pool2d(b1, (2, 2))
+        image2 = F.max_pool2d(image1, (2, 2))
+        b2 = F.elu(self.pre2(image2, b2))
+
+        b3 = F.avg_pool2d(b2, (2, 2))
+        image3 = F.max_pool2d(image2, (2, 2))
+        b3 = F.elu(self.l3(image3, b3))
+
+        b3 = F.interpolate(b3, scale_factor=2)
+        b3 = F.elu(self.post2(image2, b3))
+        b2 = self.c20(image2) * b2 + self.c21(image2) * b3
+
+        b2 = F.interpolate(b2, scale_factor=2)
+        b2 = F.elu(self.post1(image1, b2))
+        b1 = self.c10(image1) * b1 + self.c11(image1) * b2
+
+        b1 = F.interpolate(b1, scale_factor=2)
+        b1 = F.elu(self.post0(image, b1))
+        b0 = self.c00(image) * b0 + self.c01(image) * b1
+
+        b0 = self.last(b0)
+        return b0
 
 class SMConvBlock(nn.Module):
     def __init__(self, nc_in, nc_out, kernel_size=3):
@@ -342,17 +563,16 @@ if __name__ == '__main__':
     flags = torch.tensor(read_flags(file_flags), dtype=torch.float32)
     sol = torch.tensor(load_vector(file_sol), dtype=torch.float32)
 
-    x = torch.stack([rhs, flags]).reshape(1, 2, N, N).to(torch.device('cuda'))
+    # x = torch.stack([rhs, flags]).reshape(1, 2, N, N).to(torch.device('cuda'))
 
-    model = SmallSMModel()
-    # model = DCDM(2)
-    # model = NewModel1()
-    # model.eval()
     torch.set_grad_enabled(False) # disable autograd globally
-    model.to(torch.device("cuda"))
 
-    summary(model, ((1, 256, 256), (1, 1, 256, 256)))
-    # y = model(flags.reshape(1, N, N), rhs.reshape(1, 1, N, N))
-    # loss = model.residual_loss(x, y, A)
-    # print(y.shape)
-    print(model)
+    model = SmallSMBlock3D() #.cuda()
+    # image = torch.randint(2, 4, (1, 3, 3, 3)).float() #.cuda()
+    image = torch.randn(1, 3, 3, 3) #.cuda()
+    x = torch.randn((1, 1, 3, 3, 3)) #.cuda()
+    yy = model.forward1(image, x)
+    # yyy = model.forward2(image, x)
+    y = model(image, x)
+    print((y - yy).norm())
+

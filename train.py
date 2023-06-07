@@ -27,18 +27,19 @@ def validation(train_loader, validation_loader, model, loss_fn, image, A):
     tot_loss_train, tot_loss_val = 0, 0
     with torch.no_grad():
         for data in train_loader:
-            data = data.to(model.device)
+            # print(data.device)
+            data = data.to(model.device, non_blocking=True)
             x_pred = model(image, data) # input: (bs, 1, dim, dim)
-            tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
+            tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
         for data in validation_loader:
-            data = data.to(model.device)
+            data = data.to(model.device, non_blocking=True)
             x_pred = model(image, data) # input: (bs, 1, dim, dim)
-            tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A).item()
-    return tot_loss_train, tot_loss_val
+            tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
+    return tot_loss_train.item(), tot_loss_val.item()
 
 def train_(image, A, epoch_num, train_loader, validation_loader, model, optimizer, loss_fn):
-    A = A.to(model.device)
-    image = image.to(model.device)
+    # A = A.to(model.device)
+    # image = image.to(model.device)
     training_loss = []
     validation_loss = []
     time_history = []
@@ -50,37 +51,47 @@ def train_(image, A, epoch_num, train_loader, validation_loader, model, optimize
     training_loss.append(tot_loss_train)
     validation_loss.append(tot_loss_val)
     time_history.append(time.time() - t0)
-    old_param = None
-    with torch.no_grad():
-        for k, param in enumerate(model.parameters()):
-            if k == 0:  old_param = param.data.ravel()
-            else:       old_param = torch.cat([old_param, param.data.ravel()])
+    # old_param = None
+    # with torch.no_grad():
+    #     for k, param in enumerate(model.parameters()):
+    #         if k == 0:  old_param = param.data.ravel()
+    #         else:       old_param = torch.cat([old_param, param.data.ravel()])
     print(training_loss[-1], validation_loss[-1], f"(0 / {epoch_num})")
 
 
     for i in range(1, epoch_num+1):
         # Training
-        for ii, data in enumerate(train_loader, 1):# data: (bs, 2, N, N)
-            data = data.to(model.device)
+        for ii, data in enumerate(train_loader, 1):
+            # print(data.device)
+            # data = data.to(model.device, non_blocking=True)
             x_pred = model(image, data)
+            # x_pred1 = model(image, x_pred)
             x_pred = x_pred.squeeze(dim=1).flatten(1) # (bs, 1, N, N) -> (bs, N, N) -> (bs, N*N)
+            # x_pred1 = x_pred1.squeeze(dim=1).flatten(1) # (bs, 1, N, N) -> (bs, N, N) -> (bs, N*N)
             data = data.squeeze(dim=1).flatten(1)
+            r = torch.zeros_like(x_pred)
+            x = x_pred
+            for j in range(data.shape[0]):
+                Ax = A @ x[j]
+                alpha = x[j].dot(data[j]) / x[j].dot(Ax)
+                r[j] = data[j] - alpha * Ax
             loss = loss_fn(x_pred, data, A)
+            # loss += 0.1*(data * r).sum(dim=(1,)).mean()
 
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
 
         dLdw = 0.0
-        new_param = None
-        with torch.no_grad():
-            for k, param in enumerate(model.parameters()):
-                dLdw += param.grad.norm().item()
-                if k == 0:  new_param = param.data.ravel()
-                else:       new_param = torch.cat([new_param, param.data.ravel()])
-        grad_history.append(dLdw)
-        update_history.append((new_param - old_param).norm().item())
-        old_param = new_param
+        # new_param = None
+        # with torch.no_grad():
+        #     for k, param in enumerate(model.parameters()):
+        #         dLdw += param.grad.norm().item()
+        #         if k == 0:  new_param = param.data.ravel()
+        #         else:       new_param = torch.cat([new_param, param.data.ravel()])
+        # grad_history.append(dLdw)
+        # update_history.append((new_param - old_param).norm().item())
+        # old_param = new_param
 
         # Validation
         tot_loss_train, tot_loss_val = validation(train_loader, validation_loader, model, loss_fn, image, A)
@@ -135,14 +146,14 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    N = 256
-    DIM = 2
-    lr = 1.0e-3
+    N = 64
+    DIM = 3
+    lr = 0.001
     epoch_num_per_matrix = 5
     epoch_num = 50
     bc = 'dambreak'
     b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
-    total_matrices = 50 # number of matrices chosen for training
+    total_matrices = 10 # number of matrices chosen for training
     num_ritz = 800
     num_rhs = 400 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
@@ -169,12 +180,19 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    suffix += '_smmodeld3'
+    suffix += '_smmodeld2_nonlinearK'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
-    inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")
 
-    model = SmallSMModelD2()
+    if DIM == 2:
+        inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")
+    else:
+        inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200_{DIM}D/preprocessed")
+
+    if DIM == 2:
+        model = SmallSMModelDn(4)
+    else:
+        model = SmallSMModelDn3D(2)
     model.move_to(cuda)
     loss_fn = eval(loss_fn)
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -193,14 +211,16 @@ if __name__ == '__main__':
     perm = np.random.permutation(num_rhs)
 
     def transform(x):
-        x = x.reshape((1, N, N))
+        x = x.reshape((1,)+(N,)*DIM)
         return x
 
-    train_set = MyDataset(None, perm[:train_size], transform, denoised=False)
-    valid_set = MyDataset(None, perm[train_size:], transform, denoised=False)
+    train_set = MyDataset(None, perm[:train_size], transform)
+    valid_set = MyDataset(None, perm[train_size:], transform)
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
-    matrices = np.random.permutation(range(1, 201))[:total_matrices]
+
+    # matrices = np.random.permutation(range(1, 201))[:total_matrices]
+    matrices = np.linspace(1, 200, total_matrices, dtype=int)
     # matrices = np.load(os.path.join(DATA_PATH, f"{bc}_N{N}_200/train_mat.npy"))
     np.save(f"{outdir}/matrices_trained_{total_matrices}.npy", matrices)
     start_time = time.time()
@@ -213,7 +233,7 @@ if __name__ == '__main__':
             train_set.data_folder = os.path.join(f"{inpdir}/{j}")
             valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
             A = torch.load(f"{train_set.data_folder}/A.pt").to_sparse_csr()
-            image = torch.load(f"{train_set.data_folder}/flags.pt").view(1, N, N)
+            image = torch.load(f"{train_set.data_folder}/flags.pt").view((1,)+(N,)*DIM)
             training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
             tl += np.sum(training_loss_)
             vl += np.sum(validation_loss_)
