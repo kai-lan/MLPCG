@@ -3,11 +3,10 @@ output*
 lib/.DS_Store
 lib/__*
 lib/*.png
-dcdm/__*
-fluidnet/__*
-fluidnet/lib/__*
-fluidnet/data
 *.png
 __*
 *.txt
 *.npy
+*/build
+*/dist
+*/*.egg-info
