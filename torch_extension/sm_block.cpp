@@ -4,77 +4,47 @@
 
 // CUDA forward declarations
 
-std::vector<torch::Tensor> lltm_cuda_forward(
-    torch::Tensor input,
+std::vector<torch::Tensor> sm_block_cuda_forward(
+    torch::Tensor image,
+    torch::Tensor x,
     torch::Tensor weights,
-    torch::Tensor bias,
-    torch::Tensor old_h,
-    torch::Tensor old_cell);
+    torch::Tensor bias);
 
-std::vector<torch::Tensor> lltm_cuda_backward(
-    torch::Tensor grad_h,
-    torch::Tensor grad_cell,
-    torch::Tensor new_cell,
-    torch::Tensor input_gate,
-    torch::Tensor output_gate,
-    torch::Tensor candidate_cell,
-    torch::Tensor X,
-    torch::Tensor gate_weights,
-    torch::Tensor weights);
+std::vector<torch::Tensor> sm_block_cuda_backward(
+    torch::Tensor grad_output,
+    torch::Tensor image,
+    torch::Tensor x);
 
 // C++ interface
-
 #define CHECK_CUDA(x) TORCH_CHECK(x.device().is_cuda(), #x " must be a CUDA tensor")
 #define CHECK_CONTIGUOUS(x) TORCH_CHECK(x.is_contiguous(), #x " must be contiguous")
 #define CHECK_INPUT(x) CHECK_CUDA(x); CHECK_CONTIGUOUS(x)
 
-std::vector<torch::Tensor> lltm_forward(
-    torch::Tensor input,
+std::vector<torch::Tensor> sm_block_forward(
+    torch::Tensor image,
+    torch::Tensor x,
     torch::Tensor weights,
-    torch::Tensor bias,
-    torch::Tensor old_h,
-    torch::Tensor old_cell) {
-  CHECK_INPUT(input);
+    torch::Tensor bias) {
+  CHECK_INPUT(image);
+  CHECK_INPUT(x);
   CHECK_INPUT(weights);
   CHECK_INPUT(bias);
-  CHECK_INPUT(old_h);
-  CHECK_INPUT(old_cell);
 
-  return lltm_cuda_forward(input, weights, bias, old_h, old_cell);
+  return sm_block_cuda_forward(image, x, weights, bias);
 }
 
-std::vector<torch::Tensor> lltm_backward(
-    torch::Tensor grad_h,
-    torch::Tensor grad_cell,
-    torch::Tensor new_cell,
-    torch::Tensor input_gate,
-    torch::Tensor output_gate,
-    torch::Tensor candidate_cell,
-    torch::Tensor X,
-    torch::Tensor gate_weights,
-    torch::Tensor weights) {
-  CHECK_INPUT(grad_h);
-  CHECK_INPUT(grad_cell);
-  CHECK_INPUT(input_gate);
-  CHECK_INPUT(output_gate);
-  CHECK_INPUT(candidate_cell);
-  CHECK_INPUT(X);
-  CHECK_INPUT(gate_weights);
-  CHECK_INPUT(weights);
+std::vector<torch::Tensor> sm_block_backward(
+    torch::Tensor grad_output,
+    torch::Tensor image,
+    torch::Tensor x) {
+  CHECK_INPUT(grad_output);
+  CHECK_INPUT(image);
+  CHECK_INPUT(x);
 
-  return lltm_cuda_backward(
-      grad_h,
-      grad_cell,
-      new_cell,
-      input_gate,
-      output_gate,
-      candidate_cell,
-      X,
-      gate_weights,
-      weights);
+  return sm_block_cuda_backward(grad_output, image, x);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("forward", &lltm_forward, "LLTM forward (CUDA)");
-  m.def("backward", &lltm_backward, "LLTM backward (CUDA)");
+  m.def("forward", &sm_block_forward, "SM block forward (CUDA)");
+  m.def("backward", &sm_block_backward, "SM block backward (CUDA)");
 }
