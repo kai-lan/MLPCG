@@ -45,14 +45,14 @@ class SMBlockFunction(torch.autograd.Function):
     def forward(ctx, image, x, weights, bias):
         image = F.pad(image, (1,)*4) # 1, N+2, N+2
         x = F.pad(x, (1,)*4) # bs, 1, N+2, N+2
-        ctx.save_for_backward(image, x,)
+        ctx.save_for_backward(image, x, weights, bias)
         y, = smblock.forward(image, x, weights, bias)
         return y
     @staticmethod
     def backward(ctx, grad_output): # return the same number of outputs as forward function arguments
-        image, x, = ctx.saved_tensors
-        grad_w, grad_b, = smblock.backward(grad_output.contiguous(), image, x)
-        return None, None, grad_w, grad_b
+        image, x, weights, bias = ctx.saved_tensors
+        grad_x, grad_w, grad_b, = smblock.backward(grad_output.contiguous(), image, x, weights, bias)
+        return None, grad_x, grad_w, grad_b
 
 class SmallSMBlock(nn.Module):
     def __init__(self):
@@ -76,18 +76,21 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    bs = 5
-    N = 10
+    bs = 2
+    N = 5
     image = torch.rand(1, N, N, device=cuda_device)
-    x = torch.rand(bs, 1, N, N, device=cuda_device)
+    x = torch.rand(bs, 1, N, N, device=cuda_device, requires_grad=True)
     model = SmallSMBlock().to(cuda_device)
 
     y = model(image, x)
-    # yy = model.test(image, x)
-    # print((y - yy).abs().max())
-    L = y.sum()
-    L.backward()
+    yy = model.test(image, x)
+    print((y - yy).abs().max())
+
+    # print(y)
+    # L = y.sum()
+    # L.backward()
     # print(model.weights.grad)
+    # print(x.grad)
 
     torch.autograd.gradcheck(SMBlockFunction.apply, (image, x, model.weights, model.bias))
 
