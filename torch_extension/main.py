@@ -76,28 +76,30 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    bs = 2
-    N = 4
+    bs = 5
+    N = 10
     image = torch.rand(1, N, N, device=cuda_device)
     x = torch.rand(bs, 1, N, N, device=cuda_device)
     model = SmallSMBlock().to(cuda_device)
 
-    # y = model(image, x)
+    y = model(image, x)
+    # yy = model.test(image, x)
+    # print((y - yy).abs().max())
+    L = y.sum()
+    L.backward()
+    # print(model.weights.grad)
 
-    # L = y.sum()
-    # L.backward()
+    torch.autograd.gradcheck(SMBlockFunction.apply, (image, x, model.weights, model.bias))
 
-    torch.autograd.gradcheck(SMBlockFunctionPY.apply, (image, x, model.weights, model.bias))
+    # forward = 0
+    # backward = 0
+    # for _ in range(10000):
+    #     start = time.time()
+    #     new_h, new_C = model(image, x)
+    #     forward += time.time() - start
 
-    forward = 0
-    backward = 0
-    for _ in range(10000):
-        start = time.time()
-        new_h, new_C = model(image, x)
-        forward += time.time() - start
+    #     start = time.time()
+    #     (new_h.sum() + new_C.sum()).backward()
+    #     backward += time.time() - start
 
-        start = time.time()
-        (new_h.sum() + new_C.sum()).backward()
-        backward += time.time() - start
-
-    print('Forward: {:.3f} s | Backward {:.3f} s'.format(forward, backward))
+    # print('Forward: {:.3f} s | Backward {:.3f} s'.format(forward, backward))
