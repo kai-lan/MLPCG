@@ -14,15 +14,21 @@ __global__ void sm_block_cuda_forward_kernel(
     const torch::PackedTensorAccessor32<scalar_t,1,torch::RestrictPtrTraits> bias, // 9
     torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> y) { // bs, 1, N, N
 
-  const int N = image.size(2) - 2;
-  const int bs = x.size(0);
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  const int j = blockIdx.y * blockDim.y + threadIdx.y;
+  const int B = x.size(0);
+  const int N1 = image.size(1) - 2;
+  const int N2 = image.size(2) - 2;
 
-  if (i < 0 || i >= N) return;
-  if (j < 0 || j >= N) return;
+  int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+  const int j = threadId % N2;
+  threadId /= N2;
+  const int i = threadId % N1;
+  const int b = threadId / N1;
 
-  for (int b = 0; b < bs; ++b) {
+  if (b < 0 || b >= B) return;
+  if (i < 0 || i >= N1) return;
+  if (j < 0 || j >= N2) return;
+
+  // for (int b = 0; b < bs; ++b) {
     // for (int i = 1; i <= N; ++i) {
     //   for (int j = 1; j <= N; ++j) {
         for (int k = 0; k <= 2; ++k) {
@@ -40,7 +46,7 @@ __global__ void sm_block_cuda_forward_kernel(
         }
     //   }
     // }
-  }
+  // }
 }
 
 template <typename scalar_t>
@@ -54,15 +60,21 @@ __global__ void sm_block_cuda_backward_kernel(
     torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> grad_w,
     torch::PackedTensorAccessor32<scalar_t,1,torch::RestrictPtrTraits> grad_b) {
 
-  const int N = image.size(2) - 2;
-  const int bs = x.size(0);
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  const int j = blockIdx.y * blockDim.y + threadIdx.y;
+  const int B = x.size(0);
+  const int N1 = image.size(1) - 2;
+  const int N2 = image.size(2) - 2;
 
-  if (i < 0 || i >= N) return;
-  if (j < 0 || j >= N) return;
+  int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+  const int j = threadId % N2;
+  threadId /= N2;
+  const int i = threadId % N1;
+  const int b = threadId / N1;
 
-  for (int b = 0; b < bs; ++b) {
+  if (b < 0 || b >= B) return;
+  if (i < 0 || i >= N1) return;
+  if (j < 0 || j >= N2) return;
+
+  // for (int b = 0; b < bs; ++b) {
     // for (int i = 0; i < N; ++i) {
     //   for (int j = 0; j < N; ++j) {
         for (int k = 0; k <= 2; ++k) {
@@ -74,27 +86,19 @@ __global__ void sm_block_cuda_backward_kernel(
               }
             }
             atomicAdd(&grad_b[p], grad_output[b][0][i][j] * x[b][0][i+k][j+l]);
-            int ii = i + k, jj = j + l;
-            if (ii < 1 || ii > N) continue;
-            if (jj < 1 || jj > N) continue;
+            int ii = i + 1 - k, jj = j + 1 - l;
+            if (ii < 0 || ii >= N1 || jj < 0 || jj >= N2) continue;
             for (int m = 0; m <= 2; ++m) {
               for (int n = 0; n <= 2; ++n) {
-                atomicAdd(&grad_x[b][0][ii-1][jj-1], grad_output[b][0][i][j] * (weights[p][0][m][n] * image[0][i+m][j+n]));
+                grad_x[b][0][i][j] += grad_output[b][0][ii][jj] * (weights[p][0][m][n] * image[0][ii+m][jj+n]);
               }
             }
-            atomicAdd(&grad_x[b][0][ii-1][jj-1], grad_output[b][0][i][j] * bias[p]);
-            // int ii = i + 1 - k, jj = j + 1 - l;
-            // if (ii < 0 || ii >= N || jj < 0 || jj >= N) continue;
-            // for (int m = 0; m <= 2; ++m) {
-            //   for (int n = 0; n <= 2; ++n) {
-            //     grad_x[b][0][i][j] += grad_output[b][0][ii][jj] * (weights[p][0][m][n] * image[0][ii+m][jj+n] + bias[p]);
-            //   }
-            // }
+            grad_x[b][0][i][j] += grad_output[b][0][ii][jj] * bias[p];
           }
         }
     //   }
     // }
-  }
+  // }
 }
 } // namespace
 
@@ -104,14 +108,15 @@ std::vector<torch::Tensor> sm_block_cuda_forward(
     torch::Tensor weights,
     torch::Tensor bias) {
 
+  const int B = x.size(0);
   const int N = x.size(2)-2;
-  auto y = torch::zeros({x.size(0), x.size(1), N, N}, torch::dtype(x.dtype()).device(x.device()));
+  auto y = torch::zeros({B, x.size(1), N, N}, torch::dtype(x.dtype()).device(x.device()));
 
+  const int nthreads = 1024; // for 2D num_threads = 32*32 = 1024
+  const int nblocks = (B*N*N + nthreads - 1) / nthreads;
 
-  const int nthreads = 32; // for 2D num_threads = 32*32 = 1024
-  const int nblocks = (N + nthreads - 1) / nthreads;
-  const dim3 threads(nthreads, nthreads);
-  const dim3 blocks(nblocks, nblocks);
+  const dim3 threads(nthreads);
+  const dim3 blocks(nblocks);
 
   AT_DISPATCH_FLOATING_TYPES(x.type(), "sm_block_forward_cuda", ([&] {
     sm_block_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
@@ -132,11 +137,14 @@ std::vector<torch::Tensor> sm_block_cuda_backward(
     torch::Tensor weights,
     torch::Tensor bias) {
 
+  const int B = x.size(0);
   const int N = x.size(2)-2;
-  const int nthreads = 16; // for 2D num_threads = 32*32 = 1024, not sure why 32 gives out of resources error
-  const int nblocks = (N + nthreads - 1) / nthreads;
-  const dim3 threads(nthreads, nthreads);
-  const dim3 blocks(nblocks, nblocks);
+
+  const int nthreads = 256; // for 2D num_threads = 32*32 = 1024, not sure why 32 gives out of resources error
+  const int nblocks = (B*N*N + nthreads - 1) / nthreads;
+
+  const dim3 threads(nthreads);
+  const dim3 blocks(nblocks);
 
   auto grad_x = torch::zeros({x.size(0), x.size(1), N, N}, torch::dtype(x.dtype()).device(x.device()));
   auto grad_w = torch::zeros({9, 1, 3, 3}, torch::dtype(x.dtype()).device(x.device()));
