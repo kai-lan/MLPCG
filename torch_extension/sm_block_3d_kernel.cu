@@ -32,18 +32,22 @@ __global__ void sm_block_3d_cuda_forward_kernel(
   if (j < 0 || j >= N2) return;
   if (ij < 0 || ij >= N3) return;
 
+  scalar_t z = 0.0;
   for (int k = 0; k <= 2; ++k) {
     for (int l = 0; l <= 2; ++l) {
       for (int kl = 0; kl <= 2; ++kl) {
         int p = 3 * (3 * k + l) + kl;
+        z = bias[p];
         for (int m = 0; m <= 2; ++m) {
           for (int n = 0; n <= 2; ++n) {
             for (int mn = 0; mn <= 2; ++mn) {
-              y[b][0][i][j][ij] += (weights[p][0][m][n][mn] * image[0][i+m][j+n][ij+mn]) * x[b][0][i+k][j+l][ij+kl];
+              z += (weights[p][0][m][n][mn] * image[0][i+m][j+n][ij+mn]);
             }
           }
         }
-        y[b][0][i][j][ij] += bias[p] * x[b][0][i+k][j+l][ij+kl];
+        z *= x[b][0][i+k][j+l][ij+kl];
+        // z += bias[p] * x[b][0][i+k][j+l][ij+kl];
+        y[b][0][i][j][ij] += z;
       }
     }
   }
@@ -168,4 +172,19 @@ std::vector<torch::Tensor> sm_block_3d_cuda_backward(
   }));
 
   return {grad_x, grad_w, grad_b};
+}
+
+int main() {
+
+  int N = 12;
+  auto image = torch::ones({1, N, N, N}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+  auto x = torch::rand({5, 1, N, N, N}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+  auto weight = torch::rand({27, 1, 3, 3, 3}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+  auto bias = torch::rand({27}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+  // curandState *d_states;
+  // cudaMalloc(&d_states, CNT * sizeof(curandState));
+  // kernel_setup_randstates_2d<<<1,CNT>>>(d_states, 1,1, 1);
+  auto y = sm_block_3d_cuda_forward(image, x, weight, bias);
+  std::cout << y  << std::endl;
+  cudaDeviceSynchronize();
 }

@@ -31,22 +31,26 @@ __global__ void sm_block_cuda_forward_kernel(
   // for (int b = 0; b < bs; ++b) {
     // for (int i = 1; i <= N; ++i) {
     //   for (int j = 1; j <= N; ++j) {
-        for (int k = 0; k <= 2; ++k) {
-          for (int l = 0; l <= 2; ++l) {
-            int p = 3 * k + l;
-            for (int m = 0; m <= 2; ++m) {
-              for (int n = 0; n <= 2; ++n) {
-                // K[m][n] += weights[p][0][k+1][l+1] * image[0][i+k][j+l] + bias[p];
-                y[b][0][i][j] += (weights[p][0][m][n] * image[0][i+m][j+n]) * x[b][0][i+k][j+l];
-              }
-            }
-            y[b][0][i][j] += bias[p] * x[b][0][i+k][j+l];
-            // y[b][0][i][j] += K[m][n] * x[b][0][i+m-1][j+n-1];
-          }
+  scalar_t z = 0.0;
+  for (int k = 0; k <= 2; ++k) {
+    for (int l = 0; l <= 2; ++l) {
+      int p = 3 * k + l;
+      z = bias[p];
+      for (int m = 0; m <= 2; ++m) {
+        for (int n = 0; n <= 2; ++n) {
+          // K[m][n] += weights[p][0][k+1][l+1] * image[0][i+k][j+l] + bias[p];
+          z += weights[p][0][m][n] * image[0][i+m][j+n];
         }
+      }
+      z *= x[b][0][i+k][j+l];
+      y[b][0][i][j] += z;
+      // y[b][0][i][j] += K[m][n] * x[b][0][i+m-1][j+n-1];
+    }
+  }
     //   }
     // }
   // }
+
 }
 
 template <typename scalar_t>

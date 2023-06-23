@@ -246,6 +246,42 @@ class SmallSMModelDn3D(BaseModel):
 
         return x[0]
 
+class SmallSMModelDn3DPY(BaseModel):
+    def __init__(self, n):
+        super().__init__()
+        self.n = n
+        self.pre = nn.ModuleList()
+        self.post = nn.ModuleList()
+        for _ in range(n):
+            self.pre.append(SmallSMBlock3DPY())
+            self.post.append(SmallSMBlock3DPY())
+        self.l = SmallSMBlock3DPY()
+        self.c0 = nn.ModuleList()
+        self.c1 = nn.ModuleList()
+        for _ in range(n):
+            self.c0.append(SmallLinearBlock3D())
+            self.c1.append(SmallLinearBlock3D())
+
+    def forward(self, image, b):
+        x = [self.pre[0](image, b)]
+        imgs = [image]
+
+        for i in range(1, self.n):
+            x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
+            imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+            x[-1] = self.pre[i](imgs[-1], x[-1])
+
+        x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
+        imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+        x[-1] = self.l(imgs[-1], x[-1])
+
+        for i in range(self.n, 0, -1):
+            x[i] = F.interpolate(x[i], scale_factor=2)
+            x[i] = self.post[i-1](imgs[i-1], x[i])
+            x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
+
+        return x[0]
+
 # For multiple channels
 class MultiSMBlock(nn.Module):
     def __init__(self, nc):
@@ -358,7 +394,7 @@ if __name__ == '__main__':
     sys.path.append(path + "/lib")
     from lib.read_data import *
     import matplotlib.pyplot as plt
-    torch.set_default_dtype(torch.float64)
+    torch.set_default_dtype(torch.float32)
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
@@ -371,9 +407,9 @@ if __name__ == '__main__':
     file_sol = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"pressure_{frame}.bin")
     file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"flags_{frame}.bin")
     # A = readA_sparse(64, file_A, DIM=2)
-    rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float64)
-    flags = torch.tensor(read_flags(file_flags), dtype=torch.float64)
-    sol = torch.tensor(load_vector(file_sol), dtype=torch.float64)
+    rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32)
+    flags = torch.tensor(read_flags(file_flags), dtype=torch.float32)
+    # sol = torch.tensor(load_vector(file_sol), dtype=torch.float32)
 
 
     # torch.set_grad_enabled(False) # disable autograd globally
@@ -382,33 +418,19 @@ if __name__ == '__main__':
     model1 = SmallSMBlock3DPY().cuda()
 
     image = flags.reshape(1, N, N, N).cuda()
-    x = rhs.reshape(1, 1, N, N, N).expand(16, 1, N, N, N).cuda()
+    x = rhs.reshape(1, 1, N, N, N).expand(1, 1, N, N, N).cuda()
     x.requires_grad = True
-    x1 = rhs.reshape(1, 1, N, N, N).expand(16, 1, N, N, N).cuda()
+    x1 = rhs.reshape(1, 1, N, N, N).expand(1, 1, N, N, N).cuda()
     x1.requires_grad = True
 
-    forward = 0.0
-    backward = 0.0
 
+
+    # torch.set_grad_enabled(False)
     y = model(image, x)
     y1 = model1(image, x1)
 
-    # torch.set_grad_enabled(False)
 
     iters = 1000
-    for _ in range(iters):
-        start = time.time()
-        y = model(image, x)
-        torch.cuda.synchronize()
-        forward += time.time() - start
-
-        start = time.time()
-        y.sum().backward()
-        torch.cuda.synchronize()
-        backward += time.time() - start
-
-    print('CUDA kernel\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
-
     forward = 0.0
     backward = 0.0
     for _ in range(iters):
@@ -423,6 +445,22 @@ if __name__ == '__main__':
         backward += time.time() - start
 
     print('PyTorch\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
+
+    forward = 0.0
+    backward = 0.0
+    for _ in range(iters):
+        start = time.time()
+        y = model(image, x)
+        torch.cuda.synchronize()
+        forward += time.time() - start
+
+        start = time.time()
+        y.sum().backward()
+        torch.cuda.synchronize()
+        backward += time.time() - start
+
+    print('CUDA kernel\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
+
 
     # print((y - y1).abs().max())
     # y.sum().backward()

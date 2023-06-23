@@ -54,6 +54,42 @@ class SMBlockFunction(torch.autograd.Function):
         grad_x, grad_w, grad_b, = smblock.backward(grad_output.contiguous(), image, x, weights, bias)
         return None, grad_x, grad_w, grad_b
 
+class SMBlockFunction3DPY(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, image, x, weights, bias):
+        N = x.shape[-1]
+        y = torch.zeros_like(x)
+        image = F.pad(image, (1,)*6) # 1, N+2, N+2
+        x = F.pad(x, (1,)*6) # bs, 1, N+2, N+2
+
+        for i in range(1, N+1):
+            for j in range(1, N+1):
+                for k in range(1, N+1):
+                    K = ((weights.squeeze() * image[0, i-1:i+2, j-1:j+2, k-1:k+2])).sum(dim=(1, 2, 3)) + bias
+                    K = K.view((3, 3, 3))
+                    xx = x[:, 0, i-1:i+2, j-1:j+2, k-1:k+2]
+                    y[:, 0, i-1, j-1, k-1] = (xx * K).sum(dim=(-3, -2, -1))
+
+        ctx.save_for_backward(image, x,)
+        return y
+    @staticmethod
+    def backward(ctx, grad_output): # return the same number of outputs as forward function arguments
+        image, x, = ctx.saved_tensors
+        grad_w = torch.zeros(27, 1, 3, 3, 3, device=image.device)
+        grad_b = torch.zeros(27, device=image.device)
+        N = x.shape[-1] - 2
+        for k in range(3):
+            for l in range(3):
+                for kl in range(3):
+                    p = 3 * (3 * k + l) + kl
+                    for m in range(3):
+                        for n in range(3):
+                            for mn in range(3):
+                                var = image[:, m:m+N, n:n+N, mn:mn+N] * x[:, :, k:k+N, l:l+N, kl:kl+N]
+                                grad_w[p, 0, m, n, mn] = (var * grad_output).sum()
+            grad_b[p] = (x[:, :, k:k+N, l:l+N, kl:kl+N] * grad_output).sum()
+        return None, None, grad_w, grad_b
+
 class SMBlockFunction3D(torch.autograd.Function):
     @staticmethod
     def forward(ctx, image, x, weights, bias):
@@ -85,8 +121,8 @@ class SmallSMBlock3D(nn.Module):
         self.bias = nn.Parameter(torch.ones(27))
     def forward(self, image, x):
         return SMBlockFunction3D.apply(image, x, self.weights, self.bias)
-    # def test(self, image, x):
-    #     return SMBlockFunctionPY.apply(image, x, self.weights, self.bias)
+    def test(self, image, x):
+        return SMBlockFunction3DPY.apply(image, x, self.weights, self.bias)
 
 
 if __name__ == '__main__':
@@ -100,14 +136,14 @@ if __name__ == '__main__':
 
     bs = 5
     N = 12
-    image = torch.rand(1, N, N, N, device=cuda_device)
-    x = torch.rand(bs, 1, N, N, N, device=cuda_device, requires_grad=True)
+    image = torch.rand(1, N, N, device=cuda_device)
+    x = torch.rand(bs, 1, N, N, device=cuda_device, requires_grad=False)
 
-    model = SmallSMBlock3D().to(cuda_device)
+    model = SmallSMBlock().to(cuda_device)
 
     y = model(image, x)
-    # yy = model.test(image, x)
-    # print((y - yy).abs().max())
+    yy = model.test(image, x)
+    print((y - yy).abs().max())
 
     # print(y)
     # L = y.sum()
@@ -115,7 +151,7 @@ if __name__ == '__main__':
     # print(model.weights.grad)
     # print(x.grad)
 
-    torch.autograd.gradcheck(SMBlockFunction3D.apply, (image, x, model.weights, model.bias))
+    torch.autograd.gradcheck(SMBlockFunction.apply, (image, x, model.weights, model.bias))
 
     # forward = 0
     # backward = 0
