@@ -5,6 +5,9 @@
 
 #include <vector>
 
+#define KERNEL_SIZE 81
+__constant__ float WEIGHT[KERNEL_SIZE];
+
 namespace {
 template <typename scalar_t>
 __global__ void sm_block_cuda_forward_kernel(

@@ -3,7 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from model import BaseModel
 import math
-import smblock, smblock3d # implemented in torch_extension/sm_block_kernel.cu
+# import smblock, smblock3d # implemented in torch_extension/sm_block_kernel.cu
+from torch.utils.cpp_extension import load
+
+smblock = load(name='smblock', sources=['torch_extension/sm_block.cpp', 'torch_extension/sm_block_kernel.cu'])
+smblock3d = load(name='smblock3d', sources=['torch_extension/sm_block_3d.cpp', 'torch_extension/sm_block_3d_kernel.cu'])
 
 class SMBlockFunction(torch.autograd.Function):
     @staticmethod
@@ -73,10 +77,11 @@ class SMBlockFunction3D(torch.autograd.Function):
 class SmallSMBlock3D(nn.Module):
     def __init__(self):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(27, 1, 3, 3, 3))
-        self.bias = nn.Parameter(torch.ones(27))
-        torch.manual_seed(0)
-        self.reset_parameters()
+        self.KL = nn.Conv3d(1, 27, kernel_size=3, padding='same', bias=True)
+        # self.KL.weight = nn.Parameter(torch.ones(27, 1, 3, 3, 3))
+        # self.KL.bias = nn.Parameter(torch.ones(27))
+        # torch.manual_seed(0)
+        # self.reset_parameters()
     def reset_parameters(self):
         nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
         if self.bias is not None:
@@ -85,7 +90,7 @@ class SmallSMBlock3D(nn.Module):
                 bound = 1 / math.sqrt(fan_in)
                 nn.init.uniform_(self.bias, -bound, bound)
     def forward(self, image, x):
-        return SMBlockFunction3D.apply(image, x, self.weight, self.bias)
+        return SMBlockFunction3D.apply(image, x, self.KL.weight, self.KL.bias)
 
 class SmallSMBlock3DPY(nn.Module):
     def __init__(self):
@@ -424,13 +429,12 @@ if __name__ == '__main__':
     x1.requires_grad = True
 
 
-
     # torch.set_grad_enabled(False)
     y = model(image, x)
     y1 = model1(image, x1)
 
 
-    iters = 1000
+    iters = 100
     forward = 0.0
     backward = 0.0
     for _ in range(iters):
