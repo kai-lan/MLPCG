@@ -93,42 +93,44 @@ __global__ void sm_block_3d_cuda_backward_kernel(
   }
   __syncthreads();
 
-  const int ij = threadId % N3;
+  if (threadId < B * N1 * N2 * N3) {
+    const int ij = threadId % N3;
 
-  threadId /= N3;
-  const int j = threadId % N2;
+    threadId /= N3;
+    const int j = threadId % N2;
 
-  threadId /= N2;
-  const int i = threadId % N1;
+    threadId /= N2;
+    const int i = threadId % N1;
 
-  threadId /= N1;
-  const int b = threadId % B;
+    threadId /= N1;
+    const int b = threadId % B;
 
-  for (int k = 0; k <= 2; ++k) {
-    for (int l = 0; l <= 2; ++l) {
-      for (int kl = 0; kl <= 2; ++kl) {
-        int q = 3 * (3 * k + l) + kl;
-        for (int m = 0; m <= 2; ++m) {
-          for (int n = 0; n <= 2; ++n) {
-            for (int mn = 0; mn <= 2; ++mn) {
-              // atomicAdd(&grad_w[q][0][m][n][mn], grad_output[b][0][i][j][ij] * image[0][i+m][j+n][ij+mn] * x[b][0][i+k][j+l][ij+kl]);
-              atomicAdd(&d_w[27*q+9*m+3*n+mn], grad_output[b][0][i][j][ij] * image[0][i+m][j+n][ij+mn] * x[b][0][i+k][j+l][ij+kl]);
+    for (int k = 0; k <= 2; ++k) {
+      for (int l = 0; l <= 2; ++l) {
+        for (int kl = 0; kl <= 2; ++kl) {
+          int q = 3 * (3 * k + l) + kl;
+          for (int m = 0; m <= 2; ++m) {
+            for (int n = 0; n <= 2; ++n) {
+              for (int mn = 0; mn <= 2; ++mn) {
+                // atomicAdd(&grad_w[q][0][m][n][mn], grad_output[b][0][i][j][ij] * image[0][i+m][j+n][ij+mn] * x[b][0][i+k][j+l][ij+kl]);
+                atomicAdd(&d_w[27*q+9*m+3*n+mn], grad_output[b][0][i][j][ij] * image[0][i+m][j+n][ij+mn] * x[b][0][i+k][j+l][ij+kl]);
+              }
             }
           }
-        }
-        // atomicAdd(&grad_b[q], grad_output[b][0][i][j][ij] * x[b][0][i+k][j+l][ij+kl]);
-        atomicAdd(&d_b[q], grad_output[b][0][i][j][ij] * x[b][0][i+k][j+l][ij+kl]);
+          // atomicAdd(&grad_b[q], grad_output[b][0][i][j][ij] * x[b][0][i+k][j+l][ij+kl]);
+          atomicAdd(&d_b[q], grad_output[b][0][i][j][ij] * x[b][0][i+k][j+l][ij+kl]);
 
-        int ii = i + 1 - k, jj = j + 1 - l, iijj = ij + 1 - kl;
-        if (ii < 0 || ii >= N1 || jj < 0 || jj >= N2 || iijj < 0 || iijj >= N3) continue;
-        for (int m = 0; m <= 2; ++m) {
-          for (int n = 0; n <= 2; ++n) {
-            for (int mn = 0; mn <= 2; ++mn) {
-              grad_x[b][0][i][j][ij] += grad_output[b][0][ii][jj][iijj] * (WEIGHT[q*27+m*9+n*3+mn] * image[0][ii+m][jj+n][iijj+mn]);
+          int ii = i + 1 - k, jj = j + 1 - l, iijj = ij + 1 - kl;
+          if (ii < 0 || ii >= N1 || jj < 0 || jj >= N2 || iijj < 0 || iijj >= N3) continue;
+          for (int m = 0; m <= 2; ++m) {
+            for (int n = 0; n <= 2; ++n) {
+              for (int mn = 0; mn <= 2; ++mn) {
+                grad_x[b][0][i][j][ij] += grad_output[b][0][ii][jj][iijj] * (WEIGHT[q*27+m*9+n*3+mn] * image[0][ii+m][jj+n][iijj+mn]);
+              }
             }
           }
+          grad_x[b][0][i][j][ij] += grad_output[b][0][ii][jj][iijj] * BIAS[q];
         }
-        grad_x[b][0][i][j][ij] += grad_output[b][0][ii][jj][iijj] * BIAS[q];
       }
     }
   }
