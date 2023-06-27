@@ -3,10 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from model import BaseModel
 import math
-# import smblock, smblock3d # implemented in torch_extension/sm_block_kernel.cu
+# import smblock3d # implemented in torch_extension/sm_block_kernel.cu
 from torch.utils.cpp_extension import load
 
-smblock = load(name='smblock', sources=['torch_extension/sm_block.cpp', 'torch_extension/sm_block_kernel.cu'])
+# smblock = load(name='smblock', sources=['torch_extension/sm_block.cpp', 'torch_extension/sm_block_kernel.cu'])
 smblock3d = load(name='smblock3d', sources=['torch_extension/sm_block_3d.cpp', 'torch_extension/sm_block_3d_kernel.cu'])
 
 class SMBlockFunction(torch.autograd.Function):
@@ -80,15 +80,15 @@ class SmallSMBlock3D(nn.Module):
         self.KL = nn.Conv3d(1, 27, kernel_size=3, padding='same', bias=True)
         # self.KL.weight = nn.Parameter(torch.ones(27, 1, 3, 3, 3))
         # self.KL.bias = nn.Parameter(torch.ones(27))
-        # torch.manual_seed(0)
-        # self.reset_parameters()
+        torch.manual_seed(0)
+        self.reset_parameters()
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        if self.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+        nn.init.kaiming_uniform_(self.KL.weight, a=math.sqrt(5))
+        if self.KL.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.KL.weight)
             if fan_in != 0:
                 bound = 1 / math.sqrt(fan_in)
-                nn.init.uniform_(self.bias, -bound, bound)
+                nn.init.uniform_(self.KL.bias, -bound, bound)
     def forward(self, image, x):
         return SMBlockFunction3D.apply(image, x, self.KL.weight, self.KL.bias)
 
@@ -403,7 +403,7 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = False
 
     N = 64
     frame = 100

@@ -2,10 +2,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import smblock, smblock3d
+# import smblock, smblock3d
+# import smblock3d
+from torch.utils.cpp_extension import load
 
-# from torch.utils.cpp_extension import load
-# lltm = load(name='lltm', sources=['sm_block.cpp', 'sm_block_kernel.cu'])
+smblock = load(name='smblock', sources=['sm_block.cpp', 'sm_block_kernel.cu'])
+smblock3d = load(name='smblock3d', sources=['sm_block_3d.cpp', 'sm_block_3d_kernel.cu'])
 
 
 class SMBlockFunctionPY(torch.autograd.Function):
@@ -134,12 +136,12 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    bs = 5
-    N = 12
-    image = torch.rand(1, N, N, device=cuda_device)
-    x = torch.rand(bs, 1, N, N, device=cuda_device, requires_grad=False)
+    bs = 1
+    N = 17
+    image = torch.rand(1, N, N, N, device=cuda_device)
+    x = torch.rand(bs, 1, N, N, N, device=cuda_device, requires_grad=True)
 
-    model = SmallSMBlock().to(cuda_device)
+    model = SmallSMBlock3D().to(cuda_device)
 
     y = model(image, x)
     yy = model.test(image, x)
@@ -150,8 +152,10 @@ if __name__ == '__main__':
     # L.backward()
     # print(model.weights.grad)
     # print(x.grad)
-
-    torch.autograd.gradcheck(SMBlockFunction.apply, (image, x, model.weights, model.bias))
+    model.weights.requires_grad = True
+    model.bias.requires_grad = True
+    torch.use_deterministic_algorithms(True)
+    torch.autograd.gradcheck(SMBlockFunction3D.apply, (image, x, model.weights, model.bias), nondet_tol=1e-12, fast_mode=True)
 
     # forward = 0
     # backward = 0

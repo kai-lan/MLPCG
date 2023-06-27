@@ -9,6 +9,7 @@ from sm_model import *
 from model import *
 import cupyx.scipy.sparse as cpsp
 from cupyx.profiler import benchmark as cuda_benchmark
+import torch.autograd.profiler as profiler
 import torch.utils.benchmark as torch_benchmark
 
 if __name__ == '__main__':
@@ -32,15 +33,15 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    # torch.jit.enable_onednn_fusion(True)
+
     # torch.cuda.set_sync_debug_mode(debug_mode)
 
-    N = 64
+    N = 128
     DIM = 3
     resume = False
     for_train = True
     for_test = True
-    num_rhs = 800
+    num_rhs = 400
     frame = 1
     scene = 'dambreak'
     dim2 = N**DIM
@@ -62,7 +63,7 @@ if __name__ == '__main__':
         data_path = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
 
     print(f'testing on {data_path}')
-    outdir = os.path.join(OUT_PATH, f"output_single_{DIM}D_{N}_benchmark")
+    outdir = os.path.join(OUT_PATH, f"output_single_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 
 
@@ -84,7 +85,7 @@ if __name__ == '__main__':
         model = SmallSMModelDn(6)
         # model = FluidNet()
     else:
-        model = SmallSMModelDn3D(2)
+        model = SmallSMModelDn3D(4)
 
     model.move_to(cuda)
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -114,8 +115,8 @@ if __name__ == '__main__':
         # b = b.unsqueeze(0)
         return b
 
-    train_set = MyDataset(rhs_path, None, transform, suffix='')
-    valid_set = MyDataset(rhs_path, None, transform, suffix='')
+    train_set = MyDataset(rhs_path, None, transform, suffix='_no_ortho')
+    valid_set = MyDataset(rhs_path, None, transform, suffix='_no_ortho')
 
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
@@ -188,6 +189,9 @@ if __name__ == '__main__':
             result_res = timer_res.timeit(1)
             print(f"MLPCG took", result_res.times[0], 's after', len(res_fluidnet_res), 'iterations', f'to {res_fluidnet_res[-1]}')
 
+            # with profiler.profile(use_cuda=True, with_stack=True, profile_memory=True) as prof:
+            #     x_fluidnet_res, res_fluidnet_res = dcdm(rhs.double(), A.double(), torch.zeros_like(rhs).double(), predict, max_it=100, tol=1e-4, verbose=False)
+            # print(prof.key_averages(group_by_stack_n=5).table(sort_by="cuda_time_total", top_level_events_only=False, max_shapes_column_width=50))
             # print("MLPCG", res_fluidnet_res[-1])
             # x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), predict, max_it=100, tol=1e-4, verbose=True)
 
@@ -221,7 +225,7 @@ if __name__ == '__main__':
             plt.plot(res_fluidnet_res, label='MLPCG')
             plt.legend()
             plt.savefig(f"test_loss_{N}.png")
-            
+
         if for_train:
             print("Training time", end-start)
 
