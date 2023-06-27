@@ -403,7 +403,7 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = True # for debugging
 
     N = 64
     frame = 100
@@ -419,13 +419,13 @@ if __name__ == '__main__':
 
     # torch.set_grad_enabled(False) # disable autograd globally
 
-    model = SmallSMBlock3D().cuda()
-    model1 = SmallSMBlock3DPY().cuda()
+    model = SmallSMModelDn3D(4).cuda()
+    model1 = SmallSMModelDn3DPY(4).cuda()
 
     image = flags.reshape(1, N, N, N).cuda()
-    x = rhs.reshape(1, 1, N, N, N).expand(1, 1, N, N, N).cuda()
+    x = rhs.reshape(1, 1, N, N, N).expand(16, 1, N, N, N).cuda()
     x.requires_grad = True
-    x1 = rhs.reshape(1, 1, N, N, N).expand(1, 1, N, N, N).cuda()
+    x1 = rhs.reshape(1, 1, N, N, N).expand(16, 1, N, N, N).cuda()
     x1.requires_grad = True
 
 

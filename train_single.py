@@ -33,10 +33,10 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-
+    torch.backends.cudnn.allow_tf32 = False # for debugging
     # torch.cuda.set_sync_debug_mode(debug_mode)
 
-    N = 128
+    N = 64
     DIM = 3
     resume = False
     for_train = True

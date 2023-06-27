@@ -137,7 +137,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = False
 
     bs = 1
-    N = 17
+    N = 16
     image = torch.rand(1, N, N, N, device=cuda_device)
     x = torch.rand(bs, 1, N, N, N, device=cuda_device, requires_grad=True)
 

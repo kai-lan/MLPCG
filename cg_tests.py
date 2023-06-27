@@ -25,8 +25,6 @@ from lib.read_data import compute_weight
 # FluidNet / DCDM
 ###################
 def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, norm_type='l2'):
-    N = math.isqrt(len(b))
-    assert N**2 == len(b), "RHS vector dimension is incorrect"
     norm_b = b.norm().item()
     r = b - A @ x_init
     # np.save(f"res_0.npy", r.cpu().numpy())
