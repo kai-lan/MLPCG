@@ -130,7 +130,7 @@ scene = 'dambreak'
 if DIM == 2:
     dir = f"{DATA_PATH}/{scene}_N{N}_200"
 else: dir = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
-ortho = False
+ortho = True
 
 
 os.makedirs(dir, exist_ok=True)
@@ -141,9 +141,9 @@ num_ritz_vectors = 1600
 if __name__ == '__main__':
 
     t0 = time.time()
-    # total_work = np.linspace(1, 200, 10, dtype=int)
-    total_work = [1]
-    num_threads = 1
+    total_work = np.linspace(1, 200, 10, dtype=int)[1:]
+    # total_work = [1]
+    num_threads = 9
 
     chunks = np.array_split(total_work, num_threads)
     thread_list = []

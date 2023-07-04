@@ -5,10 +5,15 @@ from model import BaseModel
 import math
 # import smblock3d # implemented in torch_extension/sm_block_kernel.cu
 from torch.utils.cpp_extension import load
+from lib.GLOBAL_VARS import *
 
 # smblock = load(name='smblock', sources=['torch_extension/sm_block.cpp', 'torch_extension/sm_block_kernel.cu'])
-smblock3d = load(name='smblock3d', sources=['torch_extension/sm_block_3d.cpp', 'torch_extension/sm_block_3d_kernel.cu'])
+smblock3d = load(name='smblock3d', sources=[f'{SOURCE_PATH}/torch_extension/sm_block_3d.cpp', f'{SOURCE_PATH}/torch_extension/sm_block_3d_kernel.cu'])
+smlinear3d = load(name='smlinear3d', sources=[f'{SOURCE_PATH}/torch_extension/sm_linear_3d.cpp', f'{SOURCE_PATH}/torch_extension/sm_linear_3d_kernel.cu'])
 
+######################
+# SM block 2D/3D
+######################
 class SMBlockFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, image, x, weights, bias):
@@ -90,7 +95,8 @@ class SmallSMBlock3D(nn.Module):
                 bound = 1 / math.sqrt(fan_in)
                 nn.init.uniform_(self.KL.bias, -bound, bound)
     def forward(self, image, x):
-        return SMBlockFunction3D.apply(image, x, self.KL.weight, self.KL.bias)
+        y = SMBlockFunction3D.apply(image, x, self.KL.weight, self.KL.bias)
+        return y
 
 class SmallSMBlock3DPY(nn.Module):
     def __init__(self):
@@ -115,6 +121,9 @@ class SmallSMBlock3DPY(nn.Module):
         y = (x * K).sum(dim=(-3, -2, -1)) # bs x 1 x N x N x N x 3 x 3 x 3, N x N x N x 3 x 3 x 3 -> bs x 1 x N x N x N
         return y
 
+######################
+# SM linear 2D/3D
+######################
 class SmallLinearBlock(nn.Module):
     def __init__(self):
         super().__init__()
@@ -123,10 +132,48 @@ class SmallLinearBlock(nn.Module):
         K = self.KL(image) # 1 x N x N -> 9 x N x N
         return K.mean()
 
+class SMLinearFunction3D(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, image, weights, bias):
+        image = F.pad(image, (1,)*6)
+        ctx.save_for_backward(image)
+        z, = smlinear3d.forward(image, weights, bias)
+        return z
+    @staticmethod
+    def backward(ctx, grad_output): # return the same number of outputs as forward function arguments
+        image, = ctx.saved_tensors
+        grad_w, grad_b, = smlinear3d.backward(grad_output.contiguous(), image)
+        return None, grad_w, grad_b
+
 class SmallLinearBlock3D(nn.Module):
     def __init__(self):
         super().__init__()
         self.KL = nn.Conv3d(1, 27, kernel_size=3, padding='same')
+        torch.manual_seed(0)
+        self.reset_parameters()
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.KL.weight, a=math.sqrt(5))
+        if self.KL.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.KL.weight)
+            if fan_in != 0:
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(self.KL.bias, -bound, bound)
+    def forward(self, image):
+        return SMLinearFunction3D.apply(image, self.KL.weight, self.KL.bias)
+
+class SmallLinearBlock3DPY(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.KL = nn.Conv3d(1, 27, kernel_size=3, padding='same')
+        torch.manual_seed(0)
+        self.reset_parameters()
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.KL.weight, a=math.sqrt(5))
+        if self.KL.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.KL.weight)
+            if fan_in != 0:
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(self.KL.bias, -bound, bound)
     def forward(self, image):
         K = self.KL(image) # 1 x N x N x N -> 27 x N x N x N
         return K.mean()
@@ -264,8 +311,8 @@ class SmallSMModelDn3DPY(BaseModel):
         self.c0 = nn.ModuleList()
         self.c1 = nn.ModuleList()
         for _ in range(n):
-            self.c0.append(SmallLinearBlock3D())
-            self.c1.append(SmallLinearBlock3D())
+            self.c0.append(SmallLinearBlock3DPY())
+            self.c1.append(SmallLinearBlock3DPY())
 
     def forward(self, image, b):
         x = [self.pre[0](image, b)]
@@ -303,95 +350,6 @@ class MultiSMBlock(nn.Module):
         y = (x * K).sum(dim=(-2, -1)) # bs x 1 x N x N x 3 x 3, 2 x N x N x 3 x 3 -> bs x 2 x N x N
         return y
 
-# multiple channels
-class MultiSMModelD2(BaseModel):
-    def __init__(self, nc=3):
-        super().__init__()
-        self.pre0 = MultiSMBlock(nc)
-        self.post0 = MultiSMBlock(nc)
-        self.pre1 = MultiSMBlock(nc)
-        self.post1 = MultiSMBlock(nc)
-        self.l2 = MultiSMBlock(nc)
-
-        self.c00 = SmallLinearBlock()
-        self.c01 = SmallLinearBlock()
-        self.c10 = SmallLinearBlock()
-        self.c11 = SmallLinearBlock()
-
-        self.last = nn.Conv2d(nc, 1, kernel_size=1)
-
-    def forward(self, image, b):
-        b0 = F.elu(self.pre0(image, b))
-
-        b1 = F.avg_pool2d(b0, (2, 2))
-        image1 = F.max_pool2d(image, (2, 2))
-        b1 = F.elu(self.pre1(image1, b1))
-
-        b2 = F.avg_pool2d(b1, (2, 2))
-        image2 = F.max_pool2d(image1, (2, 2))
-        b2 = F.elu(self.l2(image2, b2))
-
-        b2 = F.interpolate(b2, scale_factor=2)
-        b2 = F.elu(self.post1(image1, b2))
-        b1 = self.c10(image1) * b1 + self.c11(image1) * b2
-
-        b1 = F.interpolate(b1, scale_factor=2)
-        b1 = F.elu(self.post0(image, b1))
-        b0 = self.c00(image) * b0 + self.c01(image) * b1
-
-        b0 = self.last(b0)
-        return b0
-
-class MultiSMModelD3(BaseModel):
-    def __init__(self, nc=3):
-        super().__init__()
-        self.pre0 = MultiSMBlock(nc)
-        self.post0 = MultiSMBlock(nc)
-        self.pre1 = MultiSMBlock(nc)
-        self.post1 = MultiSMBlock(nc)
-        self.pre2 = MultiSMBlock(nc)
-        self.post2 = MultiSMBlock(nc)
-        self.l3 = MultiSMBlock(nc)
-
-        self.c00 = SmallLinearBlock()
-        self.c01 = SmallLinearBlock()
-        self.c10 = SmallLinearBlock()
-        self.c11 = SmallLinearBlock()
-        self.c20 = SmallLinearBlock()
-        self.c21 = SmallLinearBlock()
-
-        self.last = nn.Conv2d(nc, 1, kernel_size=1)
-
-    def forward(self, image, b):
-        b0 = F.elu(self.pre0(image, b))
-
-        b1 = F.avg_pool2d(b0, (2, 2))
-        image1 = F.max_pool2d(image, (2, 2))
-        b1 = F.elu(self.pre1(image1, b1))
-
-        b2 = F.avg_pool2d(b1, (2, 2))
-        image2 = F.max_pool2d(image1, (2, 2))
-        b2 = F.elu(self.pre2(image2, b2))
-
-        b3 = F.avg_pool2d(b2, (2, 2))
-        image3 = F.max_pool2d(image2, (2, 2))
-        b3 = F.elu(self.l3(image3, b3))
-
-        b3 = F.interpolate(b3, scale_factor=2)
-        b3 = F.elu(self.post2(image2, b3))
-        b2 = self.c20(image2) * b2 + self.c21(image2) * b3
-
-        b2 = F.interpolate(b2, scale_factor=2)
-        b2 = F.elu(self.post1(image1, b2))
-        b1 = self.c10(image1) * b1 + self.c11(image1) * b2
-
-        b1 = F.interpolate(b1, scale_factor=2)
-        b1 = F.elu(self.post0(image, b1))
-        b0 = self.c00(image) * b0 + self.c01(image) * b1
-
-        b0 = self.last(b0)
-        return b0
-
 
 if __name__ == '__main__':
     import os, sys, time
@@ -403,7 +361,7 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.allow_tf32 = True # for debugging
+    torch.backends.cudnn.allow_tf32 = False # for debugging
 
     N = 64
     frame = 100
@@ -419,32 +377,40 @@ if __name__ == '__main__':
 
     # torch.set_grad_enabled(False) # disable autograd globally
 
-    model = SmallSMModelDn3D(4).cuda()
-    model1 = SmallSMModelDn3DPY(4).cuda()
+    model = SmallLinearBlock3DPY().cuda()
+    model1 = SmallLinearBlock3D().cuda()
+    # model = SmallSMBlock3DPY().cuda()
+    # model1 = SmallSMBlock3D().cuda()
+    # model = SmallSMModelDn3DPY(1).cuda()
+    # model1 = SmallSMModelDn3D(1).cuda()
 
     image = flags.reshape(1, N, N, N).cuda()
-    x = rhs.reshape(1, 1, N, N, N).expand(16, 1, N, N, N).cuda()
+    x = rhs.reshape(1, 1, N, N, N).expand(1, 1, N, N, N).cuda()
     x.requires_grad = True
-    x1 = rhs.reshape(1, 1, N, N, N).expand(16, 1, N, N, N).cuda()
+    x1 = rhs.reshape(1, 1, N, N, N).expand(1, 1, N, N, N).cuda()
     x1.requires_grad = True
 
 
     # torch.set_grad_enabled(False)
-    y = model(image, x)
-    y1 = model1(image, x1)
+    for _ in range(10):
+        y = model(image)
+        y1 = model1(image)
+        y.sum().backward()
+        y1.sum().backward()
 
+    torch.cuda.synchronize()
 
     iters = 100
     forward = 0.0
     backward = 0.0
     for _ in range(iters):
         start = time.time()
-        y1 = model1(image, x1)
+        y = model(image)
         torch.cuda.synchronize()
         forward += time.time() - start
 
         start = time.time()
-        y1.sum().backward()
+        y.sum().backward()
         torch.cuda.synchronize()
         backward += time.time() - start
 
@@ -454,22 +420,21 @@ if __name__ == '__main__':
     backward = 0.0
     for _ in range(iters):
         start = time.time()
-        y = model(image, x)
+        y1 = model1(image)
         torch.cuda.synchronize()
         forward += time.time() - start
 
         start = time.time()
-        y.sum().backward()
+        y1.sum().backward()
         torch.cuda.synchronize()
         backward += time.time() - start
 
     print('CUDA kernel\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
 
-
     # print((y - y1).abs().max())
     # y.sum().backward()
     # y1.sum().backward()
-
+    # print((model.KL.bias.grad - model1.KL.bias.grad).abs().mean())
     # print((model.pre[1].bias.grad - model1.pre[1].KL.bias.grad).abs().max())
     # print((x.grad - x1.grad).abs().max())
 

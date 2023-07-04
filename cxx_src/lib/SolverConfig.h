@@ -16,7 +16,7 @@ struct SolverConfig {
   std::string lib;
   int max_iter;
   bool specify_colmap;
-  bool abs_tol;
+  T abs_tol;
   T tol;
   bool no_pd_check;
   bool rpc;

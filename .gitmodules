@@ -1,0 +1,10 @@
+
+[submodule "cxx_src/vexcl"]
+	path = cxx_src/vexcl
+	url = git@github.com:ddemidov/vexcl.git
+[submodule "cxx_src/amgcl"]
+	path = cxx_src/amgcl
+	url = git@github.com:ddemidov/amgcl.git
+[submodule "cxx_src/pybind11"]
+	path = cxx_src/pybind11
+	url = git@github.com:pybind/pybind11.git
