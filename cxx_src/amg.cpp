@@ -61,9 +61,9 @@ void AMGCL(){
   	int index_size = x_pcg.size();
 
 	// loading data matrix A and
-	IO::Deserialize(rhs, "../test_data/b_N128_3D_" + std::to_string(1) + ".bin");
+	IO::Deserialize(rhs, "../../data/dambreak_N128_200_3D/div_v_star_" + std::to_string(1) + ".bin");
 	Eigen::SparseMatrix<T> Af(dim,dim);
-   	IO::Eigen::Deserialize(Af, "../test_data/A_N128_3D_" + std::to_string(1) + ".bin");
+   	IO::Eigen::Deserialize(Af, "../../data/dambreak_N128_200_3D/A_" + std::to_string(1) + ".bin");
 	std::cout<<Af.innerSize()<<std::endl;
 
 

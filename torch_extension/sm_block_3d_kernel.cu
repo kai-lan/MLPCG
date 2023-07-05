@@ -63,7 +63,6 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
     const torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grad_output, // bs, 1, N, N, N
     const torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> image, // 1, N, N, N
     const torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> x, // bs, 1, N, N, N
-    torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grad_x,
     torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grad_w,
     torch::PackedTensorAccessor32<scalar_t,1,torch::RestrictPtrTraits> grad_b,
     const int locationsPerBlock) {
@@ -76,14 +75,11 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
   const int N2 = (image.size(2) - 2) / locationsPerBlock;
   const int N3 = (image.size(3) - 2) / locationsPerBlock;
 
-  const int threadId = blockIdx.x * blockDim.x + threadIdx.x;
-
   const int nBlocksPerCopy = ((KERNEL_SIZE+1)*KERNEL_SIZE + blockDim.x - 1) / blockDim.x;
 
   const int block = blockIdx.x / nBlocksPerCopy;
   const int innerBlock = blockIdx.x % nBlocksPerCopy;
 
-  // Assuming each block is from one location i, j, ij
   int location = block;
   const int ij = (location % N3) * locationsPerBlock;
   location /= N3;
@@ -105,6 +101,7 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
   const int p0 = p / KERNEL_SIZE;
 
   int mn, n, m;
+  int c;
 
   if (p0 == KERNEL_SIZE) {
     d_b[pp] = 0.0;
@@ -119,12 +116,12 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
     mn = p0 % 3;
     n = (p0 / 3) % 3;
     m = p0 / 9;
-
-    d_w[27*pp+9*m+3*n+mn] = 0.0;
+    c = 27*pp + 9*m + 3*n + mn;
+    d_w[c] = 0.0;
     for (int _i = 0; _i < locationsPerBlock; ++_i) {
       for (int _j = 0; _j < locationsPerBlock; ++_j) {
         for (int _ij = 0; _ij < locationsPerBlock; ++_ij) {
-          d_w[27*pp+9*m+3*n+mn] += grad_output[b][0][i+_i][j+_j][ij+_ij] * image[0][i+_i+m][j+_j+n][ij+_ij+mn] * x[b][0][i+_i+k][j+_j+l][ij+_ij+kl];
+          d_w[c] += grad_output[b][0][i+_i][j+_j][ij+_ij] * image[0][i+_i+m][j+_j+n][ij+_ij+mn] * x[b][0][i+_i+k][j+_j+l][ij+_ij+kl];
         }
       }
     }
@@ -133,7 +130,7 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
   if (p0 == KERNEL_SIZE)
     atomicAdd(&grad_b[pp], d_b[pp]);
   else
-    atomicAdd(&grad_w[pp][0][m][n][mn], d_w[27*pp+9*m+3*n+mn]);
+    atomicAdd(&grad_w[pp][0][m][n][mn], d_w[c]);
 }
 
 
@@ -142,9 +139,7 @@ __global__ void sm_block_3d_cuda_dx_kernel(
     const torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grad_output, // bs, 1, N, N, N
     const torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> image, // 1, N, N, N
     const torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> x, // bs, 1, N, N, N
-    torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grad_x,
-    torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grad_w,
-    torch::PackedTensorAccessor32<scalar_t,1,torch::RestrictPtrTraits> grad_b) {
+    torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grad_x) {
 
   const scalar_t *WEIGHT = (const scalar_t *)(WEIGHT_BYTES);
   const scalar_t *BIAS = (const scalar_t *)(BIAS_BYTES);
@@ -266,7 +261,6 @@ std::vector<torch::Tensor> sm_block_3d_cuda_backward(
         grad_output.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
         image.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
         x.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
-        grad_x.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
         grad_w.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
         grad_b.packed_accessor32<scalar_t,1,torch::RestrictPtrTraits>(),
         locationsPerBlock);
@@ -276,9 +270,7 @@ std::vector<torch::Tensor> sm_block_3d_cuda_backward(
         grad_output.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
         image.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
         x.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
-        grad_x.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
-        grad_w.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
-        grad_b.packed_accessor32<scalar_t,1,torch::RestrictPtrTraits>());
+        grad_x.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>());
   }));
 
   return {grad_x, grad_w, grad_b};

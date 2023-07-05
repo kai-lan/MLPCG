@@ -27,12 +27,11 @@ def validation(train_loader, validation_loader, model, loss_fn, image, A):
     tot_loss_train, tot_loss_val = 0, 0
     with torch.no_grad():
         for data in train_loader:
-            # print(data.device)
-            data = data.to(model.device, non_blocking=True)
+            # data = data.to(model.device, non_blocking=True)
             x_pred = model(image, data) # input: (bs, 1, dim, dim)
             tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
         for data in validation_loader:
-            data = data.to(model.device, non_blocking=True)
+            # data = data.to(model.device, non_blocking=True)
             x_pred = model(image, data) # input: (bs, 1, dim, dim)
             tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
     return tot_loss_train.item(), tot_loss_val.item()
@@ -146,13 +145,13 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    N = 64
+    N = 256
     DIM = 3
     lr = 0.001
     epoch_num_per_matrix = 5
     epoch_num = 50
     bc = 'dambreak'
-    b_size = 20 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
+    b_size = 8 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
     total_matrices = 10 # number of matrices chosen for training
     num_ritz = 800
     num_rhs = 400 # number of ritz vectors for training for each matrix
@@ -163,24 +162,23 @@ if __name__ == '__main__':
 
     resume = False
     loss_type = 'res'
-    image_type = 'flags' # flags, ppc, levelset
 
     if loss_type == 'res':
-        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_res_{image_type}'
+        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_res'
         loss_fn = "model.residual_loss"
     elif loss_type == 'eng':
-        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_eng_{image_type}'
+        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_eng'
         loss_fn = "model.energy_loss"
     elif loss_type == 'scaled2':
-        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaled2_{image_type}'
+        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaled2'
         loss_fn = "model.scaled_loss_2"
     elif loss_type == 'scaledA':
-        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaledA_{image_type}'
+        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaledA'
         loss_fn = "model.scaled_loss_A"
     else:
         raise Exception("No such loss type")
 
-    suffix += '_smmodeld2_nonlinearK'
+    suffix += ''
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 
@@ -210,9 +208,13 @@ if __name__ == '__main__':
     train_size = round(0.8 * num_rhs)
     perm = np.random.permutation(num_rhs)
 
+    fluid_cells = None
     def transform(x):
-        x = x.reshape((1,)+(N,)*DIM)
-        return x
+        global fluid_cells
+        b = torch.zeros(N**DIM, dtype=torch.float32).cuda()
+        b[fluid_cells] = x
+        b = b.reshape((1,)+(N,)*DIM)
+        return b
 
     train_set = MyDataset(None, perm[:train_size], transform)
     valid_set = MyDataset(None, perm[train_size:], transform)
@@ -232,8 +234,10 @@ if __name__ == '__main__':
             print('Matrix', j)
             train_set.data_folder = os.path.join(f"{inpdir}/{j}")
             valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
-            A = torch.load(f"{train_set.data_folder}/A.pt").to_sparse_csr()
-            image = torch.load(f"{train_set.data_folder}/flags.pt").view((1,)+(N,)*DIM)
+            A = torch.load(f"{train_set.data_folder}/A.pt").to_sparse_csr().cuda()
+            image = torch.load(f"{train_set.data_folder}/flags.pt").view((1,)+(N,)*DIM).cuda()
+
+            fluid_cells = np.load(f"{train_set.data_folder}/fluid_cells.npy")
             training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
             tl += np.sum(training_loss_)
             vl += np.sum(validation_loss_)

@@ -18,27 +18,28 @@ if __name__ == '__main__':
 
     bs = 1
     N = 16
-    image = torch.rand(1, N, N, N, device=cuda_device)
+    image = torch.rand(1, N, N, device=cuda_device)
     image1 = torch.clone(image)
-    x = torch.rand(bs, 1, N, N, N, device=cuda_device, requires_grad=True)
+    x = torch.rand(bs, 1, N, N, device=cuda_device, requires_grad=True)
+    x1 = torch.tensor(x, device=cuda_device, requires_grad=True)
 
-    model = SmallLinearBlock3DPY().to(cuda_device)
-    model1 = SmallLinearBlock3D().to(cuda_device)
+    model = SmallSMBlockPY().to(cuda_device)
+    model1 = SmallSMBlock().to(cuda_device)
 
-    y = model(image)
-    yy = model1(image1)
+    y = model(image, x)
+    yy = model1(image1, x1)
     print((y - yy).abs().max())
 
-    # y.sum().backward()
-    # yy.sum().backward()
+    y.sum().backward()
+    yy.sum().backward()
 
-    # print((model.KL.weight.grad - model1.KL.weight.grad).abs().max())
-    # print((model.KL.bias.grad - model1.KL.bias.grad).abs().max())
-    # print(x.grad)
+    print((model.KL.weight.grad - model1.weight.grad).abs().max())
+    print((model.KL.bias.grad - model1.bias.grad).abs().max())
+    print((x.grad - x1.grad).abs().max())
     model.KL.weight.requires_grad = True
     model.KL.bias.requires_grad = True
     torch.use_deterministic_algorithms(True)
-    torch.autograd.gradcheck(SMLinearFunction3D.apply, (image, model.KL.weight, model.KL.bias), nondet_tol=1e-12, fast_mode=True)
+    torch.autograd.gradcheck(SMBlockFunction.apply, (image, x, model.KL.weight, model.KL.bias), nondet_tol=1e-12, fast_mode=True)
 
     # forward = 0
     # backward = 0

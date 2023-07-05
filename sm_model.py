@@ -7,7 +7,7 @@ import math
 from torch.utils.cpp_extension import load
 from lib.GLOBAL_VARS import *
 
-# smblock = load(name='smblock', sources=['torch_extension/sm_block.cpp', 'torch_extension/sm_block_kernel.cu'])
+smblock = load(name='smblock', sources=[f'{SOURCE_PATH}/torch_extension/sm_block.cpp', f'{SOURCE_PATH}/torch_extension/sm_block_kernel.cu'])
 smblock3d = load(name='smblock3d', sources=[f'{SOURCE_PATH}/torch_extension/sm_block_3d.cpp', f'{SOURCE_PATH}/torch_extension/sm_block_3d_kernel.cu'])
 smlinear3d = load(name='smlinear3d', sources=[f'{SOURCE_PATH}/torch_extension/sm_linear_3d.cpp', f'{SOURCE_PATH}/torch_extension/sm_linear_3d_kernel.cu'])
 
@@ -361,14 +361,14 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.allow_tf32 = False # for debugging
+    torch.backends.cudnn.allow_tf32 = True # for debugging
 
-    N = 64
+    N = 1024
     frame = 100
     # file_A = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"div_v_star_{frame}.bin")
-    file_sol = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"flags_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"flags_{frame}.bin")
     # A = readA_sparse(64, file_A, DIM=2)
     rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32)
     flags = torch.tensor(read_flags(file_flags), dtype=torch.float32)
@@ -377,26 +377,26 @@ if __name__ == '__main__':
 
     # torch.set_grad_enabled(False) # disable autograd globally
 
-    model = SmallLinearBlock3DPY().cuda()
-    model1 = SmallLinearBlock3D().cuda()
-    # model = SmallSMBlock3DPY().cuda()
-    # model1 = SmallSMBlock3D().cuda()
-    # model = SmallSMModelDn3DPY(1).cuda()
-    # model1 = SmallSMModelDn3D(1).cuda()
+    # model = SmallLinearBlock3DPY().cuda()
+    # model1 = SmallLinearBlock3D().cuda()
+    model = SmallSMBlockPY().cuda()
+    model1 = SmallSMBlock().cuda()
+    # model = SmallSMModelDn3DPY(2).cuda()
+    # model1 = SmallSMModelDn3D(2).cuda()
 
-    image = flags.reshape(1, N, N, N).cuda()
-    x = rhs.reshape(1, 1, N, N, N).expand(1, 1, N, N, N).cuda()
+    image = flags.reshape(1, N, N).cuda()
+    x = rhs.reshape(1, 1, N, N).expand(16, 1, N, N).cuda()
     x.requires_grad = True
-    x1 = rhs.reshape(1, 1, N, N, N).expand(1, 1, N, N, N).cuda()
+    x1 = rhs.reshape(1, 1, N, N).expand(16, 1, N, N).cuda()
     x1.requires_grad = True
 
 
     # torch.set_grad_enabled(False)
     for _ in range(10):
-        y = model(image)
-        y1 = model1(image)
-        y.sum().backward()
-        y1.sum().backward()
+        y = model(image, x)
+        y1 = model1(image, x1)
+        # y.sum().backward()
+        # y1.sum().backward()
 
     torch.cuda.synchronize()
 
@@ -405,7 +405,7 @@ if __name__ == '__main__':
     backward = 0.0
     for _ in range(iters):
         start = time.time()
-        y = model(image)
+        y = model(image, x)
         torch.cuda.synchronize()
         forward += time.time() - start
 
@@ -420,7 +420,7 @@ if __name__ == '__main__':
     backward = 0.0
     for _ in range(iters):
         start = time.time()
-        y1 = model1(image)
+        y1 = model1(image, x1)
         torch.cuda.synchronize()
         forward += time.time() - start
 
@@ -435,7 +435,7 @@ if __name__ == '__main__':
     # y.sum().backward()
     # y1.sum().backward()
     # print((model.KL.bias.grad - model1.KL.bias.grad).abs().mean())
-    # print((model.pre[1].bias.grad - model1.pre[1].KL.bias.grad).abs().max())
+    # print((model.pre[1].KL.weight.grad - model1.pre[1].KL.weight.grad).abs().max())
     # print((x.grad - x1.grad).abs().max())
 
 
