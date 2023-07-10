@@ -19,9 +19,11 @@ if __name__ == '__main__':
     bs = 1
     N = 16
     image = torch.rand(1, N, N, device=cuda_device)
-    image1 = torch.clone(image)
+    image1 = image.detach().clone()
+
     x = torch.rand(bs, 1, N, N, device=cuda_device, requires_grad=True)
-    x1 = torch.tensor(x, device=cuda_device, requires_grad=True)
+    x1 = x.detach().clone()
+    x1.requires_grad = True
 
     model = SmallSMBlockPY().to(cuda_device)
     model1 = SmallSMBlock().to(cuda_device)
@@ -35,7 +37,8 @@ if __name__ == '__main__':
 
     print((model.KL.weight.grad - model1.weight.grad).abs().max())
     print((model.KL.bias.grad - model1.bias.grad).abs().max())
-    print((x.grad - x1.grad).abs().max())
+
+    # print((x.grad - x1.grad).abs().max())
     model.KL.weight.requires_grad = True
     model.KL.bias.requires_grad = True
     torch.use_deterministic_algorithms(True)

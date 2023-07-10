@@ -3,11 +3,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from model import BaseModel
 import math
+
 # import smblock3d # implemented in torch_extension/sm_block_kernel.cu
 from torch.utils.cpp_extension import load
 from lib.GLOBAL_VARS import *
 
 smblock = load(name='smblock', sources=[f'{SOURCE_PATH}/torch_extension/sm_block.cpp', f'{SOURCE_PATH}/torch_extension/sm_block_kernel.cu'])
+smlinear = load(name='smlinear', sources=[f'{SOURCE_PATH}/torch_extension/sm_linear.cpp', f'{SOURCE_PATH}/torch_extension/sm_linear_kernel.cu'])
 smblock3d = load(name='smblock3d', sources=[f'{SOURCE_PATH}/torch_extension/sm_block_3d.cpp', f'{SOURCE_PATH}/torch_extension/sm_block_3d_kernel.cu'])
 smlinear3d = load(name='smlinear3d', sources=[f'{SOURCE_PATH}/torch_extension/sm_linear_3d.cpp', f'{SOURCE_PATH}/torch_extension/sm_linear_3d_kernel.cu'])
 
@@ -82,20 +84,19 @@ class SMBlockFunction3D(torch.autograd.Function):
 class SmallSMBlock3D(nn.Module):
     def __init__(self):
         super().__init__()
-        self.KL = nn.Conv3d(1, 27, kernel_size=3, padding='same', bias=True)
-        # self.KL.weight = nn.Parameter(torch.ones(27, 1, 3, 3, 3))
-        # self.KL.bias = nn.Parameter(torch.ones(27))
+        self.weight = nn.Parameter(torch.ones(27, 1, 3, 3, 3))
+        self.bias = nn.Parameter(torch.ones(27))
         torch.manual_seed(0)
         self.reset_parameters()
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.KL.weight, a=math.sqrt(5))
-        if self.KL.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.KL.weight)
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
             if fan_in != 0:
                 bound = 1 / math.sqrt(fan_in)
-                nn.init.uniform_(self.KL.bias, -bound, bound)
+                nn.init.uniform_(self.bias, -bound, bound)
     def forward(self, image, x):
-        y = SMBlockFunction3D.apply(image, x, self.KL.weight, self.KL.bias)
+        y = SMBlockFunction3D.apply(image, x, self.weight, self.bias)
         return y
 
 class SmallSMBlock3DPY(nn.Module):
@@ -124,11 +125,41 @@ class SmallSMBlock3DPY(nn.Module):
 ######################
 # SM linear 2D/3D
 ######################
+class SMLinearFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, image, weights, bias):
+        image = F.pad(image, (1,)*4)
+        ctx.save_for_backward(image)
+        z, = smlinear.forward(image, weights, bias)
+        return z
+    @staticmethod
+    def backward(ctx, grad_output): # return the same number of outputs as forward function arguments
+        image, = ctx.saved_tensors
+        grad_w, grad_b, = smlinear.backward(grad_output.contiguous(), image)
+        return None, grad_w, grad_b
+
 class SmallLinearBlock(nn.Module):
     def __init__(self):
         super().__init__()
+        self.weight = nn.Parameter(torch.ones(9, 1, 3, 3))
+        self.bias = nn.Parameter(torch.ones(9))
+        torch.manual_seed(0)
+        self.reset_parameters()
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            if fan_in != 0:
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(self.bias, -bound, bound)
+    def forward(self, image, *placeholder):
+        return SMLinearFunction.apply(image, self.weight, self.bias)
+
+class SmallLinearBlockPY(nn.Module):
+    def __init__(self):
+        super().__init__()
         self.KL = nn.Conv2d(1, 9, kernel_size=3, padding='same')
-    def forward(self, image):
+    def forward(self, image, *placeholder):
         K = self.KL(image) # 1 x N x N -> 9 x N x N
         return K.mean()
 
@@ -148,18 +179,19 @@ class SMLinearFunction3D(torch.autograd.Function):
 class SmallLinearBlock3D(nn.Module):
     def __init__(self):
         super().__init__()
-        self.KL = nn.Conv3d(1, 27, kernel_size=3, padding='same')
+        self.weight = nn.Parameter(torch.ones(27, 1, 3, 3, 3))
+        self.bias = nn.Parameter(torch.ones(27))
         torch.manual_seed(0)
         self.reset_parameters()
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.KL.weight, a=math.sqrt(5))
-        if self.KL.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.KL.weight)
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
             if fan_in != 0:
                 bound = 1 / math.sqrt(fan_in)
-                nn.init.uniform_(self.KL.bias, -bound, bound)
-    def forward(self, image):
-        return SMLinearFunction3D.apply(image, self.KL.weight, self.KL.bias)
+                nn.init.uniform_(self.bias, -bound, bound)
+    def forward(self, image, *placeholder):
+        return SMLinearFunction3D.apply(image, self.weight, self.bias)
 
 class SmallLinearBlock3DPY(nn.Module):
     def __init__(self):
@@ -174,7 +206,7 @@ class SmallLinearBlock3DPY(nn.Module):
             if fan_in != 0:
                 bound = 1 / math.sqrt(fan_in)
                 nn.init.uniform_(self.KL.bias, -bound, bound)
-    def forward(self, image):
+    def forward(self, image, *placeholder):
         K = self.KL(image) # 1 x N x N x N -> 27 x N x N x N
         return K.mean()
 
@@ -359,37 +391,41 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     torch.set_default_dtype(torch.float32)
     torch.manual_seed(0)
-    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.deterministic = False
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.allow_tf32 = True # for debugging
+    # torch.use_deterministic_algorithms(True)
 
-    N = 1024
+    N = 128
     frame = 100
+
     # file_A = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"div_v_star_{frame}.bin")
-    file_sol = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"flags_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"div_v_star_{frame}.bin")
+    # file_sol = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"flags_{frame}.bin")
     # A = readA_sparse(64, file_A, DIM=2)
     rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32)
     flags = torch.tensor(read_flags(file_flags), dtype=torch.float32)
     # sol = torch.tensor(load_vector(file_sol), dtype=torch.float32)
-
+    # with h5py.File("test.hdf5", "r") as f:
+    #   rhs = torch.tensor(f['rhs'], dtype=torch.float32)
+    #   flags = torch.tensor(f['flags'], dtype=torch.float32)
 
     # torch.set_grad_enabled(False) # disable autograd globally
 
-    # model = SmallLinearBlock3DPY().cuda()
-    # model1 = SmallLinearBlock3D().cuda()
-    model = SmallSMBlockPY().cuda()
-    model1 = SmallSMBlock().cuda()
+    model = SmallSMBlock3DPY().cuda()
+    model1 = SmallSMBlock3D().cuda()
+    # model = SmallSMBlockPY().cuda()
+    # model1 = SmallSMBlock().cuda()
     # model = SmallSMModelDn3DPY(2).cuda()
     # model1 = SmallSMModelDn3D(2).cuda()
-
-    image = flags.reshape(1, N, N).cuda()
-    x = rhs.reshape(1, 1, N, N).expand(16, 1, N, N).cuda()
+    img_shape = (1, N, N, N)
+    rhs_shape = (1, 1, N, N, N)
+    image = flags.reshape(img_shape).cuda()
+    x = rhs.reshape(rhs_shape).expand((16,)+ img_shape).cuda()
     x.requires_grad = True
-    x1 = rhs.reshape(1, 1, N, N).expand(16, 1, N, N).cuda()
+    x1 = rhs.reshape(rhs_shape).expand((16,)+ img_shape).cuda()
     x1.requires_grad = True
-
 
     # torch.set_grad_enabled(False)
     for _ in range(10):
@@ -434,7 +470,8 @@ if __name__ == '__main__':
     # print((y - y1).abs().max())
     # y.sum().backward()
     # y1.sum().backward()
-    # print((model.KL.bias.grad - model1.KL.bias.grad).abs().mean())
+    # print((model.KL.bias.grad - model1.bias.grad).abs().mean())
+    # print((model.KL.weight.grad - model1.weight.grad).abs().mean())
     # print((model.pre[1].KL.weight.grad - model1.pre[1].KL.weight.grad).abs().max())
     # print((x.grad - x1.grad).abs().max())
 
