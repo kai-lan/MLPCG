@@ -16,8 +16,8 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    bs = 1
-    N = 16
+    bs = 16
+    N = 32
     image = torch.rand(1, N, N, device=cuda_device)
     image1 = image.detach().clone()
 

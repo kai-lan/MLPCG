@@ -8,10 +8,14 @@ import math
 from torch.utils.cpp_extension import load
 from lib.GLOBAL_VARS import *
 
-smblock = load(name='smblock', sources=[f'{SOURCE_PATH}/torch_extension/sm_block.cpp', f'{SOURCE_PATH}/torch_extension/sm_block_kernel.cu'])
-smlinear = load(name='smlinear', sources=[f'{SOURCE_PATH}/torch_extension/sm_linear.cpp', f'{SOURCE_PATH}/torch_extension/sm_linear_kernel.cu'])
-smblock3d = load(name='smblock3d', sources=[f'{SOURCE_PATH}/torch_extension/sm_block_3d.cpp', f'{SOURCE_PATH}/torch_extension/sm_block_3d_kernel.cu'])
-smlinear3d = load(name='smlinear3d', sources=[f'{SOURCE_PATH}/torch_extension/sm_linear_3d.cpp', f'{SOURCE_PATH}/torch_extension/sm_linear_3d_kernel.cu'])
+smblock = load(name='smblock',
+               sources=[f'{SOURCE_PATH}/torch_extension/sm_block.cpp', f'{SOURCE_PATH}/torch_extension/sm_block_kernel.cu'])
+smlinear = load(name='smlinear',
+                sources=[f'{SOURCE_PATH}/torch_extension/sm_linear.cpp', f'{SOURCE_PATH}/torch_extension/sm_linear_kernel.cu'])
+smblock3d = load(name='smblock3d',
+                 sources=[f'{SOURCE_PATH}/torch_extension/sm_block_3d.cpp', f'{SOURCE_PATH}/torch_extension/sm_block_3d_kernel.cu'])
+smlinear3d = load(name='smlinear3d',
+                  sources=[f'{SOURCE_PATH}/torch_extension/sm_linear_3d.cpp', f'{SOURCE_PATH}/torch_extension/sm_linear_3d_kernel.cu'])
 
 ######################
 # SM block 2D/3D
@@ -413,12 +417,12 @@ if __name__ == '__main__':
 
     # torch.set_grad_enabled(False) # disable autograd globally
 
-    model = SmallSMBlock3DPY().cuda()
-    model1 = SmallSMBlock3D().cuda()
+    # model = SmallSMBlock3DPY().cuda()
+    # model1 = SmallSMBlock3D().cuda()
     # model = SmallSMBlockPY().cuda()
     # model1 = SmallSMBlock().cuda()
-    # model = SmallSMModelDn3DPY(2).cuda()
-    # model1 = SmallSMModelDn3D(2).cuda()
+    model = SmallSMModelDn3DPY(2).cuda()
+    model1 = SmallSMModelDn3D(2).cuda()
     img_shape = (1, N, N, N)
     rhs_shape = (1, 1, N, N, N)
     image = flags.reshape(img_shape).cuda()

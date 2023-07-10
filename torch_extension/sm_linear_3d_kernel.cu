@@ -16,13 +16,10 @@ template <typename scalar_t>
 __global__ void sm_linear_3d_cuda_forward_kernel(
     const torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> image, // 1, N, N, N
     torch::PackedTensorAccessor32<scalar_t,1,torch::RestrictPtrTraits> y,
-    const int nblocks) {
+    const int nblocks,
+    const int N1, const int N2, const int N3) {
 
   __shared__ scalar_t z[NUM_THREADS_FORWARD];
-
-  const int N1 = image.size(1) - 2;
-  const int N2 = image.size(2) - 2;
-  const int N3 = image.size(3) - 2;
 
   const scalar_t *WEIGHT = (const scalar_t *)(WEIGHT_BYTES);
 
@@ -123,11 +120,14 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_forward(
     cudaMemcpyToSymbol(WEIGHT_BYTES, weights.data_ptr<float>(), KERNEL_SIZE*KERNEL_SIZE * sizeof(float));
   }
 
-  const int N = image.size(2)-2;
+  const int N1 = image.size(1)-2;
+  const int N2 = image.size(2)-2;
+  const int N3 = image.size(3)-2;
+
   auto y = torch::zeros({1}, torch::dtype(image.dtype()).device(image.device()));
 
   const int nthreads = NUM_THREADS_FORWARD;
-  const int nblocks = (N*N*N + nthreads - 1) / nthreads; // b, i, j, ij
+  const int nblocks = (N1*N2*N3 + nthreads - 1) / nthreads; // b, i, j, ij
 
   const dim3 threads(nthreads);
   const dim3 blocks(nblocks * KERNEL_SIZE);
@@ -136,10 +136,11 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_forward(
     sm_linear_3d_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
         image.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
         y.packed_accessor32<scalar_t,1,torch::RestrictPtrTraits>(),
-        nblocks);
+        nblocks,
+        N1, N2, N3);
   }));
 
-  y /= KERNEL_SIZE * std::pow(N, 3);
+  y /= KERNEL_SIZE * N1*N2*N3;
   y += bias.mean();
   return {y};
 }
