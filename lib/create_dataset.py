@@ -79,7 +79,6 @@ def createRitzVec(A, rhs, num_ritz_vectors, ortho=True):
     print("Calculating eigenvectors of the tridiagonal matrix")
     start = time.time()
     ritz_vals, Q = scipy.linalg.eigh_tridiagonal(diagonal, sub_diagonal, select='a')
-    # print(ritz_vals.shape, Q.shape)
     print("Calculating eigenvectors took", time.time() - start, 's')
     ritz_vectors = (W.T @ Q[:, :num_ritz_vectors]).T # m x n
     return ritz_vals, ritz_vectors
@@ -107,11 +106,16 @@ def worker(frames):
         flags = hf.read_flags(f"{dir}/flags_{i}.bin")
         rhs = hf.load_vector(f"{dir}/div_v_star_{i}.bin")
         # sol = hf.load_vector(f"{dir}/pressure_{i}.bin")
-
+        print('Compressing A')
+        start = time.time()
         A = hf.compressedMat(A, flags)
+        print('Compressing A took', time.time()-start, 's')
+
+        print('Compressing rhs')
+        start = time.time()
         rhs = hf.compressedVec(rhs, flags)
-        # createFourierRandVecs(N, DIM, 200)
-        # rhs = np.random.rand(A.shape[0])
+        print('Compressing rhs took', time.time()-start, 's')
+
         ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors, ortho=ortho)
         # print(ritz_vals)
         # eig_vals, eig_vec = slin.eigsh(A, num_ritz_vectors, v0=rhs, which='BE')
@@ -124,9 +128,9 @@ def worker(frames):
 
 np.random.seed(2)
 
-N = 128
-DIM = 3
-scene = 'dambreak'
+N = 256
+DIM = 2
+scene = 'wedge'
 if DIM == 2:
     dir = f"{DATA_PATH}/{scene}_N{N}_200"
 else: dir = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
@@ -135,15 +139,14 @@ ortho = True
 
 os.makedirs(dir, exist_ok=True)
 
-num_ritz_vectors = 1600
+num_ritz_vectors = 800
 
 
 if __name__ == '__main__':
 
     t0 = time.time()
-    total_work = np.linspace(1, 200, 10, dtype=int)[1:]
-    # total_work = [1]
-    num_threads = 9
+    total_work = np.linspace(1, 200, 10, dtype=int)[:1]
+    num_threads = 1
 
     chunks = np.array_split(total_work, num_threads)
     thread_list = []
