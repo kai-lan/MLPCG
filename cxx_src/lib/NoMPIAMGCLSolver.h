@@ -61,8 +61,9 @@ class NoMPIAMGCLSolver {
   Backend::params bprm;
   boost::property_tree::ptree prm;
   const MPIDomain& mpi_domain;
-  
+
   amgcl::profiler<> *prof;
+
   NoMPIAMGCLSolver(const Eigen::SparseMatrix<T, Eigen::RowMajor, nm>& A_eigen_reduced, const SolverConfig& _config, const MPIDomain& _mpi_domain);
 
   ~NoMPIAMGCLSolver();
@@ -81,4 +82,3 @@ class NoMPIAMGCLSolver {
 
 
 #endif
-

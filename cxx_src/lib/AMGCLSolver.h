@@ -7,7 +7,7 @@
 
 #ifdef USE_CUDA
 #include <amgcl/backend/vexcl.hpp>
-//#include <amgcl/backend/cuda.hpp>
+// #include <amgcl/backend/cuda.hpp>
 //#include <amgcl/relaxation/cusparse_ilu0.hpp>
 typedef amgcl::backend::vexcl<double> Backend;
 #else
@@ -121,4 +121,3 @@ class AMGCLSolver {
 
 
 #endif
-

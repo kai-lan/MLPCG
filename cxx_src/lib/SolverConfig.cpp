@@ -9,9 +9,9 @@ void SolverConfig::DefineOptions(cxxopts::Options& options) {
     ("diag_ones", "Put 1s in diagonal entries at intersection of zero rows+columns", cxxopts::value<bool>())
     ("remove_zrc", "Remove zero rows and columns", cxxopts::value<bool>())
     ("specify_colmap", "Specify col map for A", cxxopts::value<bool>())
-    ("abs_tol", "Use absolute not relative tolerance for residual (|r| not |r|/|r_0|)", cxxopts::value<bool>())
+    ("abs_tol", "Absolute tolerance for linear solve (|r|)", cxxopts::value<T>()->default_value("0.0001"))
+    ("tol", "Relative tolerance for linear solve", cxxopts::value<T>()->default_value("0.000001"))
     ("max_iter", "Max number of iterations for linear solve", cxxopts::value<int>()->default_value("250"))
-    ("tol", "Tolerance for linear solve", cxxopts::value<T>()->default_value("0.000001"))
     ("no_pd_check", "Don't assert for positive definiteness during Belos CG solve", cxxopts::value<bool>())
     ("rpc", "Use right instead of left preconditioner", cxxopts::value<bool>())
     ("amgcl_rhs_scaling", "", cxxopts::value<T>()->default_value("1"))
@@ -37,7 +37,7 @@ void SolverConfig::ParseConfig(cxxopts::ParseResult opts) {
   lib = opts["lib"].as<std::string>();
   max_iter = opts["max_iter"].as<int>();
   specify_colmap = (bool)opts["specify_colmap"].count();
-  abs_tol = (bool)opts["abs_tol"].count();
+  abs_tol = opts["abs_tol"].as<T>();
   tol = opts["tol"].as<T>();
   no_pd_check = (bool)opts["no_pd_check"].count();
   rpc = (bool)opts["rpc"].count();

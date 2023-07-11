@@ -13,7 +13,7 @@ AMGCL_USE_EIGEN_VECTORS_WITH_BUILTIN_BACKEND()
 NoMPIAMGCLSolver::NoMPIAMGCLSolver(const Eigen::SparseMatrix<T, Eigen::RowMajor, nm>& A_eigen_reduced, const SolverConfig& _config, const MPIDomain& _mpi_domain)
     : config(_config), mpi_domain(_mpi_domain) {
   #ifdef USE_CUDA
-  std::cout<<"CUDA Using Mode"<<std::endl; 
+  std::cout<<"CUDA Using Mode"<<std::endl;
   #ifdef SOLVER_DEBUG
   // std::cout<<"Creating VexCL context"<<std::endl;
   #endif
@@ -23,7 +23,7 @@ NoMPIAMGCLSolver::NoMPIAMGCLSolver(const Eigen::SparseMatrix<T, Eigen::RowMajor,
   #endif
   #endif
 
-  prof = new amgcl::profiler<>("poisson3Db");
+  prof = new amgcl::profiler<>("Poisson 3D");
   setParams();
 
   n = A_eigen_reduced.rows();
@@ -70,9 +70,6 @@ void NoMPIAMGCLSolver::Solve(Eigen::Matrix<T, Eigen::Dynamic, 1>& x, const Eigen
   #ifdef USE_CUDA
   // Create device vector for b
   vex::vector<T> b_vexcl(n, _b.data());
-  #ifdef SOLVER_DEBUG
-  printf("Done with that...\n");
-  #endif
   #endif
   //Eigen::Matrix<T, Eigen::Dynamic, 1> xr = Eigen::MatrixXd::Random(n, 1);
   Eigen::Matrix<T, Eigen::Dynamic, 1> xr = x;//Eigen::MatrixXd::Random(n, 1);
@@ -81,10 +78,9 @@ void NoMPIAMGCLSolver::Solve(Eigen::Matrix<T, Eigen::Dynamic, 1>& x, const Eigen
   #endif
   size_t iters;
   double error;
-  #ifdef SOLVER_DEBUG
+
   auto t0 = std::chrono::high_resolution_clock::now();
-  printf("copied vecs to device...\n");
-  #endif
+
   #ifdef USE_CUDA
   prof->tic("solve");
   std::tie(iters, error) = solver_impl->operator()(b_vexcl, x_vexcl);
@@ -116,9 +112,6 @@ void NoMPIAMGCLSolver::Solve(Eigen::Matrix<T, Eigen::Dynamic, 1>& x, const Eigen
 }
 
 void NoMPIAMGCLSolver::setParams() {
-  std::cout << "CFG TOL = " << config.tol << std::endl;
-  std::cout << "CFG MAX ITER = " << config.max_iter << std::endl;
-
   #ifdef USE_CUDA
   bprm.q = *ctx;
   #endif
@@ -127,10 +120,11 @@ void NoMPIAMGCLSolver::setParams() {
 
   prm.put("solver.type", "cg");
   prm.put("solver.verbose", true);
-  prm.put("solver.abstol", config.tol);
+  // prm.put("solver.abstol", config.abs_tol);
+  prm.put("solver.tol", config.tol);
   prm.put("solver.maxiter", config.max_iter);
   prm.put("solver.ns_search", true);
-  
+
   prm.put("precond.class", "amg");
   //prm.put("precond.class", "relaxation");
   prm.put("precond.relax.type", "chebyshev");
@@ -140,14 +134,7 @@ void NoMPIAMGCLSolver::setParams() {
   //prm.put("precond.coarsening.type", "smoothed_aggregation");
 
   prm.put("solver.verbose", true);
-  /*
-  prm.put("solver.verbose", true);
-  prm.put("solver.type", "preonly");
-  prm.put("solver.verbose", true);
-  //prm.put("precond.relax.type", "chebyshev");
-  prm.put("precond.relax.type", "damped_jacobi");
 
-  */
 
   //prm.put("precond.class", "relaxation");
   //prm.put("precond.type", "damped_jacobi");
@@ -173,7 +160,7 @@ void NoMPIAMGCLSolver::setParams() {
   //prm.put("precond.relax.type", "damped_jacobi");
   //prm.put("precond.relax.scale", true);
   //prm.put("precond.ncycle", 2);
-  
+
   //prm.put("precond.relax.degree", 2);
   //prm.put("precond.relax.power_iters", 100);
   //prm.put("precond.relax.higher", 2.0f);

@@ -167,8 +167,8 @@ def readA_sparse(filenameA, dtype='d', sparse_type='csr'):
         raise Exception("Sparse type only supports coo or csr")
 
 def compressedMat(A, flags):
-    selection = np.where(flags.ravel() == 2)[0]
-    return A.tolil()[selection][:, selection].tocsr()
+    # selection = np.where(flags.ravel() == 2)[0]
+    return A[A.getnnz(1)>0][:,A.getnnz(0)>0]
 def compressedVec(b, flags):
     selection = np.where(flags.ravel() == 2)[0]
     return b[selection]
@@ -184,16 +184,19 @@ if __name__ == '__main__':
     N = 64
     DIM = 3
     prefix = ''
-    bc = 'dambreak'
+    bc = 'circles'
     file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200_{DIM}D", f"A_{frame}.bin")
     file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200_{DIM}D", f"div_v_star_{frame}.bin")
     file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200_{DIM}D", f"pressure_{frame}.bin")
     file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200_{DIM}D", f"flags_{frame}.bin")
-    A = readA_sparse(file_A).tocoo()
+    A = readA_sparse(file_A)
     rhs = load_vector(file_rhs)
     sol = load_vector(file_sol)
 
     flags = read_flags(file_flags)
+    A = compressedMat(A, flags)
+    rhs = compressedVec(rhs, flags)
+    sol = compressedVec(sol, flags)
     r = rhs - A @ sol
     print(np.linalg.norm(r))
     print(A.sum(axis=1).min())
