@@ -55,10 +55,10 @@ void AMGCL(){
 
 void NoMPIAMGCL(){
 	std::cout<<"--- MPI version ---"<<std::endl;
-	//int N = 64;
-	//int dim = N*N;
-	int N = 128;
-	int dim = N*N*N;
+	int N = 64;
+	int dim = N*N;
+	//int N = 128;
+	//int dim = N*N*N;
 	TV rhs(dim,T(0));
 	TV x_pcg(dim,T(0));
 
