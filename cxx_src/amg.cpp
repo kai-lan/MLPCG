@@ -6,7 +6,7 @@
 #include <gtest/gtest.h>
 
 
-void NoMPIAMGCL(){
+void AMGCL(){
 	std::cout<<"Here"<<std::endl;
 	int N = 64;
 	int dim = N*N;
@@ -52,7 +52,7 @@ void NoMPIAMGCL(){
   	_amgcl->Solve(Af,x_input, b_rhs);
 }
 
-void AMGCL(){
+void NoMPIAMGCL(){
 	std::cout<<"Here"<<std::endl;
 	int N = 64;
 	int dim = N*N;
