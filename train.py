@@ -143,7 +143,7 @@ if __name__ == '__main__':
     epoch_num_per_matrix = 5
     epoch_num = 100
     bc = 'dambreak'
-    b_size = 8 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
+    b_size = 16 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
     total_matrices = 10 # number of matrices chosen for training
     num_ritz = 1600
     num_rhs = 800 # number of ritz vectors for training for each matrix

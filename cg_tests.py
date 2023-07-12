@@ -18,8 +18,6 @@ import cupy as cp
 import cupyx.scipy.sparse as cpsp
 import cupyx.scipy.sparse.linalg as gslin # https://docs.cupy.dev/en/stable/reference/scipy_sparse_linalg.html#module-cupyx.scipy.sparse.linalg
 import pyamg # https://github.com/pyamg/pyamg
-import matplotlib.pyplot as plt
-from lib.read_data import compute_weight
 
 ###################
 # FluidNet / DCDM
