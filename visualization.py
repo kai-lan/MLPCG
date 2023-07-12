@@ -7,20 +7,10 @@ import torch
 
 path = os.path.dirname(os.path.realpath(__file__))
 
-def vis_weight(frame):
-    file_flags = os.path.join(example_folder, f"flags_{frame}.bin")
-    weight = compute_weight(file_flags, N, DIM)
-    plt.imshow(weight.reshape((N,)*DIM, order='F'), origin='lower')
-    plt.colorbar()
-    plt.savefig(f"{path}/weight_{DIM}d_{N}.png", bbox_inches="tight")
-    plt.close()
-    return weight
-
 def vis_flags(frame):
     file_flags = os.path.join(example_folder, f"flags_{frame}.bin")
     flags = read_flags(file_flags)
     flags = flags.reshape((N,)*DIM)
-    # flags = np.flipud(flags)
     plt.imshow(flags.T, origin='lower', cmap='jet')
     plt.colorbar()
     plt.savefig(f"{path}/flags_{DIM}d_{N}.png", bbox_inches="tight")
@@ -47,26 +37,7 @@ def vis_pressure(frame, masked=False):
     plt.close()
     return sol
 
-def vis_levelset(frame, masked=False):
-    file = os.path.join(example_folder, f"levelset_{frame}.bin")
-    levelset = load_vector(file)
-    # if masked:
-    #     levelset = levelset == 0
-    plt.imshow(levelset.reshape((N,)*DIM).T, origin='lower', cmap='jet', vmin=-0.1, vmax=0.2)
-    plt.colorbar()
-    plt.savefig(f"{path}/levelset_{DIM}d_{N}.png", bbox_inches="tight")
-    plt.close()
-    # print(np.sum(levelset))
-    return levelset
-
-def vis_ppc(frame):
-    cells = read_ppc(os.path.join(example_folder, f"active_cells_{frame}.bin"), os.path.join(example_folder, f"ppc_{frame}.bin"), N, DIM)
-    plt.imshow(cells.reshape((N,)*DIM).T, origin='lower', cmap='jet')
-    plt.colorbar()
-    plt.savefig(f"{path}/ppc_{DIM}d_{N}.png", bbox_inches="tight")
-    plt.close()
-    # print(cells.reshape((N,)*DIM).T)
-def vis_A(frame, masked=False):
+def vis_A(frame):
     file_A = os.path.join(example_folder, f"A_{frame}.bin")
     A = readA_sparse(file_A)
 
@@ -99,16 +70,15 @@ def visualize_frame_by_frame(num_frames):
         time.sleep(0.1)
 
 if __name__ == '__main__':
-    N = 64
+    N = 1024
     DIM = 2
-    example_folder = os.path.join(DATA_PATH, f"dambreak_N{N}_200")
+    example_folder = os.path.join(DATA_PATH, f"circles_solid_N{N}_200")
 
 
-    frame = 100
-    vis_flags(frame)
-    # levelset = vis_levelset(frame, True)
-    # print(levelset)
-    # vis_ppc(frame)
+    frame = 200
+    flags = vis_flags(frame)
+
+
     # plot_loss(f"{OUT_PATH}/output_{DIM}D_64", "dambreak_M100_ritz100_rhs200_res_binary")
     # rhs = vis_div_v(frame, masked=False)
     # sol = vis_pressure(frame, masked=False)

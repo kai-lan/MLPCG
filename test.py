@@ -14,47 +14,38 @@ import warnings
 warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
 torch.set_grad_enabled(False) # disable autograd globally
 
-def flip_data(rhs, flags):
-    flipped_rhs = np.flip(rhs.reshape((N,)*DIM), axis=0).flatten()
-    flipped_flags = np.flip(flags.reshape((N,)*DIM), axis=0).flatten()
-    empty_cells = np.where(flipped_flags == 3)[0]
-    n = N+2
-    bd = box_bd(n, DIM)
-    flipped_A = lap_with_bc(n, DIM, bd=bd, air=empty_cells, bd_padding=False, dtype=np.float32)
-    return flipped_rhs, flipped_flags, flipped_A
-
 pcg_precision = torch.float32
 torch.set_default_dtype(pcg_precision)
 
-N = 64
-DIM = 3
+N = 512
+DIM = 2
 norm_type = 'l2'
 
 # train_matrices = set(np.load(f"{OUT_PATH}/output_{DIM}D_{N}/matrices_trained_50.npy"))
 # frames = set(np.arange(1, 151)) - train_matrices
 # frame = list(frames)[80] # Random frame
-frames = range(1, 201)
-device = torch.device('cuda')
-
+# frames = range(1, 201)
+frames = [100]
+device = torch.device('cpu')
 amgcg_time, amgcg_iters = [], []
 cg_time, cg_iters = [], []
 mlpcg_time, mlpcg_iters = [], []
 
 if DIM == 2:
-    scene = f'dambreak_N{N}_200'
+    scene = f'wedge_N{N}_200'
 else:
     scene = f'dambreak_N{N}_200_{DIM}D'
 
-NN = 64
+NN = 1024
 num_mat = 10
-num_ritz = 800
-num_rhs = 400
+num_ritz = 1600
+num_rhs = 800
 
-# fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_single_{DIM}D_{NN}", "checkpt_dambreak_frame_1_rhs_800_d6_f_2D.tar")
-fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_flags_smmodeld2_nonlinearK.tar")
-fluidnet_model_res = SmallSMModelDn3D(2) if DIM == 3 else SmallSMModelDn(4)
+fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_single_{DIM}D_{NN}", "checkpt_dambreak_frame_1_rhs_1600_2D_linear.tar")
+# fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res.tar")
+fluidnet_model_res = SmallSMModelDn3D(2) if DIM == 3 else SmallSMModelDnPY(5)
 fluidnet_model_res.move_to(device)
-fluidnet_model_res.load_state_dict(torch.load(fluidnet_model_res_file)['model_state_dict'])
+fluidnet_model_res.load_state_dict(torch.load(fluidnet_model_res_file, map_location=device)['model_state_dict'])
 fluidnet_model_res.eval()
 
 verbose = False
@@ -98,7 +89,7 @@ for frame in frames:
     flags = torch.tensor(flags_sp, dtype=torch.float64, device=device)
 
     ###############
-    # AMGCL
+    # AMGCG (CPU)
     ###############
     t0 = timeit.default_timer()
     x_amgcg, res_amgcg = AMGCG(rhs_sp, A_sp, np.zeros_like(rhs_sp), cg_max_iter, tol=tol, atol=atol)

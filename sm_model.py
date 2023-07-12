@@ -419,16 +419,18 @@ if __name__ == '__main__':
 
     # model = SmallSMBlock3DPY().cuda()
     # model1 = SmallSMBlock3D().cuda()
+    model = SmallLinearBlock3DPY().cuda()
+    model1 = SmallLinearBlock3D().cuda()
     # model = SmallSMBlockPY().cuda()
     # model1 = SmallSMBlock().cuda()
-    model = SmallSMModelDn3DPY(2).cuda()
-    model1 = SmallSMModelDn3D(2).cuda()
+    # model = SmallSMModelDn3DPY(2).cuda()
+    # model1 = SmallSMModelDn3D(2).cuda()
     img_shape = (1, N, N, N)
     rhs_shape = (1, 1, N, N, N)
     image = flags.reshape(img_shape).cuda()
-    x = rhs.reshape(rhs_shape).expand((16,)+ img_shape).cuda()
+    x = rhs.reshape(rhs_shape).expand((8,)+ img_shape).cuda()
     x.requires_grad = True
-    x1 = rhs.reshape(rhs_shape).expand((16,)+ img_shape).cuda()
+    x1 = rhs.reshape(rhs_shape).expand((8,)+ img_shape).cuda()
     x1.requires_grad = True
 
     # torch.set_grad_enabled(False)

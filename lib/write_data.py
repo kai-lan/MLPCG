@@ -13,8 +13,6 @@ def write_bin_file_from_nparray(filename, np_array):
         size_arr = [len(np_array)]
         s_size = struct.pack('N'*1,*size_arr)
         out_file.write(s_size)
-        #xx = np_array.copy();
-        #xx = np.concatenate([[size_t_size], xx])
         s = struct.pack('d'*len(np_array), *np_array)
         out_file.write(s)
 

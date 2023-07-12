@@ -13,7 +13,7 @@ Ritz vector for matrix A.
 
 --------------
 '''
-#OMP_NUM_THREADS=8 python ....py
+
 from GLOBAL_VARS import *
 os.environ['OMP_NUM_THREADS'] = '2'
 import numpy as np
@@ -26,13 +26,10 @@ import scipy.sparse.linalg as slin
 from tqdm import tqdm
 from multiprocessing import Process
 
-def lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
-    return _lanczos_algorithm(A, rhs, num_ritz_vec, ortho_iters=ortho_iters, cut_off_tol=cut_off_tol)
 # Given A n x n, return V, T with A = VTV^T
 def _lanczos_algorithm(A, init_v, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10):
     assert A.shape[0] == A.shape[1], "A is not square"
     n = A.shape[0]
-    # m = min(num_ritz_vec+10, n)  # Generate 1.5 times number of ritz vectors of the desired
     m = num_ritz_vec
     V = np.zeros((m, n)) # Store orthonormal vectors v0, v1, ... as row vectors (Numpy array is row-major, so accessing row is faster
     alpha = np.zeros(m) # Diagonal of T
@@ -57,15 +54,6 @@ def _lanczos_algorithm(A, init_v, num_ritz_vec, ortho_iters=0, cut_off_tol=1e-10
             w = w - V[k].dot(w) * V[k]
     return V, alpha, beta
 
-def _test_lanczos_algorithm(A, num_ritz_vec, orthogonal):
-    W, diag, subdiag = _lanczos_algorithm(A, num_ritz_vec, orthogonal)
-    D = W @ W.T
-    D = D - np.identity(D.shape[0])
-    print(np.linalg.norm(D))
-    E = W @ A @ W.T - sparse.diags([subdiag, diag, subdiag], (-1, 0, 1))
-    Es.append(np.linalg.norm(E))
-    print(np.linalg.norm(E))
-
 def createRitzVec(A, rhs, num_ritz_vectors, ortho=True):
     # Creating Lanczos Vectors:
     print("Lanczos Iteration is running...")
@@ -83,18 +71,6 @@ def createRitzVec(A, rhs, num_ritz_vectors, ortho=True):
     ritz_vectors = (W.T @ Q[:, :num_ritz_vectors]).T # m x n
     return ritz_vals, ritz_vectors
 
-def createRawData(ritz_vectors, sample_size, flags, outdir):
-    if len(ritz_vectors) < sample_size: raise Exception("Given ritz vectors are less than sample size")
-    ritz_vectors = ritz_vectors[:sample_size] # Take the lower spectrum
-    padding = np.where(flags == 2)[0]
-    for i in range(sample_size):
-        s = sparse.coo_matrix((ritz_vectors[i], (padding, np.zeros_like(padding))), shape=flags.shape+(1,), dtype=np.float32)
-        with open(f"{outdir}/b_{i}.npz", 'wb') as f:
-            sparse.save_npz(f, s)
-def createFourierRandVecs(N, DIM, num_bases):
-    bases = []
-    x, y = np.meshgrid(np.linspace(1/(N+1), N/(N+1), N), np.linspace(1/(N+1), N/(N+1), N))
-    print(x.shape, y.shape)
 def worker(frames):
     print('Process id', os.getpid())
     for i in frames:
@@ -117,10 +93,7 @@ def worker(frames):
         print('Compressing rhs took', time.time()-start, 's')
 
         ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors, ortho=ortho)
-        # print(ritz_vals)
-        # eig_vals, eig_vec = slin.eigsh(A, num_ritz_vectors, v0=rhs, which='BE')
-        # print(eig_vals)
-        # print(np.linalg.norm(eig_vec @ eig_vec.T))
+
         if ortho:
             np.save(f"{out}/ritz_{num_ritz_vectors}.npy", ritz_vec)
         else:
@@ -129,8 +102,8 @@ def worker(frames):
 np.random.seed(2)
 
 N = 256
-DIM = 2
-scene = 'wedge'
+DIM = 3
+scene = 'dambreak'
 if DIM == 2:
     dir = f"{DATA_PATH}/{scene}_N{N}_200"
 else: dir = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
@@ -139,14 +112,15 @@ ortho = True
 
 os.makedirs(dir, exist_ok=True)
 
-num_ritz_vectors = 800
+num_ritz_vectors = 1600
 
 
 if __name__ == '__main__':
 
     t0 = time.time()
-    total_work = np.linspace(1, 200, 10, dtype=int)[:1]
-    num_threads = 1
+    total_work = np.linspace(1, 200, 10, dtype=int)[6:]
+    # total_work = [23]
+    num_threads = 4
 
     chunks = np.array_split(total_work, num_threads)
     thread_list = []

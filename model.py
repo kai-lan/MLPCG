@@ -10,7 +10,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchsummary import summary
 
 
 class BaseModel(nn.Module):
@@ -84,10 +83,6 @@ class LinearModel(BaseModel):
             self.L.append(nn.Conv2d(1, 1, kernel_size=3, padding_mode='circular', padding='same', bias=False))
         for _ in range(levels):
             self.L.append(nn.Conv2d(1, 1, kernel_size=1, padding_mode='circular', padding='same', bias=False))
-        # self.B0 = nn.Conv2d(1, 1, kernel_size=3, padding_mode='circular', padding='same', bias=False)
-        # self.B1 = nn.Conv2d(1, 1, kernel_size=3, padding_mode='circular', padding='same', bias=False)
-        # self.C0 = nn.Conv2d(1, 1, kernel_size=1, padding_mode='circular', padding='same', bias=False)
-        # self.C1 = nn.Conv2d(1, 1, kernel_size=1, padding_mode='circular', padding='same', bias=False)
     def forward(self, image, x_in):
         N = image.shape[-1]
         bs = x_in.shape[0]
@@ -97,7 +92,6 @@ class LinearModel(BaseModel):
         z = self.L[self.levels](y[0])
         for i in range(1, self.levels):
             z = z + self.L[self.levels+i](y[i])
-        # x = self.C0(x0) + self.C1(x1)
         return z
 
 class SimpleModel(BaseModel):
@@ -151,11 +145,6 @@ class SimpleModel(BaseModel):
         x1 = F.relu(self.down3(x1))
         x2 = F.relu(self.ddown3(x2))
         x3 = F.relu(self.dddown3(x3))
-
-        # x = F.relu(self.top4(x))
-        # x1 = F.relu(self.down4(x1))
-        # x2 = F.relu(self.ddown4(x2))
-        # x3 = F.relu(self.dddown4(x3))
 
         x = x + self.upsample(x1) + self.upsample(self.upsample(x2)) + self.upsample(self.upsample(self.upsample(x3)))
         x = F.relu(self.flat(x))

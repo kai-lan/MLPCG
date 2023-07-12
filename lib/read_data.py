@@ -11,24 +11,6 @@ import struct
 import numpy as np
 import scipy.sparse as sparse
 
-def compute_weight(file_flags, N, DIM):
-    flags = read_flags(file_flags)
-    flags = flags.reshape((N,)*DIM, order='F')
-    fluids = np.array(np.where(flags==2)).T
-    top_bound = []
-    right_bound = []
-    for i in range(N):
-        top = [fluids[j][0] for j in range(len(fluids)) if fluids[j][1] == i]
-        right = [fluids[j][1] for j in range(len(fluids)) if fluids[j][0] == i]
-        if len(top) > 0: top_bound.append(np.max(top))
-        else:            top_bound.append(0.0)
-        if len(right) > 0: right_bound.append(np.max(right))
-        else:              right_bound.append(0.0)
-
-    weight = np.zeros((N,)*DIM)
-    for (i, j) in fluids:
-        weight[i, j] = 1 / (np.min([j, right_bound[i]-j, i, top_bound[j]-i]) + 0.5)
-    return weight.ravel(order='F')
 
 def read_flags(file, dtype='int32'):
     len_size_t = 8
@@ -49,12 +31,6 @@ def load_vector(data_folder_name, normalize = False, dtype='double'):
     else:
         print("No file for exist named " + data_folder_name)
 
-def read_ppc(file_active_cells, file_ppc, N, DIM, dtype='int32'):
-    active_cells = read_flags(file_active_cells, dtype)
-    ppc = np.zeros((N+2)**DIM, dtype=dtype)
-    ppc[active_cells] = read_flags(file_ppc)
-    ppc = ppc.reshape((N+2,)*DIM)[1:-1, 1:-1].ravel()
-    return ppc
 """
 template <typename T>
 void Serialize(const std::vector<T>& v, const std::string& filename) {
@@ -167,7 +143,6 @@ def readA_sparse(filenameA, dtype='d', sparse_type='csr'):
         raise Exception("Sparse type only supports coo or csr")
 
 def compressedMat(A, flags):
-    # selection = np.where(flags.ravel() == 2)[0]
     return A[A.getnnz(1)>0][:,A.getnnz(0)>0]
 def compressedVec(b, flags):
     selection = np.where(flags.ravel() == 2)[0]
@@ -180,47 +155,37 @@ def expandVec(b, flags):
     return v
 
 if __name__ == '__main__':
-    frame = 88
-    N = 64
-    DIM = 3
+    frame = 200
+    N = 1024
+    DIM = 2
     prefix = ''
-    bc = 'circles'
-    file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200_{DIM}D", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200_{DIM}D", f"div_v_star_{frame}.bin")
-    file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200_{DIM}D", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200_{DIM}D", f"flags_{frame}.bin")
+    bc = 'circles_solid'
+    if DIM == 2:
+        suffix = ''
+    else:
+        suffix = '_3D'
+    file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"A_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"flags_{frame}.bin")
     A = readA_sparse(file_A)
     rhs = load_vector(file_rhs)
     sol = load_vector(file_sol)
 
     flags = read_flags(file_flags)
+
+    air = np.where(flags == 3)[0]
+    fluid = np.where(flags == 2)[0]
+    solid = np.where(flags == 0)[0]
+
+
+    print('fluid cells:', len(fluid), 'air cells:', len(air), 'solid cells', len(solid))
+
     A = compressedMat(A, flags)
     rhs = compressedVec(rhs, flags)
     sol = compressedVec(sol, flags)
+    print(len(rhs))
     r = rhs - A @ sol
     print(np.linalg.norm(r))
-    print(A.sum(axis=1).min())
     print(A.shape)
 
-    # with open(f"output/singular_mat/A_{frame}.mtx", 'w') as f:
-    #     f.write(f"{A.shape[0]} {A.shape[1]} {A.nnz}\n")
-    #     for i in range(len(A.data)):
-    #         f.write(f"{A.row[i]+1} {A.col[i]+1} {A.data[i]}\n")
-    # with open(f"output/singular_mat/rhs_{frame}.dat", 'w') as f:
-    #     for i in range(len(rhs)):
-    #         f.write(f"{rhs[i]}\n")
-    # with open(f"output/singular_mat/sol_{frame}.dat", 'w') as f:
-    #     for i in range(len(rhs)):
-    #         f.write(f"{sol[i]}\n")
-    # weight = compute_weight(file_flags, N, 2)
-    # print(weight)
-    # print(A.shape, rhs.shape, sol.shape, flags.shape)
-
-    # print(flags.max(), flags.min())
-    # file = os.path.join(path,  "..", "data_dcdm", "train_2D_64", f"A_solid.bin")
-    # A = readA_sparse(64, file, DIM=2, dtype='f')
-    # print(A)
-    # with open("matA_test.txt", 'w') as f:
-    #     sys.stdout = f
-    #     A.maxprint = np.inf
-    #     print(A)

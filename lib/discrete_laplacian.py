@@ -8,7 +8,6 @@ Part of the code was modified from 2022 Fall MAT 228A HW.
 '''
 import numpy as np
 from scipy import sparse
-from numba import njit
 import time
 ###############################################################################
 #
@@ -177,10 +176,6 @@ def box_bd(n, DIM):
 def multiInd(ind, stride):
     return ind // stride, ind % stride
 
-def poisson_lap(N, air_cells):
-    n = N + 2
-    A = sparse.lil_matrix((N, N))
-
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -188,7 +183,6 @@ if __name__ == '__main__':
     dir_path = os.path.dirname(os.path.realpath(__file__))
     from write_data import writeA_sparse
     from read_data import readA_sparse
-    from benchmark import MyTimer
     N = 4
     DIM = 2
     BC = 'empty'
@@ -197,7 +191,6 @@ if __name__ == '__main__':
     n = N if bd_padding else N+2
 
     bd = box_bd(n, DIM)
-    # timer = MyTimer(['flatten_inds', 'lap2d', 'neighbors'])
 
     # i, j = multiInd(5, 3)
     # print(i, j)

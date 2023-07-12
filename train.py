@@ -61,12 +61,8 @@ def train_(image, A, epoch_num, train_loader, validation_loader, model, optimize
     for i in range(1, epoch_num+1):
         # Training
         for ii, data in enumerate(train_loader, 1):
-            # print(data.device)
-            # data = data.to(model.device, non_blocking=True)
             x_pred = model(image, data)
-            # x_pred1 = model(image, x_pred)
             x_pred = x_pred.squeeze(dim=1).flatten(1) # (bs, 1, N, N) -> (bs, N, N) -> (bs, N*N)
-            # x_pred1 = x_pred1.squeeze(dim=1).flatten(1) # (bs, 1, N, N) -> (bs, N, N) -> (bs, N*N)
             data = data.squeeze(dim=1).flatten(1)
             r = torch.zeros_like(x_pred)
             x = x_pred
@@ -75,7 +71,6 @@ def train_(image, A, epoch_num, train_loader, validation_loader, model, optimize
                 alpha = x[j].dot(data[j]) / x[j].dot(Ax)
                 r[j] = data[j] - alpha * Ax
             loss = loss_fn(x_pred, data, A)
-            # loss += 0.1*(data * r).sum(dim=(1,)).mean()
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -113,9 +108,6 @@ def saveData(model, optimizer, epoch, log, outdir, suffix, train_loss, valid_los
                     "Num matrices": total_matrices,
                     "Num RHS": num_rhs})
         log.write(os.path.join(outdir, f"settings_{suffix}.log"))
-    # np.save(os.path.join(outdir, f"training_loss_{suffix}.npy"), train_loss)
-    # np.save(os.path.join(outdir, f"validation_loss_{suffix}.npy"), valid_loss)
-    # np.save(os.path.join(outdir, f"time_{suffix}.npy"), time_history)
     torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
@@ -145,16 +137,16 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    N = 256
-    DIM = 3
+    N = 1024
+    DIM = 2
     lr = 0.001
     epoch_num_per_matrix = 5
-    epoch_num = 50
+    epoch_num = 100
     bc = 'dambreak'
     b_size = 8 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
     total_matrices = 10 # number of matrices chosen for training
-    num_ritz = 800
-    num_rhs = 400 # number of ritz vectors for training for each matrix
+    num_ritz = 1600
+    num_rhs = 800 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
     cuda = torch.device("cuda") # Use CUDA for training
 
@@ -188,9 +180,9 @@ if __name__ == '__main__':
         inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200_{DIM}D/preprocessed")
 
     if DIM == 2:
-        model = SmallSMModelDn(4)
+        model = SmallSMModelDn(6)
     else:
-        model = SmallSMModelDn3D(2)
+        model = SmallSMModelDn3D(3)
     model.move_to(cuda)
     loss_fn = eval(loss_fn)
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -221,7 +213,6 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
 
-    # matrices = np.random.permutation(range(1, 201))[:total_matrices]
     matrices = np.linspace(1, 200, total_matrices, dtype=int)
     # matrices = np.load(os.path.join(DATA_PATH, f"{bc}_N{N}_200/train_mat.npy"))
     np.save(f"{outdir}/matrices_trained_{total_matrices}.npy", matrices)
@@ -257,9 +248,9 @@ if __name__ == '__main__':
     axes[0].legend()
     axes[1].legend()
     plt.savefig("train_loss.png")
-    plt.clf()
-    plt.plot(grad_history)
-    plt.savefig("train_grad.png")
-    plt.clf()
-    plt.plot(update_history)
-    plt.savefig("train_update.png")
+    # plt.clf()
+    # plt.plot(grad_history)
+    # plt.savefig("train_grad.png")
+    # plt.clf()
+    # plt.plot(update_history)
+    # plt.savefig("train_update.png")

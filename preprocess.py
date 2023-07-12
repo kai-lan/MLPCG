@@ -13,12 +13,14 @@ warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in
 torch.set_grad_enabled(False)
 
 DIM = 3
-N = 64
+N = 256
 ortho = True
 
 
 
-matrices = range(1, 2)
+matrices = np.linspace(1, 200, 10, dtype=int)
+# matrices = [200]
+
 scene = 'dambreak'
 if DIM == 2:
     data_folder = f"{DATA_PATH}/{scene}_N{N}_200"
@@ -168,7 +170,7 @@ def worker(indices):
     for index in indices:
         out_folder = f"{data_folder}/preprocessed/{index}"
         rhs_np = load_vector(os.path.join(data_folder, f"div_v_star_{index}.bin"))
-        sol = load_vector(os.path.join(data_folder, f"pressure_{index}.bin"))
+        # sol = load_vector(os.path.join(data_folder, f"pressure_{index}.bin"))
         flags_sp = read_flags(os.path.join(data_folder, f"flags_{index}.bin"))
         fluid_cells = np.where(flags_sp == 2)[0]
         air_cells = np.where(flags_sp == 3)[0]
@@ -191,8 +193,8 @@ def worker(indices):
         rhs = torch.tensor(rhs_np, dtype=torch.float32)
         torch.save(rhs, os.path.join(out_folder, f"rhs.pt"))
 
-        sol = torch.tensor(sol, dtype=torch.float32)
-        torch.save(sol, os.path.join(out_folder, f"sol.pt"))
+        # sol = torch.tensor(sol, dtype=torch.float32)
+        # torch.save(sol, os.path.join(out_folder, f"sol.pt"))
 
         # createFourierVecs(N, DIM, 5, 400, flags_sp, A_sp, out_folder)
         suffix = '' if ortho else '_no_ortho'
@@ -207,7 +209,7 @@ if __name__ == '__main__':
     t0 = time.time()
     # total_work = range(start, end)
     total_work = matrices
-    num_threads = 1
+    num_threads = 10
     chunks = np.array_split(total_work, num_threads)
     thread_list = []
     for thr in range(num_threads):

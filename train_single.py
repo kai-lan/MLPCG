@@ -33,24 +33,24 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.allow_tf32 = False # for debugging
+    torch.backends.cudnn.allow_tf32 = True # for debugging
     # torch.cuda.set_sync_debug_mode(debug_mode)
 
-    N = 64
-    DIM = 3
+    N = 1024
+    DIM = 2
     resume = False
     for_train = True
     for_test = True
-    num_rhs = 400
-    frame = 1
-    scene = 'dambreak'
+    num_rhs = 800
+    frame = 200
+    scene = 'circles_solid'
     dim2 = N**DIM
     lr = 0.001
-    epoch_num = 5
-    iters = 2
+    epoch_num = 50
+    iters = 20
 
     cuda = torch.device("cuda") # Use CUDA for training
-    cpu = torch.device("cpu")
+    # cpu = torch.device("cpu")
 
     image_type = 'flags'
     # num_ritz = 200
@@ -85,7 +85,7 @@ if __name__ == '__main__':
         model = SmallSMModelDn(6)
         # model = FluidNet()
     else:
-        model = SmallSMModelDn3D(4)
+        model = SmallSMModelDn3D(3)
 
     model.move_to(cuda)
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -109,14 +109,12 @@ if __name__ == '__main__':
 
     def transform(x):
         b = torch.zeros(N**DIM, dtype=dtype).cuda()
-        # b = torch.sparse_coo_tensor(fluid_cells_md, x, (N,)*DIM)
         b[fluid_cells] = x.to(dtype)
         b = b.reshape((1,)+(N,)*DIM)
-        # b = b.unsqueeze(0)
         return b
 
-    train_set = MyDataset(rhs_path, None, transform, suffix='_no_ortho')
-    valid_set = MyDataset(rhs_path, None, transform, suffix='_no_ortho')
+    train_set = MyDataset(rhs_path, None, transform, suffix='')
+    valid_set = MyDataset(rhs_path, None, transform, suffix='')
 
     train_loader = DataLoader(train_set, batch_size=b_size, shuffle=False)
     valid_loader = DataLoader(valid_set, batch_size=b_size, shuffle=False)
@@ -192,19 +190,10 @@ if __name__ == '__main__':
             # with profiler.profile(use_cuda=True, with_stack=True, profile_memory=True) as prof:
             #     x_fluidnet_res, res_fluidnet_res = dcdm(rhs.double(), A.double(), torch.zeros_like(rhs).double(), predict, max_it=100, tol=1e-4, verbose=False)
             # print(prof.key_averages(group_by_stack_n=5).table(sort_by="cuda_time_total", top_level_events_only=False, max_shapes_column_width=50))
-            # print("MLPCG", res_fluidnet_res[-1])
-            # x_fluidnet_res, res_fluidnet_res = dcdm(rhs, A, torch.zeros_like(rhs), predict, max_it=100, tol=1e-4, verbose=True)
 
             t0 = timeit.default_timer()
             x_amgcg, res_amgcg = AMGCG(rhs_sp.astype(np.float64), A_sp.astype(np.float64), np.zeros_like(rhs_sp).astype(np.float64), 300, tol=1e-4)
             print("AMGCG took", timeit.default_timer()-t0, 's after', len(res_amgcg), 'iterations', f'to {res_amgcg[-1]}')
-            # if for_train:
-            #     r = rhs - A @ x_fluidnet_res.float()
-            #     r /= rhs.norm()
-            #     r = r.to(cpu)
-            #     torch.save(r, f"{data_path}/preprocessed/{frame}/r_{num_rhs}.pt")
-            #     num_rhs += 1
-            #     print('New residual vector saved', num_rhs, 'in total now.')
 
             t0 = timeit.default_timer()
             rhs_cp, A_cp = cp.array(rhs_sp, dtype=np.float64), cpsp.csr_matrix(A_sp, dtype=np.float64)
