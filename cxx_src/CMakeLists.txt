@@ -26,6 +26,7 @@ find_package(Boost REQUIRED COMPONENTS
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
 include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/lib/)
+include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/../../external_libraries/eigen/)
 message("here, ${CMAKE_CURRENT_SOURCE_DIR}/../../")
 
 
