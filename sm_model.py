@@ -35,9 +35,9 @@ class SMBlockFunction(torch.autograd.Function):
         return None, grad_x, grad_w, grad_b
 
 class SmallSMBlock(nn.Module):
-    def __init__(self):
+    def __init__(self, num_imgs):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(9, 1, 3, 3))
+        self.weight = nn.Parameter(torch.ones(9, num_imgs, 3, 3))
         self.bias = nn.Parameter(torch.ones(9))
         torch.manual_seed(0)
         self.reset_parameters()
@@ -52,9 +52,9 @@ class SmallSMBlock(nn.Module):
         return SMBlockFunction.apply(image, x, self.weight, self.bias)
 
 class SmallSMBlockPY(nn.Module):
-    def __init__(self):
+    def __init__(self, num_imgs):
         super().__init__()
-        self.KL = nn.Conv2d(1, 9, kernel_size=3, padding='same', bias=True)
+        self.KL = nn.Conv2d(num_imgs, 9, kernel_size=3, padding='same', bias=True)
         torch.manual_seed(0)
         nn.init.kaiming_uniform_(self.KL.weight, a=math.sqrt(5))
         if self.KL.bias is not None:
@@ -62,8 +62,8 @@ class SmallSMBlockPY(nn.Module):
             if fan_in != 0:
                 bound = 1 / math.sqrt(fan_in)
                 nn.init.uniform_(self.KL.bias, -bound, bound)
-    def forward(self, image, x): # 1 x N x N, bs x 1 x N x N
-        K = self.KL(image) # 1 x N x N -> 9 x N x N
+    def forward(self, image, x): # num_imgs x N x N, bs x 1 x N x N
+        K = self.KL(image) # num_imgs x N x N -> 9 x N x N
         K = K.permute((1, 2, 0)) # 9 x N x N -> N x N x 9
         K = K.unflatten(2, (3, 3)) # N x N x 9 -> N x N x 3 x 3
         x = F.pad(x, (1, 1, 1, 1)) # bs x 1 x N x N -> bs x 1 x (N+2) x (N+2)
@@ -86,9 +86,9 @@ class SMBlockFunction3D(torch.autograd.Function):
         return None, grad_x, grad_w, grad_b
 
 class SmallSMBlock3D(nn.Module):
-    def __init__(self):
+    def __init__(self, num_imgs):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(27, 1, 3, 3, 3))
+        self.weight = nn.Parameter(torch.ones(27, num_imgs, 3, 3, 3))
         self.bias = nn.Parameter(torch.ones(27))
         torch.manual_seed(0)
         self.reset_parameters()
@@ -104,9 +104,9 @@ class SmallSMBlock3D(nn.Module):
         return y
 
 class SmallSMBlock3DPY(nn.Module):
-    def __init__(self):
+    def __init__(self, num_imgs):
         super().__init__()
-        self.KL = nn.Conv3d(1, 27, kernel_size=3, padding='same', bias=True)
+        self.KL = nn.Conv3d(num_imgs, 27, kernel_size=3, padding='same', bias=True)
         torch.manual_seed(0)
         self.reset_parameters()
     def reset_parameters(self):
@@ -143,9 +143,9 @@ class SMLinearFunction(torch.autograd.Function):
         return None, grad_w, grad_b
 
 class SmallLinearBlock(nn.Module):
-    def __init__(self):
+    def __init__(self, num_imgs):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(9, 1, 3, 3))
+        self.weight = nn.Parameter(torch.ones(9, num_imgs, 3, 3))
         self.bias = nn.Parameter(torch.ones(9))
         torch.manual_seed(0)
         self.reset_parameters()
@@ -160,11 +160,20 @@ class SmallLinearBlock(nn.Module):
         return SMLinearFunction.apply(image, self.weight, self.bias)
 
 class SmallLinearBlockPY(nn.Module):
-    def __init__(self):
+    def __init__(self, num_imgs):
         super().__init__()
-        self.KL = nn.Conv2d(1, 9, kernel_size=3, padding='same')
+        self.KL = nn.Conv2d(num_imgs, 9, kernel_size=3, padding='same')
+        torch.manual_seed(0)
+        self.reset_parameters()
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.KL.weight, a=math.sqrt(5))
+        if self.KL.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.KL.weight)
+            if fan_in != 0:
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(self.KL.bias, -bound, bound)
     def forward(self, image, *placeholder):
-        K = self.KL(image) # 1 x N x N -> 9 x N x N
+        K = self.KL(image) # num_imgs x N x N -> 9 x N x N
         return K.mean()
 
 class SMLinearFunction3D(torch.autograd.Function):
@@ -181,9 +190,9 @@ class SMLinearFunction3D(torch.autograd.Function):
         return None, grad_w, grad_b
 
 class SmallLinearBlock3D(nn.Module):
-    def __init__(self):
+    def __init__(self, num_imgs):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(27, 1, 3, 3, 3))
+        self.weight = nn.Parameter(torch.ones(27, num_imgs, 3, 3, 3))
         self.bias = nn.Parameter(torch.ones(27))
         torch.manual_seed(0)
         self.reset_parameters()
@@ -198,9 +207,9 @@ class SmallLinearBlock3D(nn.Module):
         return SMLinearFunction3D.apply(image, self.weight, self.bias)
 
 class SmallLinearBlock3DPY(nn.Module):
-    def __init__(self):
+    def __init__(self, num_imgs):
         super().__init__()
-        self.KL = nn.Conv3d(1, 27, kernel_size=3, padding='same')
+        self.KL = nn.Conv3d(num_imgs, 27, kernel_size=3, padding='same')
         torch.manual_seed(0)
         self.reset_parameters()
     def reset_parameters(self):
@@ -211,7 +220,7 @@ class SmallLinearBlock3DPY(nn.Module):
                 bound = 1 / math.sqrt(fan_in)
                 nn.init.uniform_(self.KL.bias, -bound, bound)
     def forward(self, image, *placeholder):
-        K = self.KL(image) # 1 x N x N x N -> 27 x N x N x N
+        K = self.KL(image) # num_imgs x N x N x N -> 27 x N x N x N
         return K.mean()
 
 
@@ -402,6 +411,7 @@ if __name__ == '__main__':
 
     N = 128
     frame = 100
+    num_imgs = 3
 
     # file_A = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"A_{frame}.bin")
     file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"div_v_star_{frame}.bin")
@@ -409,7 +419,7 @@ if __name__ == '__main__':
     file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"flags_{frame}.bin")
     # A = readA_sparse(64, file_A, DIM=2)
     rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32)
-    flags = torch.tensor(read_flags(file_flags), dtype=torch.float32)
+    flags = torch.tensor(convert_to_binary_images(read_flags(file_flags), num_imgs), dtype=torch.float32)
     # sol = torch.tensor(load_vector(file_sol), dtype=torch.float32)
     # with h5py.File("test.hdf5", "r") as f:
     #   rhs = torch.tensor(f['rhs'], dtype=torch.float32)
@@ -419,13 +429,14 @@ if __name__ == '__main__':
 
     # model = SmallSMBlock3DPY().cuda()
     # model1 = SmallSMBlock3D().cuda()
-    model = SmallLinearBlock3DPY().cuda()
-    model1 = SmallLinearBlock3D().cuda()
+    model = SmallLinearBlock3DPY(num_imgs).cuda()
+    model1 = SmallLinearBlock3D(num_imgs).cuda()
     # model = SmallSMBlockPY().cuda()
     # model1 = SmallSMBlock().cuda()
     # model = SmallSMModelDn3DPY(2).cuda()
     # model1 = SmallSMModelDn3D(2).cuda()
-    img_shape = (1, N, N, N)
+
+    img_shape = (num_imgs, N, N, N)
     rhs_shape = (1, 1, N, N, N)
     image = flags.reshape(img_shape).cuda()
     x = rhs.reshape(rhs_shape).expand((8,)+ img_shape).cuda()

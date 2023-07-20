@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from sm_model import *
+from sm_model_3colors import *
 from model import *
 import cupyx.scipy.sparse as cpsp
 from cupyx.profiler import benchmark as cuda_benchmark
@@ -23,8 +24,8 @@ if __name__ == '__main__':
     from train import train_, saveData, loadData
     import time, timeit
     import warnings
-    # import logging
-    # logging.basicConfig(level=logging.DEBUG)
+
+
     warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
     dtype = torch.float32
     torch.set_default_dtype(dtype)
@@ -39,21 +40,17 @@ if __name__ == '__main__':
     N = 1024
     DIM = 2
     resume = False
-    for_train = True
+    for_train = False
     for_test = True
     num_rhs = 800
-    frame = 200
+    frame = 199
     scene = 'circles_solid'
     dim2 = N**DIM
     lr = 0.001
-    epoch_num = 50
-    iters = 20
-
+    epoch_num = 100
+    iters = 5
+    num_imgs = 2
     cuda = torch.device("cuda") # Use CUDA for training
-    # cpu = torch.device("cpu")
-
-    image_type = 'flags'
-    # num_ritz = 200
     b_size = 16
 
 
@@ -67,23 +64,22 @@ if __name__ == '__main__':
     os.makedirs(outdir, exist_ok=True)
 
 
-    suffix = f"{scene}_frame_{frame}_rhs_{num_rhs}_{DIM}D"
+    suffix = f"{scene}_frame_200_rhs_{num_rhs}_{DIM}D_imgs{num_imgs}"
 
     A_sp = readA_sparse(os.path.join(data_path, f"A_{frame}.bin")).astype(np.float64)
     rhs_sp = load_vector(os.path.join(data_path, f"div_v_star_{frame}.bin")).astype(np.float64)
     flags_sp = read_flags(os.path.join(data_path, f"flags_{frame}.bin"))
+    fluid_cells = np.where(flags_sp == 2)[0]
+    flags_sp = convert_to_binary_images(flags_sp, num_imgs)
+    # flags_sp = np.stack([np.where(flags_sp==3, 1, 0), np.where(flags_sp==2, 1, 0), np.where(flags_sp==0, 0, 1)])
+    # flags_sp = np.where(flags_sp == 2, 1, 0)
 
     A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=dtype, device=cuda)
     rhs = torch.tensor(rhs_sp, dtype=dtype, device=cuda)
-    image = torch.tensor(flags_sp, dtype=dtype, device=cuda).reshape((1,)+(N,)*DIM)
-    # A = torch.load(f"{data_path}/A.pt").to_sparse_csr()
-    # image = torch.load(f"{data_path}/flags.pt").reshape((1,)+(N,)*DIM)
-    # image.masked_fill_(image==3, 0)
-    # image.masked_fill_(image==2, 1)
+    image = torch.tensor(flags_sp, dtype=dtype, device=cuda).reshape((num_imgs,)+(N,)*DIM)
 
     if DIM == 2:
-        model = SmallSMModelDn(6)
-        # model = FluidNet()
+        model = SmallSMModel3ColorsDnPY(6, num_imgs)
     else:
         model = SmallSMModelDn3D(3)
 
@@ -104,7 +100,7 @@ if __name__ == '__main__':
 
 
     rhs_path = f"{data_path}/preprocessed/{frame}"
-    fluid_cells = np.load(f"{rhs_path}/fluid_cells.npy")
+    # fluid_cells = np.load(f"{rhs_path}/fluid_cells.npy")
     # fluid_cells_md = np.load(f"{rhs_path}/fluid_cells_md.npy")
 
     def transform(x):
@@ -170,7 +166,7 @@ if __name__ == '__main__':
             def predict(r):
                 with torch.no_grad():
                     r = nn.functional.normalize(r, dim=0)
-                    x = model.eval_forward(image.reshape((1,)+(N,)*DIM).to(dtype), r.reshape((1, 1)+(N,)*DIM).to(dtype)).flatten().double()
+                    x = model.eval_forward(image.reshape((num_imgs,)+(N,)*DIM).to(dtype), r.reshape((1, 1)+(N,)*DIM).to(dtype)).flatten().double()
                 return x
 
             x_fluidnet_res, res_fluidnet_res = None, None
