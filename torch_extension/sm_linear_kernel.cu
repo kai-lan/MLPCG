@@ -15,6 +15,18 @@ __constant__ unsigned char WEIGHT_BYTES[WEIGHT_SIZE*sizeof(double)];
 #define NUM_THREADS_BACKWARD 256
 
 namespace {
+
+template <size_t blockSize, typename T>
+__device__ void warpReduce(volatile T *sdata, size_t tid)
+{
+    if (blockSize >= 64) sdata[tid] += sdata[tid + 32]; __syncthreads();
+    if (blockSize >= 32) sdata[tid] += sdata[tid + 16]; __syncthreads();
+    if (blockSize >= 16) sdata[tid] += sdata[tid +  8]; __syncthreads();
+    if (blockSize >=  8) sdata[tid] += sdata[tid +  4]; __syncthreads();
+    if (blockSize >=  4) sdata[tid] += sdata[tid +  2]; __syncthreads();
+    if (blockSize >=  2) sdata[tid] += sdata[tid +  1];
+}
+
 template <typename scalar_t>
 __global__ void sm_linear_cuda_forward_kernel(
     const torch::PackedTensorAccessor32<scalar_t,3,torch::RestrictPtrTraits> image, // 3, N, N
@@ -25,35 +37,40 @@ __global__ void sm_linear_cuda_forward_kernel(
 
   const scalar_t *WEIGHT = (const scalar_t *)(WEIGHT_BYTES);
 
-  const int c = blockIdx.x / nBlocks;
+  const int outerBlock = blockIdx.x / nBlocks;
   const int innerBlock = blockIdx.x % nBlocks;
-  const int location = blockDim.x * innerBlock + threadIdx.x;
+  const int c = outerBlock;
+  const int tid = threadIdx.x;
+  const int location = blockDim.x * innerBlock + tid;
 
-  z[threadIdx.x] = 0.0;
+  z[tid] = 0.0;
 
-  if (location < N1*N2) {
+  if (location < NUM_IMAGES*N1*N2) {
     const int j = location % N2;
     const int i = location / N2;
 
-    #pragma unroll
+    int c0, c1;
+    #pragma unroll(1)
     for (int m = 0; m < NUM_IMAGES; ++m) {
+      c0 = NUM_IMAGES*c+m;
       for (int k = 0; k <= 2; ++k) {
-        for (int l = 0; l <= 2; ++l) {
-            z[threadIdx.x] += WEIGHT[3*(3*(NUM_IMAGES*c+m)+k)+l] * image[m][i+k][j+l];
-        }
+        c1 = 3*c0+k;
+        z[tid] += WEIGHT[3*c1] * image[m][i+k][j];
+        z[tid] += WEIGHT[3*c1+1] * image[m][i+k][j+1];
+        z[tid] += WEIGHT[3*c1+2] * image[m][i+k][j+2];
       }
     }
   }
   __syncthreads();
 
   // reduction
-  #pragma unroll
-  for (int n = NUM_THREADS_FORWARD; n > 1; n /= 2) {
-    if (threadIdx.x < n / 2)
-      z[threadIdx.x] += z[threadIdx.x + n / 2];
-    __syncthreads();
-  }
-  if (threadIdx.x == 0) atomicAdd(&y[0], z[0]);
+  if (NUM_THREADS_FORWARD >= 1024) { if (tid < 512) { z[tid] += z[tid + 512]; } __syncthreads(); }
+  if (NUM_THREADS_FORWARD >=  512) { if (tid < 256) { z[tid] += z[tid + 256]; } __syncthreads(); }
+  if (NUM_THREADS_FORWARD >=  256) { if (tid < 128) { z[tid] += z[tid + 128]; } __syncthreads(); }
+  if (NUM_THREADS_FORWARD >=  128) { if (tid <  64) { z[tid] += z[tid +  64]; } __syncthreads(); }
+
+  if (tid < 32) warpReduce<NUM_THREADS_FORWARD, scalar_t>(z, tid);
+  if (tid == 0) atomicAdd(&y[0], z[0]);
 }
 
 template <typename scalar_t>
@@ -62,8 +79,6 @@ __global__ void sm_linear_cuda_backward_kernel(
     const torch::PackedTensorAccessor32<scalar_t,3,torch::RestrictPtrTraits> image, // 1, N, N
     torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> grad_w,
     const int nBlocksPerCopy, const int n1, const int n2) {
-
-  __shared__ scalar_t d_w[WEIGHT_SIZE];
 
   const int location = blockIdx.x / nBlocksPerCopy;
   const int innerBlock = blockIdx.x % nBlocksPerCopy;
@@ -83,14 +98,14 @@ __global__ void sm_linear_cuda_backward_kernel(
   const int m = p % NUM_IMAGES;
   const int c = p / NUM_IMAGES;
 
-  d_w[idx] = 0.0;
-  #pragma unroll
+  scalar_t d_w = 0.0;
+  #pragma unroll(1)
   for (int _i = 0; _i < LOCATIONSPERBLOCK; ++_i) {
     for (int _j = 0; _j < LOCATIONSPERBLOCK; ++_j) {
-      d_w[idx] += image[m][i+_i+k][j+_j+l];
+      d_w += image[m][i+_i+k][j+_j+l];
     }
   }
-  atomicAdd(&grad_w[c][m][k][l], d_w[idx]);
+  atomicAdd(&grad_w[c][m][k][l], d_w);
 }
 } // namespace
 

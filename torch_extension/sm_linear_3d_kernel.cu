@@ -34,7 +34,6 @@ __global__ void sm_linear_3d_cuda_forward_kernel(
     const int nBlocks, const int N1, const int N2, const int N3) {
 
   __shared__ scalar_t z[NUM_THREADS_FORWARD];
-  __shared__ scalar_t W[NUM_IMAGES*KERNEL_SIZE];
 
   const scalar_t *WEIGHT = (const scalar_t *)(WEIGHT_BYTES);
 
@@ -44,45 +43,87 @@ __global__ void sm_linear_3d_cuda_forward_kernel(
   const int tid = threadIdx.x;
   const int location = blockDim.x * innerBlock + tid;
 
-  z[tid] = 0.0;
-
+  scalar_t zz = 0.0;
   if (location < NUM_IMAGES*N1*N2*N3) {
     const int ij = location % N3;
     const int j = (location/N3) % N2;
     const int i = (location/N3) / N2;
 
+    int c0, c1, c2;
+    int i1 = i + 1, i2 = i + 2;
+    int j1 = j + 1, j2 = j + 2;
+    int ij1 = ij + 1, ij2 = ij + 2;
     #pragma unroll(1)
     for (int m = 0; m < NUM_IMAGES; ++m) {
-      for (int k = 0; k <= 2; ++k) {
-        for (int l = 0; l <= 2; ++l) {
-          for (int kl = 0; kl <= 2; ++kl) {
-            z[tid] += WEIGHT[3*(3*(3*(NUM_IMAGES*c+m)+k)+l)+kl] * image[m][i+k][j+l][ij+kl];
-          }
-        }
-      }
-    }
-    // int c0, c1, c2;
-    //    #pragma unroll(1)
-    // for (int m = 0; m < NUM_IMAGES; ++m) {
-    //   c0 = NUM_IMAGES*c+m;
-    //   for (int k = 0; k <= 2; ++k) {
-    //       c1 = 3 * c0 + k;
-    //       c2 = 3 * c1;
-    //       z[tid] += WEIGHT[3*c2] * image[m][i+k][j][ij];
-    //       z[tid] += WEIGHT[3*c2+1] * image[m][i+k][j][ij+1];
-    //       z[tid] += WEIGHT[3*c2+2] * image[m][i+k][j][ij+2];
-    //       c2 ++;
-    //       z[tid] += WEIGHT[3*c2] * image[m][i+k][j+1][ij];
-    //       z[tid] += WEIGHT[3*c2+1] * image[m][i+k][j+1][ij+1];
-    //       z[tid] += WEIGHT[3*c2+2] * image[m][i+k][j+1][ij+2];
-    //       c2 ++;
-    //       z[tid] += WEIGHT[3*c2] * image[m][i+k][j+2][ij];
-    //       z[tid] += WEIGHT[3*c2+1] * image[m][i+k][j+2][ij+1];
-    //       z[tid] += WEIGHT[3*c2+2] * image[m][i+k][j+2][ij+2];
-    //   }
+      c0 = NUM_IMAGES*c+m;
+          c1 = 27 * c0;
+          zz += WEIGHT[c1] * image[m][i][j][ij]; // 27 * c0
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i][j][ij1]; // 27 * c0 + 1
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i][j][ij2]; // 27 * c0 + 2
 
-    // }
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i][j1][ij]; // 3 * (3 * 3 * c0 + 1) = 27 * c0 + 3
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i][j1][ij1]; // 27 * c0 + 4
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i][j1][ij2]; // 27 * c0 + 5
+
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i][j2][ij]; // 3 * (3 * (3 * c0) + 2) = 27 * c0 + 6
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i][j2][ij1]; // 27 * c0 + 7
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i][j2][ij2]; // 27 * c0 + 8
+
+
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i1][j][ij]; // 3 * (3 * (3 * c0 + 1)) = 27 * c0 + 9
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i1][j][ij1];
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i1][j][ij2];
+
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i1][j1][ij];
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i1][j1][ij1];
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i1][j1][ij2];
+
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i1][j2][ij];
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i1][j2][ij1];
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i1][j2][ij2];
+
+
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i2][j][ij];
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i2][j][ij1];
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i2][j][ij2];
+
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i2][j1][ij];
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i2][j1][ij1];
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i2][j1][ij2];
+
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i2][j2][ij];
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i2][j2][ij1];
+          c1 ++;
+          zz += WEIGHT[c1] * image[m][i2][j2][ij2];
+
+    }
   }
+  z[tid] = zz;
   __syncthreads();
 
   // reduction
@@ -133,6 +174,7 @@ __global__ void sm_linear_3d_cuda_backward_kernel(
       }
     }
   }
+
   atomicAdd(&grad_w[c][m][k][l][kl], d_w);
 }
 
