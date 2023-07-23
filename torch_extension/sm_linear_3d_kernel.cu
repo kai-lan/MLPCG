@@ -144,6 +144,8 @@ __global__ void sm_linear_3d_cuda_backward_kernel(
     torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grad_w,
     const int nBlocksPerCopy, const int n1, const int n2, const int n3) {
 
+  __shared__ scalar_t I[LOCATIONSPERBLOCK+2][LOCATIONSPERBLOCK+2][LOCATIONSPERBLOCK+2];
+
   const int location = blockIdx.x / nBlocksPerCopy;
   const int innerBlock = blockIdx.x % nBlocksPerCopy;
 
@@ -152,10 +154,6 @@ __global__ void sm_linear_3d_cuda_backward_kernel(
   const int i = ((location/n3) / n2) * LOCATIONSPERBLOCK;
 
   int p = innerBlock * blockDim.x + threadIdx.x;
-
-  if (p >= WEIGHT_SIZE) return; // Wasted threads
-
-  const int idx = p;
   const int kl = p % 3;
   p /= 3;
   const int l = p % 3;
@@ -165,12 +163,25 @@ __global__ void sm_linear_3d_cuda_backward_kernel(
   const int m = p % NUM_IMAGES;
   const int c = p / NUM_IMAGES;
 
+  int tid = threadIdx.x;
+  while (tid < (LOCATIONSPERBLOCK+2)*(LOCATIONSPERBLOCK+2)*(LOCATIONSPERBLOCK+2)) {
+    int iz = tid % (LOCATIONSPERBLOCK+2);
+    int iy = (tid/(LOCATIONSPERBLOCK+2)) % (LOCATIONSPERBLOCK+2);
+    int ix = (tid/(LOCATIONSPERBLOCK+2)) / (LOCATIONSPERBLOCK+2);
+    I[ix][iy][iz] = image[m][i+ix][j+iy][ij+iz];
+    tid += blockDim.x;
+  }
+
+  if (c >= KERNEL_SIZE) return; // Wasted threads
+  __syncthreads();
+
   scalar_t d_w = 0.0;
   #pragma unroll(1)
   for (int _i = 0; _i < LOCATIONSPERBLOCK; ++_i) {
     for (int _j = 0; _j < LOCATIONSPERBLOCK; ++_j) {
       for (int _ij = 0; _ij < LOCATIONSPERBLOCK; ++_ij) {
-        d_w += image[m][i+_i+k][j+_j+l][ij+_ij+kl];
+        d_w += I[_i+k][_j+l][_ij+kl];
+        // d_w += image[m][i+_i+k][j+_j+l][ij+_ij+kl];
       }
     }
   }
@@ -258,9 +269,12 @@ int main() {
   int N = 128;
   int num_imgs = 3;
   auto image = torch::ones({num_imgs, N, N, N}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+  auto padded_image = torch::ones({num_imgs, N+2, N+2, N+2}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
   auto x = torch::rand({bs, 1, N, N, N}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
   auto weight = torch::rand({27, num_imgs, 3, 3, 3}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
   auto bias = torch::rand({27}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+  auto grad_output = torch::ones({1}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+  auto y = torch::zeros({1}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
   // curandState *d_states;
   // cudaMalloc(&d_states, CNT * sizeof(curandState));
   // kernel_setup_randstates_2d<<<1,CNT>>>(d_states, 1,1, 1);
@@ -271,8 +285,9 @@ int main() {
 
   cudaEventRecord(start);
   for (int i = 0; i < 100; ++i)
-    auto y = sm_linear_3d_cuda_forward(image, weight, bias);
-  // std::cout << y  << std::endl;
+    y = sm_linear_3d_cuda_backward(grad_output, padded_image)[0];
+    // y = sm_linear_3d_cuda_forward(padded_image, weight, bias)[0];
+
   cudaEventRecord(stop);
   cudaEventSynchronize(stop);
   float milliseconds = 0;
