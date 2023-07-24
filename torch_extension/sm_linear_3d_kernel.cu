@@ -144,7 +144,7 @@ __global__ void sm_linear_3d_cuda_backward_kernel(
     torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grad_w,
     const int nBlocksPerCopy, const int n1, const int n2, const int n3) {
 
-  __shared__ scalar_t I[LOCATIONSPERBLOCK+2][LOCATIONSPERBLOCK+2][LOCATIONSPERBLOCK+2];
+  __shared__ scalar_t I[NUM_IMAGES][LOCATIONSPERBLOCK+2][LOCATIONSPERBLOCK+2][LOCATIONSPERBLOCK+2];
 
   const int location = blockIdx.x / nBlocksPerCopy;
   const int innerBlock = blockIdx.x % nBlocksPerCopy;
@@ -152,6 +152,21 @@ __global__ void sm_linear_3d_cuda_backward_kernel(
   const int ij = (location % n3) * LOCATIONSPERBLOCK;
   const int j = ((location/n3) % n2) * LOCATIONSPERBLOCK;
   const int i = ((location/n3) / n2) * LOCATIONSPERBLOCK;
+
+  int tid = threadIdx.x;
+  const int width = LOCATIONSPERBLOCK+2;
+  const int totalSize = NUM_IMAGES * width*width*width;
+  while (tid < totalSize) {
+    int ttid = tid;
+    int iz = tid % width;
+    tid /= width;
+    int iy = tid % width;
+    tid /= width;
+    int ix = tid % width;
+    int m = tid / width;
+    I[m][ix][iy][iz] = image[m][i+ix][j+iy][ij+iz];
+    tid = ttid + blockDim.x;
+  }
 
   int p = innerBlock * blockDim.x + threadIdx.x;
   const int kl = p % 3;
@@ -163,15 +178,6 @@ __global__ void sm_linear_3d_cuda_backward_kernel(
   const int m = p % NUM_IMAGES;
   const int c = p / NUM_IMAGES;
 
-  int tid = threadIdx.x;
-  while (tid < (LOCATIONSPERBLOCK+2)*(LOCATIONSPERBLOCK+2)*(LOCATIONSPERBLOCK+2)) {
-    int iz = tid % (LOCATIONSPERBLOCK+2);
-    int iy = (tid/(LOCATIONSPERBLOCK+2)) % (LOCATIONSPERBLOCK+2);
-    int ix = (tid/(LOCATIONSPERBLOCK+2)) / (LOCATIONSPERBLOCK+2);
-    I[ix][iy][iz] = image[m][i+ix][j+iy][ij+iz];
-    tid += blockDim.x;
-  }
-
   if (c >= KERNEL_SIZE) return; // Wasted threads
   __syncthreads();
 
@@ -180,8 +186,7 @@ __global__ void sm_linear_3d_cuda_backward_kernel(
   for (int _i = 0; _i < LOCATIONSPERBLOCK; ++_i) {
     for (int _j = 0; _j < LOCATIONSPERBLOCK; ++_j) {
       for (int _ij = 0; _ij < LOCATIONSPERBLOCK; ++_ij) {
-        d_w += I[_i+k][_j+l][_ij+kl];
-        // d_w += image[m][i+_i+k][j+_j+l][ij+_ij+kl];
+        d_w += I[m][_i+k][_j+l][_ij+kl];
       }
     }
   }
