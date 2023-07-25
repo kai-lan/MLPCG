@@ -99,15 +99,20 @@ class SmallSMBlock3DPY(BaseModel):
 ######################
 class SMLinearFunction(torch.autograd.Function):
     @staticmethod
+    def inference(image, weights, bias):
+        image = F.pad(image, (1,)*4)
+        z, = smlinear.inference(image, weights, bias)
+        return z
+    @staticmethod
     def forward(ctx, image, weights, bias):
         image = F.pad(image, (1,)*4)
-        ctx.save_for_backward(image)
-        z, = smlinear.forward(image, weights, bias)
+        z, y, = smlinear.forward(image, weights, bias)
+        ctx.save_for_backward(y)
         return z
     @staticmethod
     def backward(ctx, grad_output): # return the same number of outputs as forward function arguments
-        image, = ctx.saved_tensors
-        grad_w, grad_b, = smlinear.backward(grad_output.contiguous(), image)
+        y, = ctx.saved_tensors
+        grad_w, grad_b, = smlinear.backward(grad_output.contiguous(), y)
         return None, grad_w, grad_b
 
 class SMLinearFunction3D(torch.autograd.Function):
@@ -308,14 +313,14 @@ if __name__ == '__main__':
     torch.backends.cudnn.allow_tf32 = True # for debugging
     # torch.use_deterministic_algorithms(True)
 
-    N = 128
+    N = 1024
     frame = 100
     num_imgs = 3
 
     # file_A = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"div_v_star_{frame}.bin")
-    # file_sol = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"flags_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"div_v_star_{frame}.bin")
+    # file_sol = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"flags_{frame}.bin")
     # A = readA_sparse(64, file_A, DIM=2)
     rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32)
     flags = torch.tensor(convert_to_binary_images(read_flags(file_flags), num_imgs), dtype=torch.float32)
@@ -328,22 +333,26 @@ if __name__ == '__main__':
 
     # model = SmallSMBlock3DPY(num_imgs).cuda()
     # model1 = SmallSMBlock3D(num_imgs).cuda()
-    model = SmallLinearBlock3DPY(num_imgs).cuda()
-    model1 = SmallLinearBlock3D(num_imgs).cuda()
-    # model = SmallSMBlockPY().cuda()
-    # model1 = SmallSMBlock().cuda()
+    model = SmallLinearBlockPY(num_imgs).cuda()
+    model1 = SmallLinearBlock(num_imgs).cuda()
+    # model = SmallSMBlockPY(num_imgs).cuda()
+    # model1 = SmallSMBlock(num_imgs).cuda()
     # model = SmallSMModelDn3DPY(3, num_imgs).cuda()
     # model1 = SmallSMModelDn3D(3, num_imgs).cuda()
 
-    img_shape = (num_imgs, N, N, N)
-    rhs_shape = (1, 1, N, N, N)
+    # image1 = image.detach().clone()
+    img_shape = (num_imgs, N, N)
+    rhs_shape = (1, 1, N, N)
     image = flags.reshape(img_shape).cuda()
+    # image = torch.rand(3, 2*N, N).cuda()
     x = rhs.reshape(rhs_shape).expand((16,)+ img_shape).cuda()
     x.requires_grad = True
     x1 = rhs.reshape(rhs_shape).expand((16,)+ img_shape).cuda()
     x1.requires_grad = True
 
     # torch.set_grad_enabled(False)
+    model1.eval()
+    print(model1.training)
     for _ in range(10):
         y = model(image, x)
         y1 = model1(image, x1)
@@ -352,7 +361,7 @@ if __name__ == '__main__':
 
     torch.cuda.synchronize()
 
-    iters = 1000
+    iters = 1
     forward = 0.0
     backward = 0.0
     for _ in range(iters):

@@ -8,24 +8,12 @@
 #define NUM_IMAGES 3
 #define KERNEL_SIZE 27
 #define WEIGHT_SIZE NUM_IMAGES*KERNEL_SIZE*KERNEL_SIZE
-__constant__ unsigned char WEIGHT_BYTES[WEIGHT_SIZE*sizeof(double)];
 
 #define LOCATIONSPERBLOCK 8
 #define NUM_THREADS_FORWARD 256
 #define NUM_THREADS_BACKWARD 256
 
 namespace {
-
-template <size_t blockSize, typename T>
-__device__ void warpReduce(volatile T *sdata, size_t tid)
-{
-    if (blockSize >= 64) sdata[tid] += sdata[tid + 32]; __syncthreads();
-    if (blockSize >= 32) sdata[tid] += sdata[tid + 16]; __syncthreads();
-    if (blockSize >= 16) sdata[tid] += sdata[tid +  8]; __syncthreads();
-    if (blockSize >=  8) sdata[tid] += sdata[tid +  4]; __syncthreads();
-    if (blockSize >=  4) sdata[tid] += sdata[tid +  2]; __syncthreads();
-    if (blockSize >=  2) sdata[tid] += sdata[tid +  1];
-}
 
 template <typename scalar_t>
 __global__ void sm_linear_3d_cuda_forward_kernel(
