@@ -9,7 +9,7 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_forward(
 
 std::vector<torch::Tensor> sm_linear_3d_cuda_backward(
     torch::Tensor grad_output,
-    torch::Tensor image);
+    torch::Tensor y);
 
 // C++ interface
 #define CHECK_CUDA(x) TORCH_CHECK(x.device().is_cuda(), #x " must be a CUDA tensor")
@@ -30,11 +30,11 @@ std::vector<torch::Tensor> sm_linear_3d_forward(
 
 std::vector<torch::Tensor> sm_linear_3d_backward(
     torch::Tensor grad_output,
-    torch::Tensor image) {
+    torch::Tensor y) {
   CHECK_INPUT(grad_output);
-  CHECK_INPUT(image);
+  CHECK_INPUT(y);
 
-  return sm_linear_3d_cuda_backward(grad_output, image);
+  return sm_linear_3d_cuda_backward(grad_output, y);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
