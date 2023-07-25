@@ -10,7 +10,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import math
 
 class BaseModel(nn.Module):
     def __init__(self):
@@ -21,6 +21,14 @@ class BaseModel(nn.Module):
     def eval_forward(self, *args, **kargs):
         return self.forward(*args, **kargs)
         # Residual loss
+    def reset_parameters(self, weight, bias):
+        torch.manual_seed(0)
+        nn.init.kaiming_uniform_(weight, a=math.sqrt(5))
+        if bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(weight)
+            if fan_in != 0:
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(bias, -bound, bound)
     def error_loss(self, x, x_):
         bs = x.shape[0]
         r = torch.zeros(1).to(x.device)
