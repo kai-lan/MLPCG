@@ -37,7 +37,6 @@ __global__ void sm_block_3d_cuda_forward_kernel(
 
 
   scalar_t zz = 0.0;
-  // scalar_t z = 0.0;
   #pragma unroll
   for (int k = 0; k <= 2; ++k) {
     for (int l = 0; l <= 2; ++l) {
@@ -91,12 +90,6 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
   const int X_Size = width*width*width; // 216
   const int I_Size = NUM_IMAGES*width*width*width; // 648
 
-  const int p = innerBlock * blockDim.x + threadIdx.x;
-  const int idx_kl = p / (NUM_IMAGES*KERNEL_SIZE + 1);
-  const int kl = idx_kl % 3;
-  const int l = (idx_kl / 3) % 3;
-  const int k = idx_kl / 9;
-
   int tid = threadIdx.x;
   while (tid < I_Size + X_Size + OUT_Size) {
     int ttid = tid;
@@ -130,7 +123,13 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
   }
 
 
+  const int p = innerBlock * blockDim.x + threadIdx.x;
   if (p >= WEIGHT_SIZE + KERNEL_SIZE) return; // Wasted threads
+  const int idx_kl = p / (NUM_IMAGES*KERNEL_SIZE + 1);
+  const int kl = idx_kl % 3;
+  const int l = (idx_kl / 3) % 3;
+  const int k = idx_kl / 9;
+
   __syncthreads();
 
   const int idx_smn = p % (NUM_IMAGES*KERNEL_SIZE + 1);

@@ -11,9 +11,9 @@
 __constant__ unsigned char WEIGHT_BYTES[WEIGHT_SIZE*sizeof(double)];
 __constant__ unsigned char BIAS_BYTES[KERNEL_SIZE*sizeof(double)];
 
-#define LOCATIONS_PER_BLOCK 8
-#define NUM_THREADS_FORWARD 512
-#define NUM_THREADS_BACKWARD 128
+#define LOCATIONS_PER_BLOCK 16
+#define NUM_THREADS_FORWARD 256
+#define NUM_THREADS_BACKWARD 256
 
 namespace {
 template <typename scalar_t>
@@ -62,8 +62,9 @@ __global__ void sm_block_cuda_dwdb_fast_kernel(
     torch::PackedTensorAccessor32<scalar_t,1,torch::RestrictPtrTraits> grad_b,
     const int nBlocksPerCopy, const int B, const int n1, const int n2) {
 
-  __shared__ scalar_t d_w[WEIGHT_SIZE];
-  __shared__ scalar_t d_b[KERNEL_SIZE];
+  __shared__ scalar_t OUT[LOCATIONS_PER_BLOCK][LOCATIONS_PER_BLOCK]; // 4^2 = 16
+  __shared__ scalar_t I[NUM_IMAGES][LOCATIONS_PER_BLOCK+2][LOCATIONS_PER_BLOCK+2]; // 3 * 6^2 = 108
+  __shared__ scalar_t X[LOCATIONS_PER_BLOCK+2][LOCATIONS_PER_BLOCK+2]; // 6^2 = 36
 
   const int location = blockIdx.x / nBlocksPerCopy;
   const int innerBlock = blockIdx.x % nBlocksPerCopy;
@@ -72,26 +73,57 @@ __global__ void sm_block_cuda_dwdb_fast_kernel(
   const int i = ((location/n2) % n1) * LOCATIONS_PER_BLOCK;
   const int c = (location/n2) / n1;
 
+  const int width = LOCATIONS_PER_BLOCK+2;
+  const int OUT_Size = LOCATIONS_PER_BLOCK*LOCATIONS_PER_BLOCK; // 16
+  const int X_Size = width*width; // 36
+  const int I_Size = NUM_IMAGES*width*width; // 108
+
+  int tid = threadIdx.x;
+  while (tid < I_Size + X_Size + OUT_Size) {
+    int ttid = tid;
+    if (ttid < I_Size) {
+      int iy = tid % width;
+      tid /= width;
+      int ix = tid % width;
+      int s = tid / width;
+      I[s][ix][iy] = image[s][i+ix][j+iy];
+    }
+    else if (ttid < I_Size + X_Size) {
+      tid -= I_Size;
+      int iy = tid % width;
+      int ix = tid / width;
+      X[ix][iy] = x[c][0][i+ix][j+iy];
+    }
+    else {
+      tid -= I_Size + X_Size;
+      int iy = tid % LOCATIONS_PER_BLOCK;
+      int ix = tid / LOCATIONS_PER_BLOCK;
+      OUT[ix][iy] = grad_output[c][0][i+ix][j+iy];
+    }
+
+    tid = ttid + blockDim.x;
+  }
 
   const int p = innerBlock * blockDim.x + threadIdx.x;
-
   if (p >= WEIGHT_SIZE + KERNEL_SIZE) return; // Wasted threads
 
   const int idx_kl = p / (NUM_IMAGES*KERNEL_SIZE + 1);
   const int l = idx_kl % 3;
   const int k = idx_kl / 3;
 
+  __syncthreads();
+
   const int idx_smn = p % (NUM_IMAGES*KERNEL_SIZE + 1);
 
   int s, m, n;
   int idx;
 
+  scalar_t d_w = 0.0, d_b = 0.0;
   if (idx_smn == NUM_IMAGES * KERNEL_SIZE) {
-    d_b[idx_kl] = 0.0;
     #pragma unroll
     for (int _i = 0; _i < LOCATIONS_PER_BLOCK; ++_i) {
       for (int _j = 0; _j < LOCATIONS_PER_BLOCK; ++_j) {
-        d_b[idx_kl] += grad_output[c][0][i+_i][j+_j] * x[c][0][i+_i+k][j+_j+l];
+        d_b += OUT[_i][_j] * X[_i+k][_j+l];
       }
     }
   } else {
@@ -99,19 +131,19 @@ __global__ void sm_block_cuda_dwdb_fast_kernel(
     m = (idx_smn/3) % 3;
     s = (idx_smn/3) / 3;
     idx = KERNEL_SIZE*NUM_IMAGES*idx_kl + idx_smn;
-    d_w[idx] = 0.0;
+
     #pragma unroll
     for (int _i = 0; _i < LOCATIONS_PER_BLOCK; ++_i) {
       for (int _j = 0; _j < LOCATIONS_PER_BLOCK; ++_j) {
-        d_w[idx] += grad_output[c][0][i+_i][j+_j] * image[s][i+_i+m][j+_j+n] * x[c][0][i+_i+k][j+_j+l];
+        d_w += OUT[_i][_j] * I[s][_i+m][_j+n] * X[_i+k][_j+l];
       }
     }
   }
 
   if (idx_smn == NUM_IMAGES * KERNEL_SIZE)
-    atomicAdd(&grad_b[idx_kl], d_b[idx_kl]);
+    atomicAdd(&grad_b[idx_kl], d_b);
   else
-    atomicAdd(&grad_w[idx_kl][s][m][n], d_w[idx]);
+    atomicAdd(&grad_w[idx_kl][s][m][n], d_w);
 } // backward dw, db
 
 template <typename scalar_t>
