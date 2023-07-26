@@ -38,8 +38,8 @@ class SMBlockFunction3D(torch.autograd.Function):
     def forward(ctx, image, x, weights, bias):
         image = F.pad(image, (1,)*6)
         x = F.pad(x, (1,)*6)
-        ctx.save_for_backward(image, x, weights, bias)
         y, = smblock3d.forward(image, x, weights, bias)
+        ctx.save_for_backward(image, x, weights, bias)
         return y
     @staticmethod
     def backward(ctx, grad_output): # return the same number of outputs as forward function arguments
@@ -313,14 +313,14 @@ if __name__ == '__main__':
     torch.backends.cudnn.allow_tf32 = True # for debugging
     # torch.use_deterministic_algorithms(True)
 
-    N = 1024
+    N = 128
     frame = 100
     num_imgs = 3
 
     # file_A = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"div_v_star_{frame}.bin")
-    # file_sol = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"flags_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"div_v_star_{frame}.bin")
+    # file_sol = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"flags_{frame}.bin")
     # A = readA_sparse(64, file_A, DIM=2)
     rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32)
     flags = torch.tensor(convert_to_binary_images(read_flags(file_flags), num_imgs), dtype=torch.float32)
@@ -332,46 +332,46 @@ if __name__ == '__main__':
     # torch.set_grad_enabled(False) # disable autograd globally
 
     # model = SmallSMBlock3DPY(num_imgs).cuda()
-    # model1 = SmallSMBlock3D(num_imgs).cuda()
-    model = SmallLinearBlockPY(num_imgs).cuda()
-    model1 = SmallLinearBlock(num_imgs).cuda()
+    model1 = SmallSMBlock3D(num_imgs).cuda()
+    # model = SmallLinearBlockPY(num_imgs).cuda()
+    # model1 = SmallLinearBlock(num_imgs).cuda()
     # model = SmallSMBlockPY(num_imgs).cuda()
     # model1 = SmallSMBlock(num_imgs).cuda()
     # model = SmallSMModelDn3DPY(3, num_imgs).cuda()
     # model1 = SmallSMModelDn3D(3, num_imgs).cuda()
 
     # image1 = image.detach().clone()
-    img_shape = (num_imgs, N, N)
-    rhs_shape = (1, 1, N, N)
+    img_shape = (num_imgs, N, N, N)
+    rhs_shape = (1, 1, N, N, N)
     image = flags.reshape(img_shape).cuda()
     # image = torch.rand(3, 2*N, N).cuda()
-    x = rhs.reshape(rhs_shape).expand((16,)+ img_shape).cuda()
-    x.requires_grad = True
+    # x = rhs.reshape(rhs_shape).expand((2,)+ img_shape).cuda()
+    # x.requires_grad = True
     x1 = rhs.reshape(rhs_shape).expand((16,)+ img_shape).cuda()
     x1.requires_grad = True
 
     # torch.set_grad_enabled(False)
-    model1.eval()
-    print(model1.training)
+    # model1.eval()
+    # print(model1.training)
     for _ in range(10):
-        y = model(image, x)
+        # y = model(image, x)
         y1 = model1(image, x1)
-        y.sum().backward()
+        # y.sum().backward()
         y1.sum().backward()
 
     torch.cuda.synchronize()
 
-    iters = 1
+    iters = 100
     forward = 0.0
     backward = 0.0
     for _ in range(iters):
         start = time.time()
-        y = model(image, x)
+        # y = model(image, x)
         torch.cuda.synchronize()
         forward += time.time() - start
 
         start = time.time()
-        y.sum().backward()
+        # y.sum().backward()
         torch.cuda.synchronize()
         backward += time.time() - start
 
