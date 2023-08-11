@@ -11,6 +11,9 @@ import struct
 import numpy as np
 import scipy.sparse as sparse
 
+SOLID = 1
+FLUID = 2
+AIR = 3
 
 def read_flags(file, dtype='int32'):
     len_size_t = 8
@@ -21,6 +24,19 @@ def read_flags(file, dtype='int32'):
         b = struct.unpack(f'{N}i', f.read(length * N))
     b = np.array(b, dtype=dtype)
     return b
+
+def convert_to_binary_images(image, num_imgs):
+    if num_imgs == 1:
+        return np.where(image == FLUID, 1, 0).reshape((1,)+image.shape)
+    if num_imgs == 2:
+        air_img = np.where(image == AIR, 1, 0)
+        solid_img = np.where(image <= SOLID, 0, 1)
+        return np.stack([air_img, solid_img])
+    elif num_imgs == 3:
+        air_img = np.where(image == AIR, 1, 0)
+        fluid_img = np.where(image == FLUID, 1, 0)
+        solid_img = np.where(image <= SOLID, 0, 1)
+        return np.stack([air_img, fluid_img, solid_img])
 
 def load_vector(data_folder_name, normalize = False, dtype='double'):
     if(os.path.exists(data_folder_name)):
@@ -155,11 +171,11 @@ def expandVec(b, flags):
     return v
 
 if __name__ == '__main__':
-    frame = 200
-    N = 1024
+    frame = 1
+    N = 64
     DIM = 2
     prefix = ''
-    bc = 'circles_solid'
+    bc = 'dambreak'
     if DIM == 2:
         suffix = ''
     else:
@@ -172,20 +188,26 @@ if __name__ == '__main__':
     rhs = load_vector(file_rhs)
     sol = load_vector(file_sol)
 
-    flags = read_flags(file_flags)
+    b = load_vector('div_v_star_10.bin')
+    print(b.shape)
+    # print(A.shape)
+    # flags = read_flags(file_flags)
+    # flags_binray = convert_to_binary_images(flags)
+    # print(flags_binray.shape)
+    # air = np.where(flags == 3)[0]
+    # fluid = np.where(flags == 2)[0]
+    # solid = np.where(flags == 0)[0]
 
-    air = np.where(flags == 3)[0]
-    fluid = np.where(flags == 2)[0]
-    solid = np.where(flags == 0)[0]
 
+    # print('fluid cells:', len(fluid), 'air cells:', len(air), 'solid cells', len(solid))
 
-    print('fluid cells:', len(fluid), 'air cells:', len(air), 'solid cells', len(solid))
-
-    A = compressedMat(A, flags)
-    rhs = compressedVec(rhs, flags)
-    sol = compressedVec(sol, flags)
-    print(len(rhs))
+    # A = compressedMat(A, flags)
+    # rhs = compressedVec(rhs, flags)
+    # sol = compressedVec(sol, flags)
+    # print(len(rhs))
+    print(rhs.shape, A.shape, sol.shape)
     r = rhs - A @ sol
-    print(np.linalg.norm(r))
-    print(A.shape)
+    r_norm = np.linalg.norm(r)
+    b_norm = np.linalg.norm(rhs)
+    print(r_norm, r_norm/b_norm)
 

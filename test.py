@@ -17,40 +17,45 @@ torch.set_grad_enabled(False) # disable autograd globally
 pcg_precision = torch.float32
 torch.set_default_dtype(pcg_precision)
 
-N = 512
+N = 256
 DIM = 2
 norm_type = 'l2'
-
+num_imgs = 3
+shape = (N, N//2)
 # train_matrices = set(np.load(f"{OUT_PATH}/output_{DIM}D_{N}/matrices_trained_50.npy"))
-# frames = set(np.arange(1, 151)) - train_matrices
 # frame = list(frames)[80] # Random frame
 # frames = range(1, 201)
-frames = [100]
-device = torch.device('cpu')
+frames = np.linspace(1, 200, 50, dtype=int)
+# frames = [111]
+
+device = torch.device('cuda')
 amgcg_time, amgcg_iters = [], []
 cg_time, cg_iters = [], []
 mlpcg_time, mlpcg_iters = [], []
 
 if DIM == 2:
-    scene = f'wedge_N{N}_200'
+    scene = f'dambreak_pillars_N{N//2}_N{N}_200'
 else:
     scene = f'dambreak_N{N}_200_{DIM}D'
 
-NN = 1024
+NN = 256
 num_mat = 10
-num_ritz = 1600
-num_rhs = 800
+num_ritz = 800
+num_rhs = 400
 
-fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_single_{DIM}D_{NN}", "checkpt_dambreak_frame_1_rhs_1600_2D_linear.tar")
-# fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res.tar")
-fluidnet_model_res = SmallSMModelDn3D(2) if DIM == 3 else SmallSMModelDnPY(5)
+# fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_single_{DIM}D_{NN}", "checkpt_dambreak_frame_1_rhs_1600_2D_linear.tar")
+fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_10.tar")
+fluidnet_model_res = SmallSMModelDn3D(2) if DIM == 3 else SmallSMModelDn(4, num_imgs)
 fluidnet_model_res.move_to(device)
-fluidnet_model_res.load_state_dict(torch.load(fluidnet_model_res_file, map_location=device)['model_state_dict'])
+state_dict = torch.load(fluidnet_model_res_file, map_location=device)['model_state_dict']
+for key in list(state_dict.keys()):
+    state_dict[key.replace('.KL', '')] = state_dict.pop(key)
+fluidnet_model_res.load_state_dict(state_dict)
 fluidnet_model_res.eval()
 
 verbose = False
 cg_max_iter = 1500
-pcg_max_iter = 200
+pcg_max_iter = 500
 tol = 1e-4
 atol = 1e-10 # safe guard for small rhs
 
@@ -58,7 +63,7 @@ def fluidnet_predict(fluidnet_model, image):
     def predict(r):
         with torch.no_grad():
             r = normalize(r, dim=0)
-            x = fluidnet_model.eval_forward(image.view((1,)+(N,)*DIM).float(), r.view((1, 1)+(N,)*DIM).float()).flatten().double()
+            x = fluidnet_model.eval_forward(image.view((num_imgs,)+shape).float(), r.view((1, 1)+shape).float()).flatten().double()
         return x
     return predict
 
@@ -83,6 +88,7 @@ for frame in frames:
     A_sp = readA_sparse(os.path.join(dambreak_path, f"A_{frame}.bin")).astype(np.float64)
     rhs_sp = load_vector(os.path.join(dambreak_path, f"div_v_star_{frame}.bin")).astype(np.float64)
     flags_sp = read_flags(os.path.join(dambreak_path, f"flags_{frame}.bin"))
+    flags_sp = convert_to_binary_images(flags_sp, num_imgs)
 
     A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float64, device=device)
     rhs = torch.tensor(rhs_sp, dtype=torch.float64, device=device)

@@ -125,6 +125,7 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
 
   const int p = innerBlock * blockDim.x + threadIdx.x;
   if (p >= WEIGHT_SIZE + KERNEL_SIZE) return; // Wasted threads
+
   const int idx_kl = p / (NUM_IMAGES*KERNEL_SIZE + 1);
   const int kl = idx_kl % 3;
   const int l = (idx_kl / 3) % 3;

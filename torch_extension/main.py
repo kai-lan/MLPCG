@@ -5,7 +5,6 @@ import torch.optim as optim
 import sys
 sys.path.append("..")
 from sm_model import *
-from sm_model_3colors import *
 
 if __name__ == '__main__':
     import time
@@ -17,7 +16,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = False
 
     bs = 4
-    N = 24
+    N = 64
     image = torch.rand(3, N, N, N, device=cuda_device)
     image1 = image.detach().clone()
 
@@ -25,26 +24,26 @@ if __name__ == '__main__':
     x1 = x.detach().clone()
     x1.requires_grad = True
 
-    model = SmallLinearBlock3DPY(3).to(cuda_device)
-    model1 = SmallLinearBlock3D(3).to(cuda_device)
+    model = SmallSMModelDn3DPY(3, 3).to(cuda_device)
+    model1 = SmallSMModelDn3D(3, 3).to(cuda_device)
 
-    model.KL.weight.requires_grad = True
-    model.KL.bias.requires_grad = True
-    model1.weight.requires_grad = True
-    model1.bias.requires_grad = True
+    # model.KL.weight.requires_grad = True
+    # model.KL.bias.requires_grad = True
+    # model1.weight.requires_grad = True
+    # model1.bias.requires_grad = True
     y = model(image, x)
-    yy = model1(image1, x1)
+    yy = model1(image, x1)
     print((y - yy).abs().max())
 
     y.sum().backward()
     yy.sum().backward()
 
-    print((model.KL.weight.grad - model1.weight.grad).abs().max())
-    print((model.KL.bias.grad - model1.bias.grad).abs().max())
+    print((model.post[0].KL.weight.grad - model1.post[0].weight.grad).abs().max())
+    print((model.post[0].KL.bias.grad - model1.post[0].bias.grad).abs().max())
 
     # print((x.grad - x1.grad).abs().max())
     # torch.use_deterministic_algorithms(True)
-    torch.autograd.gradcheck(SMLinearFunction3D.apply, (image, model.KL.weight, model.KL.bias), nondet_tol=1e-13, fast_mode=True)
+    # torch.autograd.gradcheck(SMBlockFunction3D.apply, (image, x, model.KL.weight, model.KL.bias), nondet_tol=1e-13, fast_mode=False)
 
     # forward = 0
     # backward = 0

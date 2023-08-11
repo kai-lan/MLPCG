@@ -101,9 +101,9 @@ def worker(frames):
 
 np.random.seed(2)
 
-N = 256
-DIM = 3
-scene = 'dambreak'
+N = 1024
+DIM = 2
+scene = 'standing_rotating_blade'
 if DIM == 2:
     dir = f"{DATA_PATH}/{scene}_N{N}_200"
 else: dir = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
@@ -116,11 +116,10 @@ num_ritz_vectors = 1600
 
 
 if __name__ == '__main__':
-
     t0 = time.time()
-    total_work = np.linspace(1, 200, 10, dtype=int)[6:]
+    total_work = np.linspace(1, 200, 10, dtype=int)
     # total_work = [23]
-    num_threads = 4
+    num_threads = 10
 
     chunks = np.array_split(total_work, num_threads)
     thread_list = []

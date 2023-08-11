@@ -7,13 +7,32 @@ import torch
 
 path = os.path.dirname(os.path.realpath(__file__))
 
-def vis_flags(frame):
+def vis_flags(frame, shape):
     file_flags = os.path.join(example_folder, f"flags_{frame}.bin")
     flags = read_flags(file_flags)
-    flags = flags.reshape((N,)*DIM)
+    flags = flags.reshape(shape)
     plt.imshow(flags.T, origin='lower', cmap='jet')
     plt.colorbar()
     plt.savefig(f"{path}/flags_{DIM}d_{N}.png", bbox_inches="tight")
+    plt.close()
+    return flags
+
+def vis_flags_binary(frame, shape, num_imgs):
+    file_flags = os.path.join(example_folder, f"flags_{frame}.bin")
+    flags = read_flags(file_flags)
+    flags = flags.reshape(shape)
+    flags = convert_to_binary_images(flags, num_imgs)
+    plt.imshow(flags[0].T, origin='lower', cmap='jet')
+    plt.colorbar()
+    plt.savefig(f"{path}/flags_{DIM}d_{N}_air.png", bbox_inches="tight")
+    plt.close()
+    plt.imshow(flags[1].T, origin='lower', cmap='jet')
+    plt.colorbar()
+    plt.savefig(f"{path}/flags_{DIM}d_{N}_fluid.png", bbox_inches="tight")
+    plt.close()
+    plt.imshow(flags[2].T, origin='lower', cmap='jet')
+    plt.colorbar()
+    plt.savefig(f"{path}/flags_{DIM}d_{N}_solid.png", bbox_inches="tight")
     plt.close()
     return flags
 
@@ -62,27 +81,31 @@ def plot_loss(data_path, suffix):
     axes[1].set_title("Validation")
     plt.savefig(f"{path}/loss.png", bbox_inches="tight")
 
-def visualize_frame_by_frame(num_frames):
+def visualize_frame_by_frame(num_frames, shape):
     import time
     time.sleep(1)
     for i in range(1, num_frames+1):
-        vis_flags(i)
+        vis_flags(i, shape)
         time.sleep(0.1)
 
 if __name__ == '__main__':
-    N = 1024
-    DIM = 2
-    example_folder = os.path.join(DATA_PATH, f"circles_solid_N{N}_200")
+    N = 64
+    DIM = 3
 
+    # example_folder = os.path.join(DATA_PATH, f"waterflow_rotating_cube_N{N}_200")
+    example_folder = '../TGSL/tgsl/projects/incompressible_flow/build_3D/dambreak_bunny_N64_200_3D'
 
-    frame = 200
-    flags = vis_flags(frame)
-
+    frame = 1
+    if len(sys.argv) > 1:
+        frame = int(sys.argv[1])
+    flags = vis_flags(frame, (2*N, N))
+    # flags = vis_flags_binary(frame, (N*3, N), 3)
+    print(flags.min(), flags.max())
 
     # plot_loss(f"{OUT_PATH}/output_{DIM}D_64", "dambreak_M100_ritz100_rhs200_res_binary")
     # rhs = vis_div_v(frame, masked=False)
     # sol = vis_pressure(frame, masked=False)
-    # visualize_frame_by_frame(200)
+    # visualize_frame_by_frame(200, (N, N))
     # res = np.load(example_folder + "/b_res_60.npy")
     # weight = vis_weight(frame)
     # plt.imshow(res.reshape((N,)*DIM, order='F'), origin='lower', cmap='jet')

@@ -14,7 +14,6 @@ from lib.dataset import *
 from lib.GLOBAL_VARS import *
 from model import *
 from sm_model import *
-from sm_model_3colors import *
 import matplotlib.pyplot as plt
 
 def move_data(data, device):
@@ -143,31 +142,34 @@ if __name__ == '__main__':
     lr = 0.001
     epoch_num_per_matrix = 5
     epoch_num = 50
-    bc = 'dambreak'
+    epochs_per_save = 5
+    bcs = ['dambreak', 'dambreak_hill', 'two_balls', 'ball_cube', 'ball_bowl', 'standing_dipping_block',
+          'standing_rotating_blade', 'waterflow', 'waterflow_panels', 'waterflow_rotating_cube']
     b_size = 16 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
     total_matrices = 10 # number of matrices chosen for training
     num_ritz = 800
     num_rhs = 400 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
     num_imgs = 3
+    num_levels = 4
     cuda = torch.device("cuda") # Use CUDA for training
 
     log = LoggingWriter()
 
-    resume = True
+    resume = False
     loss_type = 'res'
 
     if loss_type == 'res':
-        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_res'
+        suffix = f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_res'
         loss_fn = "model.residual_loss"
     elif loss_type == 'eng':
-        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_eng'
+        suffix = f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_eng'
         loss_fn = "model.energy_loss"
     elif loss_type == 'scaled2':
-        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaled2'
+        suffix = f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaled2'
         loss_fn = "model.scaled_loss_2"
     elif loss_type == 'scaledA':
-        suffix = f'{bc}_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaledA'
+        suffix = f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_scaledA'
         loss_fn = "model.scaled_loss_A"
     else:
         raise Exception("No such loss type")
@@ -177,14 +179,9 @@ if __name__ == '__main__':
     os.makedirs(outdir, exist_ok=True)
 
     if DIM == 2:
-        inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")
+        model = SmallSMModelDn(num_levels, num_imgs)
     else:
-        inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200_{DIM}D/preprocessed")
-
-    if DIM == 2:
-        model = SmallSMModel3ColorsDnPY(4, num_imgs)
-    else:
-        model = SmallSMModelDn3D(3)
+        model = SmallSMModelDn3D(num_levels, num_imgs)
     model.move_to(cuda)
     loss_fn = eval(loss_fn)
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -221,25 +218,33 @@ if __name__ == '__main__':
     start_time = time.time()
 
     for i in range(1, epoch_num+1):
-        print(f"Epoch: {i}/{epoch_num}")
         tl, vl = 0.0, 0.0
-        for j in matrices:
-            print('Matrix', j)
-            train_set.data_folder = os.path.join(f"{inpdir}/{j}")
-            valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
-            A = torch.load(f"{train_set.data_folder}/A.pt").to_sparse_csr().cuda()
-            image = torch.load(f"{train_set.data_folder}/flags_binary_{num_imgs}.pt").view((num_imgs,)+(N,)*DIM).cuda()
+        for bc in bcs:
+            if DIM == 2: inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200/preprocessed")
+            else:        inpdir = os.path.join(DATA_PATH, f"{bc}_N{N}_200_{DIM}D/preprocessed")
+            for j in matrices:
+                print(f"Epoch: {i}/{epoch_num}")
+                print(bc)
+                print('Matrix', j)
+                train_set.data_folder = os.path.join(f"{inpdir}/{j}")
+                valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
+                A = torch.load(f"{train_set.data_folder}/A.pt").to_sparse_csr().cuda()
+                image = torch.load(f"{train_set.data_folder}/flags_binary_{num_imgs}.pt").view((num_imgs,)+(N,)*DIM).cuda()
 
-            fluid_cells = np.load(f"{train_set.data_folder}/fluid_cells.npy")
-            training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
-            tl += np.sum(training_loss_)
-            vl += np.sum(validation_loss_)
-            grad_history.extend(grad_history_)
-            update_history.extend(update_history_)
+                fluid_cells = np.load(f"{train_set.data_folder}/fluid_cells.npy")
+                training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
+
+                tl += np.sum(training_loss_)
+                vl += np.sum(validation_loss_)
+                grad_history.extend(grad_history_)
+                update_history.extend(update_history_)
         train_loss.append(tl)
         valid_loss.append(vl)
         time_history.append(time.time() - start_time)
         saveData(model, optimizer, i+start_epoch, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history)
+        if i % 5 == 0:
+            saveData(model, optimizer, i+start_epoch, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history)
+
     end_time = time.time()
     print("Took", end_time-start_time, 's')
 

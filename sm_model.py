@@ -313,7 +313,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.allow_tf32 = True # for debugging
     # torch.use_deterministic_algorithms(True)
 
-    N = 128
+    N = 64
     frame = 100
     num_imgs = 3
 
@@ -331,7 +331,7 @@ if __name__ == '__main__':
 
     # torch.set_grad_enabled(False) # disable autograd globally
 
-    # model = SmallSMBlock3DPY(num_imgs).cuda()
+    model = SmallSMBlock3DPY(num_imgs).cuda()
     model1 = SmallSMBlock3D(num_imgs).cuda()
     # model = SmallLinearBlockPY(num_imgs).cuda()
     # model1 = SmallLinearBlock(num_imgs).cuda()
@@ -345,8 +345,8 @@ if __name__ == '__main__':
     rhs_shape = (1, 1, N, N, N)
     image = flags.reshape(img_shape).cuda()
     # image = torch.rand(3, 2*N, N).cuda()
-    # x = rhs.reshape(rhs_shape).expand((2,)+ img_shape).cuda()
-    # x.requires_grad = True
+    x = rhs.reshape(rhs_shape).expand((16,)+ img_shape).cuda()
+    x.requires_grad = True
     x1 = rhs.reshape(rhs_shape).expand((16,)+ img_shape).cuda()
     x1.requires_grad = True
 
@@ -354,9 +354,9 @@ if __name__ == '__main__':
     # model1.eval()
     # print(model1.training)
     for _ in range(10):
-        # y = model(image, x)
+        y = model(image, x)
         y1 = model1(image, x1)
-        # y.sum().backward()
+        y.sum().backward()
         y1.sum().backward()
 
     torch.cuda.synchronize()
@@ -366,12 +366,12 @@ if __name__ == '__main__':
     backward = 0.0
     for _ in range(iters):
         start = time.time()
-        # y = model(image, x)
+        y = model(image, x)
         torch.cuda.synchronize()
         forward += time.time() - start
 
         start = time.time()
-        # y.sum().backward()
+        y.sum().backward()
         torch.cuda.synchronize()
         backward += time.time() - start
 
