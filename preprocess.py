@@ -6,14 +6,13 @@ import torch
 from lib.read_data import *
 from tqdm import tqdm
 from multiprocessing import Process
-from numba import njit, prange
 import time
 import warnings
 warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
 torch.set_grad_enabled(False)
 
-DIM = 2
-N = 256
+DIM = 3
+N = 64
 ortho = True
 num_imgs = 3
 
@@ -21,17 +20,17 @@ num_imgs = 3
 matrices = np.linspace(1, 200, 10, dtype=int)
 # matrices = [200]
 scenes = [
-    'dambreak',
-    'dambreak_hill',
-    'two_balls',
-    'ball_cube',
-    'ball_bowl',
-    'standing_dipping_block',
-    'standing_rotating_blade',
-    'waterflow',
-    'waterflow_panels',
-    'waterflow_rotating_cube'
-    ]
+    f'dambreak_N{N}',
+    f'dambreak_hill_N{N}_N{2*N}',
+    f'two_balls_N{N}',
+    f'ball_cube_N{N}',
+    f'ball_bowl_N{N}',
+    f'standing_dipping_block_N{N}',
+    f'standing_rotating_blade_N{N}',
+    f'waterflow_pool_N{N}',
+    f'waterflow_panels_N{N}',
+    f'waterflow_rotating_cube_N{N}'
+]
 
 
 # matrices = np.load(f"{data_folder}/train_mat.npy")
@@ -90,9 +89,9 @@ def worker(indices):
     print('Process id', os.getpid())
     for scene in scenes:
         if DIM == 2:
-            data_folder = f"{DATA_PATH}/{scene}_N{N}_200"
+            data_folder = f"{DATA_PATH}/{scene}_200"
         else:
-            data_folder = f"{DATA_PATH}/{scene}_N{N}_200_{DIM}D"
+            data_folder = f"{DATA_PATH}/{scene}_200_{DIM}D"
         for index in indices:
             out_folder = f"{data_folder}/preprocessed/{index}"
             rhs_np = load_vector(os.path.join(data_folder, f"div_v_star_{index}.bin"))

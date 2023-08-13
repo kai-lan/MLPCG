@@ -263,7 +263,14 @@ class SmallSMModelDn3D(BaseModel):
         for i in range(self.n, 0, -1):
             x[i] = F.interpolate(x[i], scale_factor=2)
             x[i] = self.post[i-1](imgs[i-1], x[i])
-            x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
+            c0 = self.c0[i-1](imgs[i-1])
+            c1 = self.c1[i-1](imgs[i-1])
+            s = abs(c0) + abs(c1)
+            # s = torch.sqrt(c0**2 + c1**2)
+            c0 = c0 / s
+            c1 = c1 / s
+            x[i-1] = c0 * x[i-1] + c1 * x[i]
+            # x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
 
         return x[0]
 
@@ -317,10 +324,10 @@ if __name__ == '__main__':
     frame = 100
     num_imgs = 3
 
-    # file_A = os.path.join(path, "data_fluidnet", "dambreak_2D_64", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"div_v_star_{frame}.bin")
-    # file_sol = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"flags_{frame}.bin")
+    # file_A = os.path.join(path, "data_fluidnet", "ball_cube_2D_64", f"A_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"ball_cube_N{N}_200_3D", f"div_v_star_{frame}.bin")
+    # file_sol = os.path.join(DATA_PATH, f"ball_cube_N{N}_200_3D", f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"ball_cube_N{N}_200_3D", f"flags_{frame}.bin")
     # A = readA_sparse(64, file_A, DIM=2)
     rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32)
     flags = torch.tensor(convert_to_binary_images(read_flags(file_flags), num_imgs), dtype=torch.float32)
