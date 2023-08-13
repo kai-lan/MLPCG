@@ -170,7 +170,7 @@ class SmallLinearBlock3DPY(BaseModel):
 ######################
 # General SmallSM model for any number of coarsening levels
 class SmallSMModelDn(BaseModel):
-    def __init__(self, n, num_imgs):
+    def __init__(self, n, num_imgs, normalize=''):
         super().__init__()
         self.n = n
         self.pre = nn.ModuleList([SmallSMBlock(num_imgs) for _ in range(n)])
@@ -181,6 +181,7 @@ class SmallSMModelDn(BaseModel):
         self.c0 = nn.ModuleList([SmallLinearBlock(num_imgs) for _ in range(n)])
         self.c1 = nn.ModuleList([SmallLinearBlock(num_imgs) for _ in range(n)])
 
+        self.normalize = normalize
     def forward(self, image, b):
         x = [self.pre[0](image, b)]
         imgs = [image]
@@ -199,11 +200,15 @@ class SmallSMModelDn(BaseModel):
             x[i] = self.post[i-1](imgs[i-1], x[i])
             c0 = self.c0[i-1](imgs[i-1])
             c1 = self.c1[i-1](imgs[i-1])
-            s = torch.sqrt(c0**2 + c1**2)
-            c0 = c0 / s
-            c1 = c1 / s
+            if self.normalize == 'abs_sum':
+                s = c0.abs() + c1.abs()
+                c0 = c0 / s
+                c1 = c1 / s
+            elif self.normalize == '2_norm':
+                s = torch.sqrt(c0**2 + c1**2)
+                c0 = c0 / s
+                c1 = c1 / s
             x[i-1] = c0 * x[i-1] + c1 * x[i]
-            # x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
 
         return x[0]
 
@@ -242,7 +247,7 @@ class SmallSMModelDnPY(BaseModel):
 
 # 3D: General SmallSM model for any number of coarsening levels
 class SmallSMModelDn3D(BaseModel):
-    def __init__(self, n, num_imgs):
+    def __init__(self, n, num_imgs, normalize=''):
         super().__init__()
         self.n = n
         self.pre = nn.ModuleList([SmallSMBlock3D(num_imgs) for _ in range(n)])
@@ -253,6 +258,7 @@ class SmallSMModelDn3D(BaseModel):
         self.c0 = nn.ModuleList([SmallLinearBlock3D(num_imgs) for _ in range(n)])
         self.c1 = nn.ModuleList([SmallLinearBlock3D(num_imgs) for _ in range(n)])
 
+        self.normalize = normalize
     def forward(self, image, b):
         x = [self.pre[0](image, b)]
         imgs = [image]
@@ -271,12 +277,19 @@ class SmallSMModelDn3D(BaseModel):
             x[i] = self.post[i-1](imgs[i-1], x[i])
             c0 = self.c0[i-1](imgs[i-1])
             c1 = self.c1[i-1](imgs[i-1])
-            s = abs(c0) + abs(c1)
-            # s = torch.sqrt(c0**2 + c1**2)
-            c0 = c0 / s
-            c1 = c1 / s
+
+            if self.normalize == 'abs_sum':
+                print('abs_sum')
+                s = c0.abs() + c1.abs()
+                c0 = c0 / s
+                c1 = c1 / s
+            elif self.normalize == '2_norm':
+                print('2_norm')
+                s = torch.sqrt(c0**2 + c1**2)
+                c0 = c0 / s
+                c1 = c1 / s
+
             x[i-1] = c0 * x[i-1] + c1 * x[i]
-            # x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
 
         return x[0]
 

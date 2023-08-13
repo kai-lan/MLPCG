@@ -17,16 +17,16 @@ torch.set_grad_enabled(False) # disable autograd globally
 pcg_precision = torch.float32
 torch.set_default_dtype(pcg_precision)
 
-N = 256
-DIM = 2
+N = 64
+DIM = 3
 norm_type = 'l2'
 num_imgs = 3
-shape = (N, N//2)
+shape = (N,) + (N,)*(DIM-1)
 # train_matrices = set(np.load(f"{OUT_PATH}/output_{DIM}D_{N}/matrices_trained_50.npy"))
 # frame = list(frames)[80] # Random frame
 # frames = range(1, 201)
-frames = np.linspace(1, 200, 50, dtype=int)
-# frames = [111]
+# frames = np.linspace(1, 200, 50, dtype=int)
+frames = [111]
 
 device = torch.device('cuda')
 amgcg_time, amgcg_iters = [], []
@@ -34,18 +34,18 @@ cg_time, cg_iters = [], []
 mlpcg_time, mlpcg_iters = [], []
 
 if DIM == 2:
-    scene = f'dambreak_pillars_N{N//2}_N{N}_200'
+    scene = f'dambreak_pillars_N{N}_N{2*N}_200'
 else:
     scene = f'dambreak_N{N}_200_{DIM}D'
 
-NN = 256
+NN = 64
 num_mat = 10
 num_ritz = 800
 num_rhs = 400
-
+normalize_type = '2_norm'
 # fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_single_{DIM}D_{NN}", "checkpt_dambreak_frame_1_rhs_1600_2D_linear.tar")
-fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_10.tar")
-fluidnet_model_res = SmallSMModelDn3D(2) if DIM == 3 else SmallSMModelDn(4, num_imgs)
+fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_normalized_{normalize_type}.tar")
+fluidnet_model_res = SmallSMModelDn3D(2, num_imgs, normalize_type) if DIM == 3 else SmallSMModelDn(4, num_imgs, normalize_type)
 fluidnet_model_res.move_to(device)
 state_dict = torch.load(fluidnet_model_res_file, map_location=device)['model_state_dict']
 for key in list(state_dict.keys()):
