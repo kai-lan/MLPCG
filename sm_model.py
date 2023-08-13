@@ -197,7 +197,13 @@ class SmallSMModelDn(BaseModel):
         for i in range(self.n, 0, -1):
             x[i] = F.interpolate(x[i], scale_factor=2)
             x[i] = self.post[i-1](imgs[i-1], x[i])
-            x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
+            c0 = self.c0[i-1](imgs[i-1])
+            c1 = self.c1[i-1](imgs[i-1])
+            s = torch.sqrt(c0**2 + c1**2)
+            c0 = c0 / s
+            c1 = c1 / s
+            x[i-1] = c0 * x[i-1] + c1 * x[i]
+            # x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
 
         return x[0]
 
