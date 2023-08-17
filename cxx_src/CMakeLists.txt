@@ -4,8 +4,8 @@ project(myamgcl CUDA CXX)
 
 set(CMAKE_BUILD_TYPE Release)
 
-set(USE_VEXCL ON)
-set(USE_CUDA OFF)
+set(USE_VEXCL OFF)
+set(USE_CUDA ON)
 set(MIXED_PRECISION ON)
 
 if (USE_VEXCL)

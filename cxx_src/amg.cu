@@ -38,7 +38,7 @@ int main(int argc, char* argv[]){
 	VXT x(dim);
 	x.setZero();
 
-	Eigen::SparseMatrix<T> A(dim,dim);
+	SpMat A(dim,dim);
    	IO::Eigen::Deserialize(A, config.matrix);
 
 	AMGCLSolver amgcl(config);
