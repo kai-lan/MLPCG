@@ -36,6 +36,8 @@ find_package(Boost REQUIRED COMPONENTS
   unit_test_framework
 )
 
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+
 include_directories(${CMAKE_SOURCE_DIR}/amgcl)
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 include_directories(SYSTEM ${CMAKE_SOURCE_DIR}/lib/)
@@ -78,9 +80,9 @@ else()
 endif()
 
 if (USE_VEXCL)
-  target_link_libraries(myamgcl VexCL::CUDA VexCL::OpenCL)
+  target_link_libraries(myamgcl VexCL::CUDA VexCL::OpenCL Eigen3::Eigen)
 elseif (USE_CUDA)
-  target_link_libraries(myamgcl cuda_target)
+    target_link_libraries(myamgcl cuda_target Eigen3::Eigen)
 endif()
 
 # if (NOT WIN32)

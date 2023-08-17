@@ -92,5 +92,6 @@ class AMGCLSolver {
   int n;
 };
 
+#include "AMGCLSolver.inl"
 
 #endif

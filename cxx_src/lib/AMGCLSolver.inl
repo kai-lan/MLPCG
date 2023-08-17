@@ -1,6 +1,3 @@
-#include "AMGCLSolver.h"
-
-
 AMGCLSolver::AMGCLSolver(const SpMat& A, const SolverConfig& _config) : config(_config) {
   #ifdef USE_VEXCL
     std::cout << "Using VexCL" << std::endl;

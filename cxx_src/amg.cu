@@ -2,7 +2,7 @@
 #include "BinaryIO.h"
 #include "MPIDomain.h"
 #include "SolverConfig.h"
-
+#include <chrono>
 
 int main(int argc, char* argv[]){
 
