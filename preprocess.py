@@ -12,7 +12,7 @@ warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in
 torch.set_grad_enabled(False)
 
 DIM = 3
-N = 64
+N = 128
 ortho = True
 num_imgs = 3
 
@@ -34,8 +34,8 @@ scenes = [
 
 
 # matrices = np.load(f"{data_folder}/train_mat.npy")
-num_ritz_vectors = 800
-num_rhs = 400
+num_ritz_vectors = 1600
+num_rhs = 800
 
 def createTrainingData(N, DIM, ritz_vectors, sample_size, fluid_cells, outdir, suffix=''):
     # small_matmul_size = 100 # Small mat size for temp data
@@ -130,7 +130,7 @@ def worker(indices):
 if __name__ == '__main__':
     t0 = time.time()
     total_work = matrices
-    num_threads = 10
+    num_threads = len(total_work)
     chunks = np.array_split(total_work, num_threads)
     thread_list = []
     for thr in range(num_threads):

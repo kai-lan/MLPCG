@@ -9,10 +9,13 @@
 #include <random>
 #include <string>
 #include <vector>
+#include <limits.h>
 
 // Headers for error handling & debugging
 #include <cassert>
 #include <stdexcept>
+#include <Eigen/Core>
+#include <Eigen/Sparse>
 
 
 #ifndef DEFINITIONS_INCLUDED
@@ -90,6 +93,10 @@ using Vector4T = std::array<T, 4>;
 using Vector2I = std::array<nm, 2>;
 using Vector3I = std::array<nm, 3>;
 using Vector4I = std::array<nm, 4>;
+
+using SpMat = Eigen::SparseMatrix<T, Eigen::RowMajor>;
+using Trip = Eigen::Triplet<T>;
+using VXT = Eigen::Matrix<T, Eigen::Dynamic, 1>;
 
 enum class Cell : unsigned char { active, exterior, inactive };
 

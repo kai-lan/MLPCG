@@ -132,47 +132,37 @@ def AMGCG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
 if __name__ == '__main__':
     import sys
     sys.path.append('lib')
+    import time
     from lib.read_data import *
     N = 1024
     frame = 1
     scene = 'dambreak'
-    flags = read_flags(f"data/{scene}_N{N}_200/flags_{frame}.bin")
-    fluids = np.argwhere(flags == 2)
-    air = np.argwhere(flags == 3)
+    # flags = read_flags(f"data/{scene}_N{N}_200/flags_{frame}.bin")
+    # fluids = np.argwhere(flags == 2)
+    # air = np.argwhere(flags == 3)
 
-    sol = load_vector(f"data/{scene}_N{N}_200/pressure_{frame}.bin")
-    rhs = load_vector(f"data/{scene}_N{N}_200/div_v_star_{frame}.bin")
-    A = readA_sparse(f"data/{scene}_N{N}_200/A_{frame}.bin")
-
+    # sol = load_vector(f"data/{scene}_N{N}_200/pressure_{frame}.bin")
+    # rhs = load_vector(f"data/{scene}_N{N}_200/div_v_star_{frame}.bin")
+    # A = readA_sparse(f"data/{scene}_N{N}_200/A_{frame}.bin")
+    rhs = load_vector("cxx_src/test_data/b_999.bin")
+    A = readA_sparse("cxx_src/test_data/A_999.bin")
     # rhs = compressedVec(rhs, flags)
     # A = compressedMat(A, flags)
-    # rr = []
-    # def callback(x):
-    #     r = rhs - A @ x
-    #     rr.append(r)
-    #     print(np.linalg.norm(r))
 
-    x, res = AMGCG(rhs.astype(np.float32), A.astype(np.float32), np.zeros_like(rhs).astype(np.float32), tol=1e-5, max_it=100, callback=None)
-    for i, r in enumerate(res):
-        print(i, r)
+    # start = time.time()
+    # for _ in range(100):
+    #     x, res = AMGCG(rhs.astype(np.float32), A.astype(np.float32), np.zeros_like(rhs).astype(np.float32), tol=1e-4, max_it=100, callback=None)
+    # end = time.time()
+    # print("Time:", (end-start)/100, "s.")
+
     # x, res = CG(rhs.astype(np.float32), A.astype(np.float32), np.zeros_like(rhs).astype(np.float32), max_it=100, tol=1e-4, verbose=True)
-    # rhs_cp, A_cp = cp.array(rhs, dtype=np.float64), cpsp.csr_matrix(A, dtype=np.float64)
-    # x_cg_cp, res_cg_cp = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), 3000, tol=1e-4, verbose=True)
 
-    # r = np.empty((361, A.shape[0]), dtype=np.float64)
-    # for i in range(860):
-    #     r = np.load(f"res_{i}.npy")
-    #     torch.save(torch.tensor(r, dtype=torch.float32), f"data/{scene}_N{N}_200/preprocessed/{frame}/b_{i}_res.pt")
-    # coeff =np.random.rand(400, 361)
-    # for i in range(361):
-    #     coeff[:, i] *= 361- i
-    # rr = coeff @ r
-    # for i in range(400):
-        # rr[i] /= np.linalg.norm(rr[i])
-        # torch.save(torch.tensor(rr[i], dtype=torch.float32), f"data/{scene}_N{N}_200/preprocessed/{frame}/b_{i}_res.pt")
-    # for i in range(80, 90):
-    #     r_i = np.load(f"res_{i}.npy")
-    #     for j in range(i-10, i):
-    #         r_j = np.load(f"res_{j}.npy")
-    #         dot = r_i.dot(r_j)
-    #         print(i, j, dot)
+
+    rhs_cp, A_cp = cp.array(rhs, dtype=np.float64), cpsp.csr_matrix(A, dtype=np.float64)
+    start = time.time()
+    for _ in range(100):
+        x_cg_cp, res_cg_cp = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), 3000, tol=1e-4, verbose=False)
+    end = time.time()
+    print("Time:", (end-start)/100, "s.")
+
+

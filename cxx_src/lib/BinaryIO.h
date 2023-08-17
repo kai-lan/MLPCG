@@ -1,10 +1,6 @@
 #ifndef BINARY_IO_H
 #define BINARY_IO_H
 
-//#include "AlembicIO.h"
-//#include "ZIP.h"
-
-
 #include <fstream>
 #include <iostream>
 #include <unordered_map>

@@ -32,6 +32,9 @@ struct SolverConfig {
   std::string amgcl_precond_class;
   bool eigen_recompute = false;
 
+  std::string matrix;
+  std::string rhs;
+
   virtual void DefineOptions(cxxopts::Options& options);
   virtual void ParseConfig(cxxopts::ParseResult opts);
 };

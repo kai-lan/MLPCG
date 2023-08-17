@@ -172,7 +172,7 @@ def expandVec(b, flags):
 
 if __name__ == '__main__':
     frame = 1
-    N = 64
+    N = 256
     DIM = 3
     prefix = ''
     bc = 'dambreak'
@@ -180,10 +180,10 @@ if __name__ == '__main__':
         suffix = ''
     else:
         suffix = '_3D'
-    file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_20{suffix}", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_20{suffix}", f"div_v_star_{frame}.bin")
-    file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_20{suffix}", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_20{suffix}", f"flags_{frame}.bin")
+    file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"A_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"flags_{frame}.bin")
     A = readA_sparse(file_A)
     rhs = load_vector(file_rhs)
     sol = load_vector(file_sol)

@@ -24,6 +24,9 @@ void SolverConfig::DefineOptions(cxxopts::Options& options) {
     ("amgcl_precond_direct_coarse", "", cxxopts::value<bool>())
     ("amgcl_solver_direct_coarse", "", cxxopts::value<bool>())
     ("amgcl_precond_class", "", cxxopts::value<std::string>()->default_value(""))
+
+    ("matrix", "file of the matrix", cxxopts::value<std::string>()->default_value(""))
+    ("rhs", "file of the rhs", cxxopts::value<std::string>()->default_value(""))
   ;
   // clang-format on
 }
@@ -51,5 +54,8 @@ void SolverConfig::ParseConfig(cxxopts::ParseResult opts) {
   amgcl_precond_direct_coarse = (bool)opts["amgcl_precond_direct_coarse"].count();
   amgcl_solver_direct_coarse = (bool)opts["amgcl_solver_direct_coarse"].count();
   amgcl_precond_class = opts["amgcl_precond_class"].as<std::string>();
+
+  matrix = opts["matrix"].as<std::string>();
+  rhs = opts["rhs"].as<std::string>();
 }
 

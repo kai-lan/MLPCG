@@ -279,12 +279,10 @@ class SmallSMModelDn3D(BaseModel):
             c1 = self.c1[i-1](imgs[i-1])
 
             if self.normalize == 'abs_sum':
-                print('abs_sum')
                 s = c0.abs() + c1.abs()
                 c0 = c0 / s
                 c1 = c1 / s
             elif self.normalize == '2_norm':
-                print('2_norm')
                 s = torch.sqrt(c0**2 + c1**2)
                 c0 = c0 / s
                 c1 = c1 / s

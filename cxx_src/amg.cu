@@ -55,6 +55,6 @@ int main(int argc, char* argv[]){
 	auto t1 = std::chrono::high_resolution_clock::now();
 	std::cout << "Solving took " << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()/1000.0 / iters << " s" << std::endl;
 
-	amgcl.Solve(A, x, rhs, true);
+	// std::cout << amgcl.prof << std::endl;
 	return 0;
 }

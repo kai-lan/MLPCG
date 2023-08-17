@@ -17,7 +17,7 @@ torch.set_grad_enabled(False) # disable autograd globally
 pcg_precision = torch.float32
 torch.set_default_dtype(pcg_precision)
 
-N = 64
+N = 128
 DIM = 3
 norm_type = 'l2'
 num_imgs = 3
@@ -25,7 +25,7 @@ shape = (N,) + (N,)*(DIM-1)
 # train_matrices = set(np.load(f"{OUT_PATH}/output_{DIM}D_{N}/matrices_trained_50.npy"))
 # frame = list(frames)[80] # Random frame
 # frames = range(1, 201)
-# frames = np.linspace(1, 200, 50, dtype=int)
+# frames = np.linspace(1, 200, 20, dtype=int)
 frames = [111]
 
 device = torch.device('cuda')
@@ -36,16 +36,19 @@ mlpcg_time, mlpcg_iters = [], []
 if DIM == 2:
     scene = f'dambreak_pillars_N{N}_N{2*N}_200'
 else:
-    scene = f'dambreak_N{N}_200_{DIM}D'
+    scene = f'standing_dipping_block_N{N}_200_{DIM}D'
 
-NN = 64
+NN = 128
 num_mat = 10
-num_ritz = 800
+num_ritz = 1600
 num_rhs = 400
-normalize_type = '2_norm'
+normalize_type = ''
 # fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_single_{DIM}D_{NN}", "checkpt_dambreak_frame_1_rhs_1600_2D_linear.tar")
-fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_normalized_{normalize_type}.tar")
-fluidnet_model_res = SmallSMModelDn3D(2, num_imgs, normalize_type) if DIM == 3 else SmallSMModelDn(4, num_imgs, normalize_type)
+if normalize_type == '':
+    fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}.tar")
+else:
+    fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_normalized_{normalize_type}.tar")
+fluidnet_model_res = SmallSMModelDn3D(2, num_imgs, normalize_type) if DIM == 3 else SmallSMModelDn(6, num_imgs, normalize_type)
 fluidnet_model_res.move_to(device)
 state_dict = torch.load(fluidnet_model_res_file, map_location=device)['model_state_dict']
 for key in list(state_dict.keys()):
@@ -88,6 +91,15 @@ for frame in frames:
     A_sp = readA_sparse(os.path.join(dambreak_path, f"A_{frame}.bin")).astype(np.float64)
     rhs_sp = load_vector(os.path.join(dambreak_path, f"div_v_star_{frame}.bin")).astype(np.float64)
     flags_sp = read_flags(os.path.join(dambreak_path, f"flags_{frame}.bin"))
+
+    # A_sp = readA_sparse("cxx_src/test_data/A_999.bin")
+    # rhs_sp = load_vector("cxx_src/test_data/b_999.bin")
+    # flags_sp = read_flags("cxx_src/test_data/flags_999.bin")
+
+    # compressed A and rhs
+    A_comp = compressedMat(A_sp, flags_sp)
+    rhs_comp = compressedVec(rhs_sp, flags_sp)
+
     flags_sp = convert_to_binary_images(flags_sp, num_imgs)
 
     A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float64, device=device)
@@ -103,18 +115,22 @@ for frame in frames:
     amgcg_time.append(t_amgcg)
     amgcg_iters.append(len(res_amgcg))
     print("AMGCG took", t_amgcg, 's after', len(res_amgcg), 'iterations', f'to {res_amgcg[-1]}')
+
     ################
     # CG or CUDA CG
     ################
     if rhs.is_cuda:
         rhs_cp, A_cp = cp.array(rhs_sp, dtype=np.float64), cpsp.csr_matrix(A_sp, dtype=np.float64)
+        # rhs_cp, A_cp = cp.array(rhs_comp, dtype=np.float64), cpsp.csr_matrix(A_comp, dtype=np.float64)
+
         result = cuda_benchmark(cuda_benchmark_cg, n_repeat=1)
         cg_time.append(result.gpu_times[0][0])
         cg_iters.append(len(res_cg))
         print("CUDA CG took", result.gpu_times[0][0], 's after', len(res_cg), 'iterations', f'to {res_cg[-1]}')
     else:
         t0 = timeit.default_timer()
-        x_cg, res_cg = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), cg_max_iter, tol=tol, atol=atol, norm_type=norm_type, verbose=verbose)
+        # x_cg, res_cg = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), cg_max_iter, tol=tol, atol=atol, norm_type=norm_type, verbose=verbose)
+        x_cg, res_cg = CG(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol, norm_type=norm_type, verbose=verbose)
         t_cg = timeit.default_timer()-t0
         cg_time.append(t_cg)
         cg_iters.append(len(res_cg))
@@ -136,7 +152,7 @@ print('AMG took', np.mean(amgcg_iters), 'iters', np.mean(amgcg_time), 's')
 print('CG took', np.mean(cg_iters), 'iters', np.mean(cg_time), 's')
 print('MLPCG took', np.mean(mlpcg_iters), 'iters', np.mean(mlpcg_time), 's')
 import matplotlib.pyplot as plt
-plt.plot(res_fluidnet_res, label=f'{NN} small_sm_d4')
+plt.plot(res_fluidnet_res, label=f'{NN} MLPCG')
 plt.plot(res_amgcg, label='amgcg')
 plt.plot(res_cg, label='cg')
 # plt.plot(res_cg, label='cuda cg')

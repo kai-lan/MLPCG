@@ -5,113 +5,86 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 
-#ifdef USE_CUDA
-#include <amgcl/backend/vexcl.hpp>
-// #include <amgcl/backend/cuda.hpp>
-//#include <amgcl/relaxation/cusparse_ilu0.hpp>
-typedef amgcl::backend::vexcl<double> Backend;
+#ifdef USE_VEXCL
+  #include <amgcl/backend/vexcl.hpp>
+  typedef amgcl::backend::vexcl<double> SBackend;
+  #ifdef MIXED_PRECISION
+    typedef amgcl::backend::vexcl<float> PBackend;
+  #else
+    typedef amgcl::backend::vexcl<double> PBackend;
+  #endif
+#elif USE_CUDA
+  #include <amgcl/backend/cuda.hpp>
+  typedef amgcl::backend::cuda<double> SBackend;
+  #ifdef MIXED_PRECISION
+    typedef amgcl::backend::cuda<float> PBackend;
+  #else
+    typedef amgcl::backend::cuda<double> PBackend;
+  #endif
 #else
-#include <amgcl/backend/builtin.hpp>
-typedef amgcl::backend::builtin<double> Backend;
+  #include <amgcl/backend/builtin.hpp>
+  typedef amgcl::backend::builtin<double> SBackend;
+  #ifdef MIXED_PRECISION
+    typedef amgcl::backend::builtin<float> PBackend;
+  #else
+    typedef amgcl::backend::builtin<double> PBackend;
+  #endif
 #endif
 
-#ifdef USE_MPI
-#include <amgcl/adapter/eigen.hpp>
-#include <amgcl/backend/builtin.hpp>
-#include <amgcl/mpi/amg.hpp>
-#include <amgcl/mpi/coarsening/runtime.hpp>
-#include <amgcl/mpi/make_solver.hpp>
-#include <amgcl/mpi/relaxation/runtime.hpp>
-#include <amgcl/solver/runtime.hpp>
-//#include <amgcl/mpi/direct_solver/runtime.hpp>
-//#include <amgcl/mpi/direct_solver/eigen_splu.hpp>
-//#include <amgcl/mpi/direct_solver/skyline_lu.hpp>
-//#include <amgcl/mpi/partition/runtime.hpp>
-#include <amgcl/mpi/distributed_matrix.hpp>
-#include <amgcl/mpi/preconditioner.hpp>
-#include <amgcl/mpi/relaxation/as_preconditioner.hpp>
-#include <amgcl/mpi/util.hpp>
-#include <amgcl/preconditioner/runtime.hpp>
-#include <amgcl/relaxation/as_preconditioner.hpp>
-//#include <amgcl/preconditioner/dummy.hpp>
-//#include <amgcl/solver/runtime.hpp>
-#include <amgcl/solver/cg.hpp>
-#else
-#include <amgcl/amg.hpp>
-#include <amgcl/coarsening/runtime.hpp>
 #include <amgcl/make_solver.hpp>
-#include <amgcl/preconditioner/runtime.hpp>
-#include <amgcl/relaxation/runtime.hpp>
-#include <amgcl/solver/runtime.hpp>
-//#include <amgcl/adapter/crs_tuple.hpp>
+#include <amgcl/amg.hpp>
+#include <amgcl/coarsening/smoothed_aggregation.hpp>
+#include <amgcl/relaxation/spai0.hpp>
+// #include <amgcl/solver/cg.hpp>
+#include <amgcl/solver/bicgstab.hpp>
+
 #include <amgcl/adapter/eigen.hpp>
 #include <amgcl/adapter/reorder.hpp>
-//#include <amgcl/io/mm.hpp>
-//#include <amgcl/io/binary.hpp>
-#endif
 
-//#include <amgcl/profiler.hpp>
-
-#include <Eigen/Sparse>
+#include <amgcl/io/mm.hpp>
+#include <amgcl/profiler.hpp>
 
 #include <SolverConfig.h>
-#include <MPIDomain.h>
 
-
-#ifdef BIGNUM
-typedef uint_fast64_t sz;
-typedef int_fast64_t nm;
-#else
-typedef size_t sz;
-typedef int nm;
+#ifndef USE_VEXCEL
+  #ifndef USE_CUDA
+    AMGCL_USE_EIGEN_VECTORS_WITH_BUILTIN_BACKEND()
+  #endif
 #endif
-
 
 // Need a stateful solver object so we can reuse the AMGCL preconditioner between solves
 class AMGCLSolver {
-  #ifdef USE_MPI
-  typedef amgcl::mpi::make_solver<amgcl::runtime::mpi::preconditioner<Backend>,
-                                  amgcl::solver::cg  //<Backend>
-                                                     //        amgcl::mpi::amg<
-                                                     //            Backend,
-                                                     //            amgcl::runtime::mpi::coarsening::wrapper<Backend>,
-                                                     //            amgcl::runtime::mpi::relaxation::wrapper<Backend>,
-                                                     //            //amgcl::runtime::mpi::direct::solver<double>,
-                                                     //            amgcl::mpi::direct::eigen_splu<double>,
-                                                     //            amgcl::runtime::mpi::partition::wrapper<Backend>
-                                                     //            >,
-                                                     //        amgcl::runtime::solver::wrapper
-                                  >
-    AMGCLSolverImpl;
-  #else
-  typedef amgcl::make_solver<amgcl::runtime::preconditioner<Backend>, amgcl::runtime::solver::wrapper<Backend> > AMGCLSolverImpl;
-  #endif
+
+  typedef amgcl::make_solver<
+    amgcl::amg<
+      PBackend,
+      amgcl::coarsening::smoothed_aggregation,
+      amgcl::relaxation::spai0
+      >,
+    amgcl::solver::bicgstab<SBackend>
+    > Solver;
 
  public:
-  AMGCLSolverImpl* solver_impl;
-  #ifdef USE_CUDA
-  vex::Context* ctx;
-  #endif
+  std::unique_ptr<Solver> solver;
+  amgcl::profiler<> prof{"AMGCL solve"};
 
-  #ifdef USE_MPI
-  amgcl::mpi::communicator comm;
-  // amgcl::runtime::mpi::partition::type ptype = static_cast<amgcl::runtime::mpi::partition::type>(0);
+  #ifdef USE_VEXCL
+    vex::Context* ctx;
   #endif
 
   const SolverConfig& config;
-  Backend::params bprm;
+  SBackend::params bprm;
   boost::property_tree::ptree prm;
-  const MPIDomain& mpi_domain;
 
-  AMGCLSolver(const Eigen::SparseMatrix<T, Eigen::RowMajor, nm>& A_eigen_reduced, const SolverConfig& _config, const MPIDomain& _mpi_domain);
+  AMGCLSolver(const SpMat& A, const SolverConfig& config);
+  AMGCLSolver(const SolverConfig& config);
 
   ~AMGCLSolver();
 
   // recompute pc
-  void Solve(const Eigen::SparseMatrix<T, Eigen::RowMajor, nm>& A_eigen_reduced, Eigen::Matrix<T, Eigen::Dynamic, 1>& x, const Eigen::Matrix<T, Eigen::Dynamic, 1>& b);
-
+  void Solve(const SpMat& A, VXT& x, const VXT& b, bool profile=false);
   // reuse pc
-  void Solve(Eigen::Matrix<T, Eigen::Dynamic, 1>& x, const Eigen::Matrix<T, Eigen::Dynamic, 1>& b);
+  void Solve(VXT& x, const VXT& b, bool profile=false);
 
  private:
   void setParams();

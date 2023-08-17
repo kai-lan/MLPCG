@@ -137,7 +137,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    N = 64
+    N = 128
     DIM = 3
     lr = 0.001
     epoch_num_per_matrix = 5
@@ -156,13 +156,13 @@ if __name__ == '__main__':
         (f'waterflow_panels_N{N}', (N,)*DIM),
         (f'waterflow_rotating_cube_N{N}', (N,)*DIM)
     ]
-    b_size = 16 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
+    b_size = 32 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
     total_matrices = 10 # number of matrices chosen for training
-    num_ritz = 800
-    num_rhs = 400 # number of ritz vectors for training for each matrix
+    num_ritz = 1600
+    num_rhs = 800 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
     num_imgs = 3
-    num_levels = 2
+    num_levels = 3
     cuda = torch.device("cuda") # Use CUDA for training
 
     log = LoggingWriter()
@@ -185,7 +185,7 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    suffix += f'_imgs{num_imgs}_normalized_abs_sum'
+    suffix += f'_imgs{num_imgs}_bs32'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 

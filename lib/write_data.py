@@ -16,7 +16,7 @@ def write_bin_file_from_nparray(filename, np_array):
         s = struct.pack('d'*len(np_array), *np_array)
         out_file.write(s)
 
-def writeA_sparse(A, filenameA, dtype='f'):
+def writeA_sparse(A, filenameA, dtype='d'):
     '''
     dim: grid points in each dimenstion
     DIM: 2D or 3D
