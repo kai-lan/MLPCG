@@ -146,6 +146,7 @@ if __name__ == '__main__':
     shape = (1,)+(N,)*DIM
     bcs = [
         (f'dambreak_N{N}', (N,)*DIM),
+        (f'dambreak_hill_N{N}', (2*N,)+(N,)*(DIM-1)),
         (f'dambreak_hill_N{N}_N{2*N}', (2*N,)+(N,)*(DIM-1)),
         (f'two_balls_N{N}', (N,)*DIM),
         (f'ball_cube_N{N}', (N,)*DIM),
@@ -156,13 +157,15 @@ if __name__ == '__main__':
         (f'waterflow_panels_N{N}', (N,)*DIM),
         (f'waterflow_rotating_cube_N{N}', (N,)*DIM)
     ]
-    b_size = 32 # batch size, 3D data with big batch size (>50) cannot fit in GPU >-<
+    b_size = 16
     total_matrices = 10 # number of matrices chosen for training
     num_ritz = 1600
     num_rhs = 800 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
     num_imgs = 3
-    num_levels = 3
+
+    if DIM == 2: num_levels = 6
+    else: num_levels = 3
     cuda = torch.device("cuda") # Use CUDA for training
 
     log = LoggingWriter()
@@ -185,7 +188,7 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    suffix += f'_imgs{num_imgs}_bs32'
+    suffix += f'_imgs{num_imgs}'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 
@@ -193,6 +196,7 @@ if __name__ == '__main__':
         model = SmallSMModelDn(num_levels, num_imgs)
     else:
         model = SmallSMModelDn3D(num_levels, num_imgs)
+
     model.move_to(cuda)
     loss_fn = eval(loss_fn)
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -228,7 +232,7 @@ if __name__ == '__main__':
     np.save(f"{outdir}/matrices_trained_{total_matrices}.npy", matrices)
     start_time = time.time()
 
-    for i in range(1, epoch_num+1):
+    for i in range(start_epoch+1, epoch_num+start_epoch+1):
         tl, vl = 0.0, 0.0
         for bc, sha in bcs:
             shape = (1,)+sha

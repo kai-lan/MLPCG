@@ -170,7 +170,7 @@ class SmallLinearBlock3DPY(BaseModel):
 ######################
 # General SmallSM model for any number of coarsening levels
 class SmallSMModelDn(BaseModel):
-    def __init__(self, n, num_imgs, normalize=''):
+    def __init__(self, n, num_imgs):
         super().__init__()
         self.n = n
         self.pre = nn.ModuleList([SmallSMBlock(num_imgs) for _ in range(n)])
@@ -181,7 +181,6 @@ class SmallSMModelDn(BaseModel):
         self.c0 = nn.ModuleList([SmallLinearBlock(num_imgs) for _ in range(n)])
         self.c1 = nn.ModuleList([SmallLinearBlock(num_imgs) for _ in range(n)])
 
-        self.normalize = normalize
     def forward(self, image, b):
         x = [self.pre[0](image, b)]
         imgs = [image]
@@ -200,14 +199,6 @@ class SmallSMModelDn(BaseModel):
             x[i] = self.post[i-1](imgs[i-1], x[i])
             c0 = self.c0[i-1](imgs[i-1])
             c1 = self.c1[i-1](imgs[i-1])
-            if self.normalize == 'abs_sum':
-                s = c0.abs() + c1.abs()
-                c0 = c0 / s
-                c1 = c1 / s
-            elif self.normalize == '2_norm':
-                s = torch.sqrt(c0**2 + c1**2)
-                c0 = c0 / s
-                c1 = c1 / s
             x[i-1] = c0 * x[i-1] + c1 * x[i]
 
         return x[0]
@@ -247,7 +238,7 @@ class SmallSMModelDnPY(BaseModel):
 
 # 3D: General SmallSM model for any number of coarsening levels
 class SmallSMModelDn3D(BaseModel):
-    def __init__(self, n, num_imgs, normalize=''):
+    def __init__(self, n, num_imgs):
         super().__init__()
         self.n = n
         self.pre = nn.ModuleList([SmallSMBlock3D(num_imgs) for _ in range(n)])
@@ -258,7 +249,6 @@ class SmallSMModelDn3D(BaseModel):
         self.c0 = nn.ModuleList([SmallLinearBlock3D(num_imgs) for _ in range(n)])
         self.c1 = nn.ModuleList([SmallLinearBlock3D(num_imgs) for _ in range(n)])
 
-        self.normalize = normalize
     def forward(self, image, b):
         x = [self.pre[0](image, b)]
         imgs = [image]
@@ -277,16 +267,6 @@ class SmallSMModelDn3D(BaseModel):
             x[i] = self.post[i-1](imgs[i-1], x[i])
             c0 = self.c0[i-1](imgs[i-1])
             c1 = self.c1[i-1](imgs[i-1])
-
-            if self.normalize == 'abs_sum':
-                s = c0.abs() + c1.abs()
-                c0 = c0 / s
-                c1 = c1 / s
-            elif self.normalize == '2_norm':
-                s = torch.sqrt(c0**2 + c1**2)
-                c0 = c0 / s
-                c1 = c1 / s
-
             x[i-1] = c0 * x[i-1] + c1 * x[i]
 
         return x[0]
@@ -337,14 +317,14 @@ if __name__ == '__main__':
     torch.backends.cudnn.allow_tf32 = True # for debugging
     # torch.use_deterministic_algorithms(True)
 
-    N = 64
-    frame = 100
+    N = 256
+    frame = 45
     num_imgs = 3
 
     # file_A = os.path.join(path, "data_fluidnet", "ball_cube_2D_64", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"ball_cube_N{N}_200_3D", f"div_v_star_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"div_v_star_{frame}.bin")
     # file_sol = os.path.join(DATA_PATH, f"ball_cube_N{N}_200_3D", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"ball_cube_N{N}_200_3D", f"flags_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"flags_{frame}.bin")
     # A = readA_sparse(64, file_A, DIM=2)
     rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32)
     flags = torch.tensor(convert_to_binary_images(read_flags(file_flags), num_imgs), dtype=torch.float32)
@@ -353,35 +333,35 @@ if __name__ == '__main__':
     #   rhs = torch.tensor(f['rhs'], dtype=torch.float32)
     #   flags = torch.tensor(f['flags'], dtype=torch.float32)
 
-    # torch.set_grad_enabled(False) # disable autograd globally
+    torch.set_grad_enabled(False) # disable autograd globally
 
-    model = SmallSMBlock3DPY(num_imgs).cuda()
-    model1 = SmallSMBlock3D(num_imgs).cuda()
+    # model = SmallSMBlock3DPY(num_imgs).cuda()
+    # model1 = SmallSMBlock3D(num_imgs).cuda()
     # model = SmallLinearBlockPY(num_imgs).cuda()
     # model1 = SmallLinearBlock(num_imgs).cuda()
     # model = SmallSMBlockPY(num_imgs).cuda()
     # model1 = SmallSMBlock(num_imgs).cuda()
-    # model = SmallSMModelDn3DPY(3, num_imgs).cuda()
-    # model1 = SmallSMModelDn3D(3, num_imgs).cuda()
+    model = SmallSMModelDn3DPY(3, num_imgs).cuda()
+    model1 = SmallSMModelDn3D(3, num_imgs).cuda()
 
     # image1 = image.detach().clone()
     img_shape = (num_imgs, N, N, N)
     rhs_shape = (1, 1, N, N, N)
     image = flags.reshape(img_shape).cuda()
     # image = torch.rand(3, 2*N, N).cuda()
-    x = rhs.reshape(rhs_shape).expand((16,)+ img_shape).cuda()
-    x.requires_grad = True
-    x1 = rhs.reshape(rhs_shape).expand((16,)+ img_shape).cuda()
+    # x = rhs.reshape(rhs_shape).expand((1,)+ img_shape).cuda()
+    # x.requires_grad = True
+    x1 = rhs.reshape(rhs_shape).expand((1,)+ img_shape).cuda()
     x1.requires_grad = True
 
     # torch.set_grad_enabled(False)
     # model1.eval()
     # print(model1.training)
     for _ in range(10):
-        y = model(image, x)
+        # y = model(image, x)
         y1 = model1(image, x1)
-        y.sum().backward()
-        y1.sum().backward()
+        # y.sum().backward()
+        # y1.sum().backward()
 
     torch.cuda.synchronize()
 
@@ -390,12 +370,12 @@ if __name__ == '__main__':
     backward = 0.0
     for _ in range(iters):
         start = time.time()
-        y = model(image, x)
+        # y = model(image, x)
         torch.cuda.synchronize()
         forward += time.time() - start
 
         start = time.time()
-        y.sum().backward()
+        # y.sum().backward()
         torch.cuda.synchronize()
         backward += time.time() - start
 
@@ -413,7 +393,7 @@ if __name__ == '__main__':
         forward += time.time() - start
 
         start = time.time()
-        y1.sum().backward()
+        # y1.sum().backward()
         torch.cuda.synchronize()
         backward += time.time() - start
 

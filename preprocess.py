@@ -17,10 +17,12 @@ ortho = True
 num_imgs = 3
 
 
-matrices = np.linspace(1, 200, 10, dtype=int)
+# matrices = np.linspace(1, 200, 10, dtype=int)
+matrices = np.linspace(12, 188, 9, dtype=int)
 # matrices = [200]
 scenes = [
     f'dambreak_N{N}',
+    # f'dambreak_hill_N{N}',
     f'dambreak_hill_N{N}_N{2*N}',
     f'two_balls_N{N}',
     f'ball_cube_N{N}',

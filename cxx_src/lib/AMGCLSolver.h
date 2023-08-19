@@ -35,8 +35,8 @@
 #include <amgcl/amg.hpp>
 #include <amgcl/coarsening/smoothed_aggregation.hpp>
 #include <amgcl/relaxation/spai0.hpp>
-// #include <amgcl/solver/cg.hpp>
-#include <amgcl/solver/bicgstab.hpp>
+#include <amgcl/solver/cg.hpp>
+// #include <amgcl/solver/bicgstab.hpp>
 
 #include <amgcl/adapter/eigen.hpp>
 #include <amgcl/adapter/reorder.hpp>
@@ -61,7 +61,7 @@ class AMGCLSolver {
       amgcl::coarsening::smoothed_aggregation,
       amgcl::relaxation::spai0
       >,
-    amgcl::solver::bicgstab<SBackend>
+    amgcl::solver::cg<SBackend>
     > Solver;
 
  public:
