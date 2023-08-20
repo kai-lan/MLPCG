@@ -6,7 +6,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from sm_model import *
-from sm_model_3colors import *
 from model import *
 import cupyx.scipy.sparse as cpsp
 from cupyx.profiler import benchmark as cuda_benchmark
@@ -37,19 +36,19 @@ if __name__ == '__main__':
     torch.backends.cudnn.allow_tf32 = True # for debugging
     # torch.cuda.set_sync_debug_mode(debug_mode)
 
-    N = 1024
-    DIM = 2
+    N = 128
+    DIM = 3
     resume = False
-    for_train = False
+    for_train = True
     for_test = True
     num_rhs = 800
-    frame = 199
-    scene = 'circles_solid'
+    frame = 111
+    scene = 'waterflow_panels'
     dim2 = N**DIM
     lr = 0.001
     epoch_num = 100
     iters = 5
-    num_imgs = 2
+    num_imgs = 3
     cuda = torch.device("cuda") # Use CUDA for training
     b_size = 16
 
@@ -79,9 +78,9 @@ if __name__ == '__main__':
     image = torch.tensor(flags_sp, dtype=dtype, device=cuda).reshape((num_imgs,)+(N,)*DIM)
 
     if DIM == 2:
-        model = SmallSMModel3ColorsDnPY(6, num_imgs)
+        model = SmallSMModelDn(6, num_imgs)
     else:
-        model = SmallSMModelDn3D(3)
+        model = SmallSMModelDn3D(3, num_imgs)
 
     model.move_to(cuda)
     optimizer = optim.Adam(model.parameters(), lr=lr)

@@ -36,9 +36,46 @@ def validation(train_loader, validation_loader, model, loss_fn, image, A):
             tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1), data[:, 0].flatten(1), A)
     return tot_loss_train.item(), tot_loss_val.item()
 
+def epoch_all_bcs_frames(bcs, frames, data_set, data_loader, model, optimizer, loss_fn, training=True):
+    global fluid_cells, shape
+    total_loss = 0
+    t0 = time.time()
+    for bc, sha in bcs:
+        shape = (1,)+sha
+        if DIM == 2: inpdir = os.path.join(DATA_PATH, f"{bc}_200/preprocessed")
+        else:        inpdir = os.path.join(DATA_PATH, f"{bc}_200_{DIM}D/preprocessed")
+        print(f"bc: {bc}")
+        print("frame: ", end='')
+        for frame in frames:
+            print(frame, end=' ')
+            data_set.data_folder = os.path.join(f"{inpdir}/{frame}")
+            A = torch.load(f"{data_set.data_folder}/A.pt").to_sparse_csr().cuda()
+            image = torch.load(f"{data_set.data_folder}/flags_binary_{num_imgs}.pt").view((num_imgs,)+sha).cuda()
+            fluid_cells = np.load(f"{data_set.data_folder}/fluid_cells.npy")
+            for ii, data in enumerate(data_loader, 1):
+                with torch.set_grad_enabled(training):
+                    x_pred = model(image, data)
+                    x_pred = x_pred.squeeze(dim=1).flatten(1) # (bs, 1, N, N) -> (bs, N, N) -> (bs, N*N)
+                    data = data.squeeze(dim=1).flatten(1)
+                    r = torch.zeros_like(x_pred)
+                    x = x_pred
+                    for j in range(data.shape[0]):
+                        Ax = A @ x[j]
+                        alpha = x[j].dot(data[j]) / x[j].dot(Ax)
+                        r[j] = data[j] - alpha * Ax
+                    loss = loss_fn(x_pred, data, A) / len(bcs) / len(frames) / len(train_loader)
+                    if training:
+                        loss.backward()
+                    total_loss += loss.detach()
+        print()
+    total_loss = total_loss * len(bcs) * len(frames) * len(train_loader)
+    t1 = time.time()
+    if training:
+        optimizer.step()
+        optimizer.zero_grad()
+    return total_loss.item(), t1-t0
+
 def train_(image, A, epoch_num, train_loader, validation_loader, model, optimizer, loss_fn):
-    # A = A.to(model.device)
-    # image = image.to(model.device)
     training_loss = []
     validation_loss = []
     time_history = []
@@ -50,16 +87,10 @@ def train_(image, A, epoch_num, train_loader, validation_loader, model, optimize
     training_loss.append(tot_loss_train)
     validation_loss.append(tot_loss_val)
     time_history.append(time.time() - t0)
-    # old_param = None
-    # with torch.no_grad():
-    #     for k, param in enumerate(model.parameters()):
-    #         if k == 0:  old_param = param.data.ravel()
-    #         else:       old_param = torch.cat([old_param, param.data.ravel()])
     print(training_loss[-1], validation_loss[-1], f"(0 / {epoch_num})")
 
 
     for i in range(1, epoch_num+1):
-        # Training
         for ii, data in enumerate(train_loader, 1):
             x_pred = model(image, data)
             x_pred = x_pred.squeeze(dim=1).flatten(1) # (bs, 1, N, N) -> (bs, N, N) -> (bs, N*N)
@@ -77,17 +108,6 @@ def train_(image, A, epoch_num, train_loader, validation_loader, model, optimize
             optimizer.step()
 
         dLdw = 0.0
-        # new_param = None
-        # with torch.no_grad():
-        #     for k, param in enumerate(model.parameters()):
-        #         dLdw += param.grad.norm().item()
-        #         if k == 0:  new_param = param.data.ravel()
-        #         else:       new_param = torch.cat([new_param, param.data.ravel()])
-        # grad_history.append(dLdw)
-        # update_history.append((new_param - old_param).norm().item())
-        # old_param = new_param
-
-        # Validation
         tot_loss_train, tot_loss_val = validation(train_loader, validation_loader, model, loss_fn, image, A)
         training_loss.append(tot_loss_train)
         validation_loss.append(tot_loss_val)
@@ -146,7 +166,7 @@ if __name__ == '__main__':
     shape = (1,)+(N,)*DIM
     bcs = [
         (f'dambreak_N{N}', (N,)*DIM),
-        (f'dambreak_hill_N{N}', (2*N,)+(N,)*(DIM-1)),
+        # (f'dambreak_hill_N{N}', (N,)+(N,)*(DIM-1)),
         (f'dambreak_hill_N{N}_N{2*N}', (2*N,)+(N,)*(DIM-1)),
         (f'two_balls_N{N}', (N,)*DIM),
         (f'ball_cube_N{N}', (N,)*DIM),
@@ -157,6 +177,7 @@ if __name__ == '__main__':
         (f'waterflow_panels_N{N}', (N,)*DIM),
         (f'waterflow_rotating_cube_N{N}', (N,)*DIM)
     ]
+    bc = 'mixedBCs10'
     b_size = 16
     total_matrices = 10 # number of matrices chosen for training
     num_ritz = 1600
@@ -188,7 +209,7 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    suffix += f'_imgs{num_imgs}'
+    suffix += f'_imgs{num_imgs}_all_bcs_frames'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 
@@ -232,31 +253,42 @@ if __name__ == '__main__':
     np.save(f"{outdir}/matrices_trained_{total_matrices}.npy", matrices)
     start_time = time.time()
 
+    # _train_loss, _time = epoch_all_bcs_frames(bcs, matrices, train_set, train_loader, model, optimizer, loss_fn, False)
+    # _valid_loss, _time = epoch_all_bcs_frames(bcs, matrices, valid_set, valid_loader, model, optimizer, loss_fn, False)
+    # print(_train_loss, _valid_loss, f"0 / {epoch_num}")
+    # train_loss.append(_train_loss)
+    # valid_loss.append(_valid_loss)
     for i in range(start_epoch+1, epoch_num+start_epoch+1):
-        tl, vl = 0.0, 0.0
-        for bc, sha in bcs:
-            shape = (1,)+sha
-            if DIM == 2: inpdir = os.path.join(DATA_PATH, f"{bc}_200/preprocessed")
-            else:        inpdir = os.path.join(DATA_PATH, f"{bc}_200_{DIM}D/preprocessed")
-            for j in matrices:
-                print(f"Epoch: {i}/{epoch_num}")
-                print(bc)
-                print('Matrix', j)
-                train_set.data_folder = os.path.join(f"{inpdir}/{j}")
-                valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
-                A = torch.load(f"{train_set.data_folder}/A.pt").to_sparse_csr().cuda()
-                image = torch.load(f"{train_set.data_folder}/flags_binary_{num_imgs}.pt").view((num_imgs,)+sha).cuda()
-
-                fluid_cells = np.load(f"{train_set.data_folder}/fluid_cells.npy")
-                training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
-
-                tl += np.sum(training_loss_)
-                vl += np.sum(validation_loss_)
-                grad_history.extend(grad_history_)
-                update_history.extend(update_history_)
-        train_loss.append(tl)
-        valid_loss.append(vl)
+        _train_loss, _time = epoch_all_bcs_frames(bcs, matrices, train_set, train_loader, model, optimizer, loss_fn, True)
+        _valid_loss, _time = epoch_all_bcs_frames(bcs, matrices, valid_set, valid_loader, model, optimizer, loss_fn, False)
+        print(_train_loss, _valid_loss, f"{i} / {epoch_num}")
+        train_loss.append(_train_loss)
+        valid_loss.append(_valid_loss)
         time_history.append(time.time() - start_time)
+        # tl, vl = 0.0, 0.0
+        # for bc, sha in bcs:
+        #     shape = (1,)+sha
+        #     if DIM == 2: inpdir = os.path.join(DATA_PATH, f"{bc}_200/preprocessed")
+        #     else:        inpdir = os.path.join(DATA_PATH, f"{bc}_200_{DIM}D/preprocessed")
+        #     for j in matrices:
+        #         print(f"Epoch: {i}/{epoch_num}")
+        #         print(bc)
+        #         print('Matrix', j)
+        #         train_set.data_folder = os.path.join(f"{inpdir}/{j}")
+        #         valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
+        #         A = torch.load(f"{train_set.data_folder}/A.pt").to_sparse_csr().cuda()
+        #         image = torch.load(f"{train_set.data_folder}/flags_binary_{num_imgs}.pt").view((num_imgs,)+sha).cuda()
+
+        #         fluid_cells = np.load(f"{train_set.data_folder}/fluid_cells.npy")
+        #         training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
+
+        #         tl += np.sum(training_loss_)
+        #         vl += np.sum(validation_loss_)
+        #         grad_history.extend(grad_history_)
+        #         update_history.extend(update_history_)
+        # train_loss.append(tl)
+        # valid_loss.append(vl)
+        # time_history.append(time.time() - start_time)
         saveData(model, optimizer, i+start_epoch, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history)
         if i % 5 == 0:
             saveData(model, optimizer, i+start_epoch, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history)
