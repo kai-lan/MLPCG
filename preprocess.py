@@ -11,8 +11,8 @@ import warnings
 warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
 torch.set_grad_enabled(False)
 
-DIM = 3
-N = 128
+DIM = 2
+N = 1024
 ortho = True
 num_imgs = 3
 
@@ -25,13 +25,14 @@ scenes = [
     # f'dambreak_hill_N{N}',
     f'dambreak_hill_N{N}_N{2*N}',
     f'two_balls_N{N}',
-    f'ball_cube_N{N}',
-    f'ball_bowl_N{N}',
-    f'standing_dipping_block_N{N}',
-    f'standing_rotating_blade_N{N}',
-    f'waterflow_pool_N{N}',
-    f'waterflow_panels_N{N}',
-    f'waterflow_rotating_cube_N{N}'
+    # f'ball_cube_N{N}',
+    # f'ball_bowl_N{N}',
+    # f'standing_dipping_block_N{N}',
+    # f'standing_rotating_blade_N{N}',
+    f'standing_scooping_N{N}',
+    # f'waterflow_pool_N{N}',
+    # f'waterflow_panels_N{N}',
+    # f'waterflow_rotating_cube_N{N}'
 ]
 
 
@@ -96,6 +97,7 @@ def worker(indices):
             data_folder = f"{DATA_PATH}/{scene}_200_{DIM}D"
         for index in indices:
             out_folder = f"{data_folder}/preprocessed/{index}"
+            os.makedirs(out_folder, exist_ok=True)
             rhs_np = load_vector(os.path.join(data_folder, f"div_v_star_{index}.bin"))
             # sol = load_vector(os.path.join(data_folder, f"pressure_{index}.bin"))
             flags_sp = read_flags(os.path.join(data_folder, f"flags_{index}.bin"))
@@ -124,9 +126,9 @@ def worker(indices):
             torch.save(rhs, os.path.join(out_folder, f"rhs.pt"))
 
             suffix = '' if ortho else '_no_ortho'
-            ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}{suffix}.npy")
+            # ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}{suffix}.npy")
 
-            createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder, suffix=suffix)
+            # createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder, suffix=suffix)
 
 
 if __name__ == '__main__':
