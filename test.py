@@ -46,9 +46,9 @@ num_ritz = 1600
 num_rhs = 800
 tests = {
     "MLPCG": True,
-    "AMGCG": True,
+    "AMGCG": False,
     "AMGCL": True,
-    "CG": False,
+    "CG": True,
 }
 # fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_single_{DIM}D_{NN}", "checkpt_dambreak_frame_1_rhs_1600_2D_linear.tar")
 
@@ -129,14 +129,24 @@ for frame in frames:
     # AMGCGL (CPU)
     ###############
     if tests['AMGCL']:
-        t0 = timeit.default_timer()
-        res_amgcl = 0
-        for _ in range(10):
-            x_amgcl, (iters_amgcl, res_amgcl) = AMGCL(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
-        t_amgcl = (timeit.default_timer()-t0) / 10
-        amgcl_time.append(t_amgcl)
-        amgcl_iters.append(iters_amgcl)
-        print("AMGCL took", t_amgcl, 's after', iters_amgcl, 'iterations', f'to {res_amgcl}')
+        if rhs.is_cuda:
+            t0 = timeit.default_timer()
+            res_amgcl = 0
+            for _ in range(50):
+                x_amgcl, (iters_amgcl, res_amgcl) = AMGCL_VEXCL(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
+            t_amgcl = (timeit.default_timer()-t0) / 50
+            amgcl_time.append(t_amgcl)
+            amgcl_iters.append(iters_amgcl)
+            print("AMGCL took", t_amgcl, 's after', iters_amgcl, 'iterations', f'to {res_amgcl}')
+        else:
+            t0 = timeit.default_timer()
+            res_amgcl = 0
+            for _ in range(50):
+                x_amgcl, (iters_amgcl, res_amgcl) = AMGCL(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
+            t_amgcl = (timeit.default_timer()-t0) / 50
+            amgcl_time.append(t_amgcl)
+            amgcl_iters.append(iters_amgcl)
+            print("AMGCL took", t_amgcl, 's after', iters_amgcl, 'iterations', f'to {res_amgcl}')
 
     ################
     # CG or CUDA CG
@@ -172,9 +182,15 @@ for frame in frames:
 # Summary
 ################
 print('\nOn average\n')
-print('AMG took', np.mean(amgcg_iters), 'iters', np.mean(amgcg_time), 's')
+# print('AMG took', np.mean(amgcg_iters), 'iters', np.mean(amgcg_time), 's')
+print('AMGCL took', np.mean(amgcl_iters), 'iters', np.mean(amgcl_time), 's')
 print('CG took', np.mean(cg_iters), 'iters', np.mean(cg_time), 's')
 print('MLPCG took', np.mean(mlpcg_iters), 'iters', np.mean(mlpcg_time), 's')
+
+output_file = fluidnet_model_res_file.replace("checkpt", f"test_{scene}").replace(".tar", ".txt")
+with open(output_file, 'w') as f:
+    for i in range(len(mlpcg_iters)):
+        f.write(f"{frames[i]:<4}, {amgcl_iters[i]:^4}, {amgcl_time[i]:>6.4f}, {cg_iters[i]:^4}, {cg_time[i]:>6.4f}, {mlpcg_iters[i]:^4}, {mlpcg_time[i]:>6.4f}\n")
 # import matplotlib.pyplot as plt
 # plt.plot(res_fluidnet_res, label=f'{NN} MLPCG')
 # plt.plot(res_amgcg, label='amgcg')
