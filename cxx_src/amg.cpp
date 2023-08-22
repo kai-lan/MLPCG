@@ -3,6 +3,31 @@
 #include "MPIDomain.h"
 #include "SolverConfig.h"
 
+#ifdef USE_VEXCL
+  #include <amgcl/backend/vexcl.hpp>
+  typedef amgcl::backend::vexcl<double> SBackend;
+  #ifdef MIXED_PRECISION
+    typedef amgcl::backend::vexcl<float> PBackend;
+  #else
+    typedef amgcl::backend::vexcl<double> PBackend;
+  #endif
+#elif USE_CUDA
+  #include <amgcl/backend/cuda.hpp>
+  typedef amgcl::backend::cuda<double> SBackend;
+  #ifdef MIXED_PRECISION
+    typedef amgcl::backend::cuda<float> PBackend;
+  #else
+    typedef amgcl::backend::cuda<double> PBackend;
+  #endif
+#else
+  #include <amgcl/backend/builtin.hpp>
+  typedef amgcl::backend::builtin<double> SBackend;
+  #ifdef MIXED_PRECISION
+    typedef amgcl::backend::builtin<float> PBackend;
+  #else
+    typedef amgcl::backend::builtin<double> PBackend;
+  #endif
+#endif
 
 int main(int argc, char* argv[]){
 
@@ -41,7 +66,7 @@ int main(int argc, char* argv[]){
 	SpMat A(dim,dim);
    	IO::Eigen::Deserialize(A, config.matrix);
 
-	AMGCLSolver amgcl(config);
+	AMGCLSolver<PBackend, SBackend> amgcl(config);
 	// amgcl.Solve(A, x, rhs);
 	// auto r = rhs - A * x;
 
@@ -61,5 +86,8 @@ int main(int argc, char* argv[]){
 
 	auto info = amgcl.Solve(A, x, rhs, true);
 	std::cout << std::get<0>(info) << ", " << std::get<1>(info) << std::endl;
+
+	auto r = rhs - A * x;
+	std::cout << "residual " << r.norm() << std::endl;
 	return 0;
 }

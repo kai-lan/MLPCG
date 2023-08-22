@@ -9,9 +9,9 @@ namespace py = pybind11;
 
 using AMGCL = AMGCLSolver<PBackend, SBackend>;
 
-PYBIND11_MODULE(pyamgcl, m) {
-    m.doc() = "python binding for AMGCL solver OpenMP version";
-    py::class_<AMGCL>(m, "AMGCLSolver")
+PYBIND11_MODULE(pyamgcl_cuda, m) {
+    m.doc() = "python binding for AMGCL solver CUDA version";
+    py::class_<AMGCL>(m, "AMGCLSolverCUDA")
         .def(py::init<const SolverConfig&>())
         .def(py::init<const SpMat&, const SolverConfig&>())
         .def("print", [](AMGCL& solver, const SpMat& A) {
@@ -24,5 +24,5 @@ PYBIND11_MODULE(pyamgcl, m) {
                 auto info = solver.Solve(A, x, b, false);
                 return std::make_tuple(x, info);
             }, py::arg("A"), py::arg("b"));
-}
 
+}

@@ -17,40 +17,42 @@ torch.set_grad_enabled(False) # disable autograd globally
 pcg_precision = torch.float32
 torch.set_default_dtype(pcg_precision)
 
-DIM = 2
+DIM = 3
 norm_type = 'l2'
 num_imgs = 3
 
-N = 1024
+N = 128
 shape = (N,) + (N,)*(DIM-1)
 # train_matrices = set(np.load(f"{OUT_PATH}/output_{DIM}D_{N}/matrices_trained_50.npy"))
 # frame = list(frames)[80] # Random frame
 # frames = range(1, 201)
-frames = np.linspace(1, 200, 20, dtype=int)
-# frames = [111]
+# frames = np.linspace(1, 200, 20, dtype=int)
+frames = [100]
 
 device = torch.device('cuda')
 amgcg_time, amgcg_iters = [], []
+amgcl_time, amgcl_iters = [], []
 cg_time, cg_iters = [], []
 mlpcg_time, mlpcg_iters = [], []
 
 if DIM == 2:
     scene = f'standing_scooping_N{N}_200'
 else:
-    scene = f'standing_dipping_block_N{N}_200_{DIM}D'
+    scene = f'waterflow_rotating_cube_N{N}_200_{DIM}D'
 
-NN = 1024
+NN = 128
 num_mat = 10
-num_ritz = 3200
+num_ritz = 1600
 num_rhs = 800
 tests = {
     "MLPCG": True,
     "AMGCG": True,
-    "CG": True
+    "AMGCL": True,
+    "CG": False,
 }
 # fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_single_{DIM}D_{NN}", "checkpt_dambreak_frame_1_rhs_1600_2D_linear.tar")
 
-fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_sgd.tar")
+fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_lr0.0001.tar")
 
 fluidnet_model_res = SmallSMModelDn3D(3, num_imgs) if DIM == 3 else SmallSMModelDn(6, num_imgs)
 fluidnet_model_res.move_to(device)
@@ -117,11 +119,24 @@ for frame in frames:
         t0 = timeit.default_timer()
         res_amgcg = 0
         for _ in range(10):
-            x_amgcg, res_amgcg = AMGCG(rhs_sp, A_sp, np.zeros_like(rhs_sp), cg_max_iter, tol=tol, atol=atol)
+            x_amgcg, res_amgcg = AMGCG(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
         t_amgcg = (timeit.default_timer()-t0) / 10
         amgcg_time.append(t_amgcg)
         amgcg_iters.append(len(res_amgcg))
         print("AMGCG took", t_amgcg, 's after', len(res_amgcg), 'iterations', f'to {res_amgcg[-1]}')
+
+    ###############
+    # AMGCGL (CPU)
+    ###############
+    if tests['AMGCL']:
+        t0 = timeit.default_timer()
+        res_amgcl = 0
+        for _ in range(10):
+            x_amgcl, (iters_amgcl, res_amgcl) = AMGCL(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
+        t_amgcl = (timeit.default_timer()-t0) / 10
+        amgcl_time.append(t_amgcl)
+        amgcl_iters.append(iters_amgcl)
+        print("AMGCL took", t_amgcl, 's after', iters_amgcl, 'iterations', f'to {res_amgcl}')
 
     ################
     # CG or CUDA CG

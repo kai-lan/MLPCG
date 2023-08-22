@@ -10,3 +10,4 @@ __*
 */build
 */dist
 */*.egg-info
+cxx_src/test_data
