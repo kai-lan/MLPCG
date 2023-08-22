@@ -82,9 +82,9 @@ class AMGCLSolver {
   ~AMGCLSolver();
 
   // recompute pc
-  void Solve(const SpMat& A, VXT& x, const VXT& b, bool profile=false);
+  std::tuple<int, T> Solve(const SpMat& A, VXT& x, const VXT& b, bool profile=false);
   // reuse pc
-  void Solve(VXT& x, const VXT& b, bool profile=false);
+  std::tuple<int, T> Solve(VXT& x, const VXT& b, bool profile=false);
 
  private:
   void setParams();

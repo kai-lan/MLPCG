@@ -27,18 +27,19 @@ AMGCLSolver::~AMGCLSolver() {
   #endif
 }
 
-void AMGCLSolver::Solve(const SpMat& A, VXT& x, const VXT& b, bool profile) {
+std::tuple<int, T> AMGCLSolver::Solve(const SpMat& A, VXT& x, const VXT& b, bool profile) {
   if (profile) prof.tic("setup");
   solver = std::make_unique<Solver>(A, prm, bprm);
   if (profile) prof.toc("setup");
   if (profile) prof.tic("solve");
-  Solve(x, b, profile);
+  auto info = Solve(x, b, profile);
   if (profile) prof.toc("solve");
   if (profile)
     std::cout << prof << std::endl;
+  return info;
 }
 
-void AMGCLSolver::Solve(VXT& x, const VXT& b, bool profile) {
+std::tuple<int, T> AMGCLSolver::Solve(VXT& x, const VXT& b, bool profile) {
   sz iters;
   T error;
   #ifdef USE_VEXCL
@@ -55,6 +56,7 @@ void AMGCLSolver::Solve(VXT& x, const VXT& b, bool profile) {
     std::tie(iters, error) = solver->operator()(b, x);
     if (profile) prof.toc("solve");
   #endif
+  return std::make_tuple (iters, error);
 }
 
 void AMGCLSolver::setParams() {

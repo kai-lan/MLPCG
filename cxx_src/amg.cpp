@@ -38,23 +38,28 @@ int main(int argc, char* argv[]){
 	VXT x(dim);
 	x.setZero();
 
-	Eigen::SparseMatrix<T> A(dim,dim);
+	SpMat A(dim,dim);
    	IO::Eigen::Deserialize(A, config.matrix);
 
 	AMGCLSolver amgcl(config);
-	for (int i = 0; i < 20; ++i)
-		amgcl.Solve(A, x, rhs);
-	auto r = rhs - A * x;
-	std::cout << "Abs Residual: " << r.norm() << std::endl;
-	std::cout << "Rel Residual: " << r.norm() / rhs.norm() << std::endl;
+	// amgcl.Solve(A, x, rhs);
+	// auto r = rhs - A * x;
 
-	int iters = 100;
-	auto t0 = std::chrono::high_resolution_clock::now();
-	for (int i = 0; i < iters; ++i)
-		amgcl.Solve(A, x, rhs);
-	auto t1 = std::chrono::high_resolution_clock::now();
-	std::cout << "Solving took " << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()/1000.0 / iters << " s" << std::endl;
+	// for (int i = 0; i < x.size(); ++i) {
+	// 	assert(std::isnan(x[i]));
+	// }
 
-	amgcl.Solve(A, x, rhs, true);
+	// std::cout << "Abs Residual: " << r.norm() << std::endl;
+	// std::cout << "Rel Residual: " << r.norm() / rhs.norm() << std::endl;
+
+	// int iters = 100;
+	// auto t0 = std::chrono::high_resolution_clock::now();
+	// for (int i = 0; i < iters; ++i)
+	// 	amgcl.Solve(A, x, rhs);
+	// auto t1 = std::chrono::high_resolution_clock::now();
+	// std::cout << "Solving took " << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()/1000.0 / iters << " s" << std::endl;
+
+	auto info = amgcl.Solve(A, x, rhs, true);
+	std::cout << std::get<0>(info) << ", " << std::get<1>(info) << std::endl;
 	return 0;
 }
