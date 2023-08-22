@@ -157,30 +157,30 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    N = 128
-    DIM = 3
-    lr = 0.001
-    epoch_num_per_matrix = 5
+    N = 1024
+    DIM = 2
+    lr = 0.0001
+    epoch_num_per_matrix = 3
     epoch_num = 50
     epochs_per_save = 5
     shape = (1,)+(N,)*DIM
     bcs = [
         (f'dambreak_N{N}', (N,)*DIM),
-        # (f'dambreak_hill_N{N}', (N,)+(N,)*(DIM-1)),
-        (f'dambreak_hill_N{N}_N{2*N}', (2*N,)+(N,)*(DIM-1)),
-        (f'two_balls_N{N}', (N,)*DIM),
+        (f'dambreak_hill_N{N}', (N,)+(N,)*(DIM-1)),
+        # (f'dambreak_hill_N{N}_N{2*N}', (2*N,)+(N,)*(DIM-1)),
+        # (f'two_balls_N{N}', (N,)*DIM),
         (f'ball_cube_N{N}', (N,)*DIM),
         (f'ball_bowl_N{N}', (N,)*DIM),
-        (f'standing_dipping_block_N{N}', (N,)*DIM),
+        # (f'standing_dipping_block_N{N}', (N,)*DIM),
         (f'standing_rotating_blade_N{N}', (N,)*DIM),
-        (f'waterflow_pool_N{N}', (N,)*DIM),
+        # (f'waterflow_pool_N{N}', (N,)*DIM),
         (f'waterflow_panels_N{N}', (N,)*DIM),
-        (f'waterflow_rotating_cube_N{N}', (N,)*DIM)
+        # (f'waterflow_rotating_cube_N{N}', (N,)*DIM)
     ]
-    bc = 'mixedBCs10'
+    bc = 'mixedBCs6'
     b_size = 16
     total_matrices = 10 # number of matrices chosen for training
-    num_ritz = 1600
+    num_ritz = 3200
     num_rhs = 800 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
     num_imgs = 3
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    suffix += f'_imgs{num_imgs}_all_bcs_frames'
+    suffix += f'_imgs{num_imgs}_lr0.0001_iters3'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 
@@ -220,13 +220,16 @@ if __name__ == '__main__':
 
     model.move_to(cuda)
     loss_fn = eval(loss_fn)
+
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    # optimizer = optim.SGD(model.parameters(), lr=lr)
 
     if resume:
         ep, model_params, optim_params, train_loss, valid_loss, time_history, grad_history, update_history = loadData(outdir, suffix)
         model.load_state_dict(model_params)
         optimizer.load_state_dict(optim_params)
-        start_epoch = ep
+        # start_epoch = ep
+        start_epoch = len(train_loss)
     else:
         train_loss, valid_loss, time_history, grad_history, update_history = [], [], [], [], []
         start_epoch = 0
@@ -259,39 +262,41 @@ if __name__ == '__main__':
     # train_loss.append(_train_loss)
     # valid_loss.append(_valid_loss)
     for i in range(start_epoch+1, epoch_num+start_epoch+1):
-        _train_loss, _time = epoch_all_bcs_frames(bcs, matrices, train_set, train_loader, model, optimizer, loss_fn, True)
-        _valid_loss, _time = epoch_all_bcs_frames(bcs, matrices, valid_set, valid_loader, model, optimizer, loss_fn, False)
-        print(_train_loss, _valid_loss, f"{i} / {epoch_num}")
-        train_loss.append(_train_loss)
-        valid_loss.append(_valid_loss)
-        time_history.append(time.time() - start_time)
-        # tl, vl = 0.0, 0.0
-        # for bc, sha in bcs:
-        #     shape = (1,)+sha
-        #     if DIM == 2: inpdir = os.path.join(DATA_PATH, f"{bc}_200/preprocessed")
-        #     else:        inpdir = os.path.join(DATA_PATH, f"{bc}_200_{DIM}D/preprocessed")
-        #     for j in matrices:
-        #         print(f"Epoch: {i}/{epoch_num}")
-        #         print(bc)
-        #         print('Matrix', j)
-        #         train_set.data_folder = os.path.join(f"{inpdir}/{j}")
-        #         valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
-        #         A = torch.load(f"{train_set.data_folder}/A.pt").to_sparse_csr().cuda()
-        #         image = torch.load(f"{train_set.data_folder}/flags_binary_{num_imgs}.pt").view((num_imgs,)+sha).cuda()
-
-        #         fluid_cells = np.load(f"{train_set.data_folder}/fluid_cells.npy")
-        #         training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
-
-        #         tl += np.sum(training_loss_)
-        #         vl += np.sum(validation_loss_)
-        #         grad_history.extend(grad_history_)
-        #         update_history.extend(update_history_)
-        # train_loss.append(tl)
-        # valid_loss.append(vl)
+        # _train_loss, _time = epoch_all_bcs_frames(bcs, matrices, train_set, train_loader, model, optimizer, loss_fn, True)
+        # _valid_loss, _time = epoch_all_bcs_frames(bcs, matrices, valid_set, valid_loader, model, optimizer, loss_fn, False)
+        # print(_train_loss, _valid_loss, f"{i} / {epoch_num}")
+        # train_loss.append(_train_loss)
+        # valid_loss.append(_valid_loss)
         # time_history.append(time.time() - start_time)
-        saveData(model, optimizer, i+start_epoch, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history)
+
+        tl, vl = 0.0, 0.0
+        for bc, sha in bcs:
+            shape = (1,)+sha
+            if DIM == 2: inpdir = os.path.join(DATA_PATH, f"{bc}_200/preprocessed")
+            else:        inpdir = os.path.join(DATA_PATH, f"{bc}_200_{DIM}D/preprocessed")
+            for j in matrices:
+                print(f"Epoch: {i}/{epoch_num}")
+                print(bc)
+                print('Matrix', j)
+                train_set.data_folder = os.path.join(f"{inpdir}/{j}")
+                valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
+                A = torch.load(f"{train_set.data_folder}/A.pt").to_sparse_csr().cuda()
+                image = torch.load(f"{train_set.data_folder}/flags_binary_{num_imgs}.pt").view((num_imgs,)+sha).cuda()
+
+                fluid_cells = np.load(f"{train_set.data_folder}/fluid_cells.npy")
+                training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
+
+                tl += np.sum(training_loss_)
+                vl += np.sum(validation_loss_)
+                grad_history.extend(grad_history_)
+                update_history.extend(update_history_)
+        train_loss.append(tl)
+        valid_loss.append(vl)
+        time_history.append(time.time() - start_time)
+
+        saveData(model, optimizer, i, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history)
         if i % 5 == 0:
-            saveData(model, optimizer, i+start_epoch, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history)
+            saveData(model, optimizer, i, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history)
 
     end_time = time.time()
     print("Took", end_time-start_time, 's')
