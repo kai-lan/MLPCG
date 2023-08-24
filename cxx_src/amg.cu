@@ -1,82 +1,98 @@
 #include "AMGCLSolver.h"
-#include "BinaryIO.h"
-#include "MPIDomain.h"
-#include "SolverConfig.h"
-#include <chrono>
+#include <vector>
+#include <iostream>
+#include <amgcl/backend/cuda.hpp>
+#include <amgcl/adapter/crs_tuple.hpp>
+#include <amgcl/make_solver.hpp>
+#include <amgcl/amg.hpp>
+#include <amgcl/coarsening/smoothed_aggregation.hpp>
+#include <amgcl/relaxation/spai0.hpp>
+#include <amgcl/solver/bicgstab.hpp>
 
-#ifdef USE_VEXCL
-  #include <amgcl/backend/vexcl.hpp>
-  typedef amgcl::backend::vexcl<double> SBackend;
-  #ifdef MIXED_PRECISION
-    typedef amgcl::backend::vexcl<float> PBackend;
-  #else
-    typedef amgcl::backend::vexcl<double> PBackend;
-  #endif
-#elif USE_CUDA
-  #include <amgcl/backend/cuda.hpp>
-  typedef amgcl::backend::cuda<double> SBackend;
-  #ifdef MIXED_PRECISION
-    typedef amgcl::backend::cuda<float> PBackend;
-  #else
-    typedef amgcl::backend::cuda<double> PBackend;
-  #endif
-#else
-  #include <amgcl/backend/builtin.hpp>
-  typedef amgcl::backend::builtin<double> SBackend;
-  #ifdef MIXED_PRECISION
-    typedef amgcl::backend::builtin<float> PBackend;
-  #else
-    typedef amgcl::backend::builtin<double> PBackend;
-  #endif
-#endif
+#include <amgcl/io/mm.hpp>
+#include <amgcl/profiler.hpp>
+
+// #include "BinaryIO.h"
+#include "SolverConfig.h"
+#include <unsupported/Eigen/SparseExtra>
+
+
+// typedef amgcl::backend::cuda<double> Backend;
+// typedef amgcl::make_solver<
+// 	amgcl::amg<
+// 		Backend,
+// 		amgcl::coarsening::smoothed_aggregation,
+// 		amgcl::relaxation::spai0
+// 		>,
+// 	amgcl::solver::bicgstab<Backend>
+// 	> Solver;
 
 int main(int argc, char* argv[]){
 
 	cxxopts::Options options("amgcl", "test");
    	SolverConfig config;
-
-	try {
-		config.DefineOptions(options);
-		auto result = options.parse(argc, argv);
-		if (result.count("help")) {
-		std::cout << options.help({""}) << std::endl;
-		exit(0);
-		}
-		config.ParseConfig(result);
-	} catch (const cxxopts::OptionException& e) {
-		std::cout << "Error parsing options: " << e.what() << std::endl;
-		std::cout << options.help({""}) << std::endl;
-		exit(-1);
-	}
-
 	config.max_iter = 100;
    	config.tol = 1e-4;
-	if (config.matrix == "")
-		config.matrix = "../test_data/A_comp_999.bin";
-	if (config.rhs == "")
-		config.rhs = "../test_data/b_comp_999.bin";
-
 
 	VXT rhs;
-	IO::Eigen::Deserialize(rhs, config.rhs);
+	// IO::Eigen::Deserialize(rhs, config.rhs);
+	Eigen::loadMarketVector(rhs, "../test_data/poisson3Db/b.mtx");
+	// int device;
+    // cudaDeviceProp prop;
+    // cudaGetDevice(&device);
+    // cudaGetDeviceProperties(&prop, device);
+    // std::cout << prop.name << std::endl;
+
+	// ptrdiff_t rows, cols;
+    // std::vector<ptrdiff_t> ptr, col;
+    // std::vector<double> val, rhs;
+	amgcl::profiler<> prof("AMGCL solver");
+
+	// prof.tic("read");
+    // std::tie(rows, cols) = amgcl::io::mm_reader("../test_data/poisson3Db/A.mtx")(ptr, col, val);
+
+    // std::tie(rows, cols) = amgcl::io::mm_reader("../test_data/poisson3Db/b.mtx")(rhs);
+    // prof.toc("read");
+
+	// auto A = std::tie(rows, ptr, col, val);
+
+
+	// Backend::params bprm;
+    // Solver::params prm;
+	// cusparseCreate(&bprm.cusparse_handle);
+    // prm.solver.tol = 1e-4;
+
 
 	int dim = rhs.size();
 	VXT x(dim);
 	x.setZero();
 
-	SpMat A(dim,dim);
-   	IO::Eigen::Deserialize(A, config.matrix);
+    // std::vector<double> x(rows, 0.0);
+	// thrust::device_vector<double> f(rhs);
+    // thrust::device_vector<double> x(rhs.size(), 0.0);
 
-	int device;
-    cudaDeviceProp prop;
-    cudaGetDevice(&device);
-    cudaGetDeviceProperties(&prop, device);
-    std::cout << prop.name << std::endl;
+	SpMat A(rhs.size(),rhs.size());
+   	// IO::Eigen::Deserialize(A, config.matrix);
+	Eigen::loadMarket(A, "../test_data/poisson3Db/A.mtx");
+
+	// prof.tic("setup");
+    // Solver solve(A, prm, bprm);
+    // prof.toc("setup");
+
+	// std::cout << solve << std::endl;
+
+	// int iters;
+    // double error;
+	// prof.tic("solve");
+    // std::tie(iters, error) = solve(f, x);
+    // prof.toc("solve");
+
+	// std::cout << "Iters: " << iters << std::endl
+    //           << "Error: " << error << std::endl
+    //           << prof << std::endl;
 
 	AMGCLSolver<PBackend, SBackend> amgcl(config);
-
-
-	// amgcl.Solve(A, x, rhs);
+	amgcl.Solve(A, x, rhs, true);
 	// auto r = rhs - A * x;
 
 	// for (int i = 0; i < x.size(); ++i) {
@@ -93,10 +109,10 @@ int main(int argc, char* argv[]){
 	// auto t1 = std::chrono::high_resolution_clock::now();
 	// std::cout << "Solving took " << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()/1000.0 / iters << " s" << std::endl;
 
-	auto info = amgcl.Solve(A, x, rhs, true);
-	std::cout << std::get<0>(info) << ", " << std::get<1>(info) << std::endl;
+	// auto info = amgcl.Solve(A, x, rhs, true);
+	// std::cout << std::get<0>(info) << ", " << std::get<1>(info) << std::endl;
 
-	auto r = rhs - A * x;
-	std::cout << "residual " << r.norm() << std::endl;
+	// auto r = rhs - A * x;
+	// std::cout << "residual " << r.norm() << std::endl;
 	return 0;
 }
