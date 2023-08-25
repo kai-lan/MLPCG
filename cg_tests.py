@@ -21,11 +21,17 @@ import pyamg # https://github.com/pyamg/pyamg
 from cxx_src.build import pyamgcl
 from cxx_src.build import pyamgcl_cuda
 from cxx_src.build import pyamgcl_vexcl
+import time
 
 ###################
 # DCDM
 ###################
 def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, norm_type='l2'):
+    tot_time = {"Total": 0.0, "NN": 0.0, "Ortho": 0.0, "CG": 0.0, "Norm": 0.0, "Init": 0.0}
+
+    tot_start = time.time()
+    start = time.time()
+
     norm_b = b.norm().item()
     r = b - A @ x_init
     if norm_type == 'l2': norm = r.norm().item() / norm_b
@@ -42,35 +48,53 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
         p.append(torch.zeros_like(b))
         Ap.append(torch.zeros_like(b))
         alfa.append(1.0)
-
     x_sol = torch.clone(x_init)
+
+    tot_time['Init'] += time.time() - start
+
     for i in range(1, max_it+1):
-        q = model_predict(r) # r_normalized =r / norm_r. approximate A^-1 r
+        start = time.time()
+
+        q = model_predict(r)
+
+        tot_time['NN'] += time.time() - start
+
+        start = time.time()
+
         for j in reversed(range(num_prev)):
             q = q - q.dot(Ap[j])/alfa[j] * p[j]
-
         for j in range(num_prev-1):
             p[j] = p[j+1]
             Ap[j] = Ap[j+1]
             alfa[j] = alfa[j+1]
 
+        tot_time['Ortho'] += time.time() - start
+
+        start = time.time()
+
         p[num_prev-1] = q
         Ap[num_prev-1] = A @ q
         alfa[num_prev-1] = p[-1].dot(Ap[-1])
-
         beta = p[-1].dot(r)/alfa[-1]
-
         x_sol += p[-1] * beta
         r = b - A @ x_sol
+
+        tot_time['CG'] += time.time() - start
+
+        start = time.time()
 
         if norm_type == 'l2': norm = r.norm().item() / norm_b
         else: norm = x_sol.dot(A @ x_sol).item() / 2 - x_sol.dot(b)
         res_history.append(norm)
+
+        tot_time['Norm'] += time.time() - start
+
         if verbose:
             print(f"Iter {i}, residual {res_history[-1]}, ares {r.norm().item()}")
         if norm < max(tol, atol/norm_b):
-            return x_sol, res_history
-    return x_sol, res_history
+            tot_time['Total'] += time.time() - tot_start
+            return x_sol, res_history, tot_time
+    return x_sol, res_history, tot_time
 
 ###################
 # CG CPU

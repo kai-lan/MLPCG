@@ -17,17 +17,17 @@ torch.set_grad_enabled(False) # disable autograd globally
 pcg_precision = torch.float32
 torch.set_default_dtype(pcg_precision)
 
-DIM = 3
+DIM = 2
 norm_type = 'l2'
 num_imgs = 3
 
-N = 128
+N = 1024
 shape = (N,) + (N,)*(DIM-1)
 # train_matrices = set(np.load(f"{OUT_PATH}/output_{DIM}D_{N}/matrices_trained_50.npy"))
 # frame = list(frames)[80] # Random frame
 # frames = range(1, 201)
 # frames = np.linspace(1, 200, 20, dtype=int)
-frames = [100]
+frames = [111]
 
 device = torch.device('cuda')
 amgcg_time, amgcg_iters = [], []
@@ -36,23 +36,23 @@ cg_time, cg_iters = [], []
 mlpcg_time, mlpcg_iters = [], []
 
 if DIM == 2:
-    scene = f'standing_scooping_N{N}_200'
+    scene = f'standing_rotating_blade_N{N}_200'
 else:
-    scene = f'waterflow_rotating_cube_N{N}_200_{DIM}D'
+    scene = f'dambreak_pillars_N{N}_N{2*N}_200_{DIM}D'
 
-NN = 128
+NN = 1024
 num_mat = 10
-num_ritz = 1600
+num_ritz = 3200
 num_rhs = 800
 tests = {
     "MLPCG": True,
     "AMGCG": False,
-    "AMGCL": True,
-    "CG": True,
+    "AMGCL": False,
+    "CG": False,
 }
 # fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_single_{DIM}D_{NN}", "checkpt_dambreak_frame_1_rhs_1600_2D_linear.tar")
 
-fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_lr0.0001.tar")
+fluidnet_model_res_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_lr0.0001_iters3.tar")
 
 fluidnet_model_res = SmallSMModelDn3D(3, num_imgs) if DIM == 3 else SmallSMModelDn(6, num_imgs)
 fluidnet_model_res.move_to(device)
@@ -94,23 +94,26 @@ def cuda_benchmark_cg():
 for frame in frames:
     print("Testing frame", frame, "scene", scene)
     dambreak_path = os.path.join(DATA_PATH, f"{scene}") #_smoke include boundary
-    A_sp = readA_sparse(os.path.join(dambreak_path, f"A_{frame}.bin")).astype(np.float64)
-    rhs_sp = load_vector(os.path.join(dambreak_path, f"div_v_star_{frame}.bin")).astype(np.float64)
-    flags_sp = read_flags(os.path.join(dambreak_path, f"flags_{frame}.bin"))
+    # A_sp = readA_sparse(os.path.join(dambreak_path, f"A_{frame}.bin")).astype(np.float64)
+    # rhs_sp = load_vector(os.path.join(dambreak_path, f"div_v_star_{frame}.bin")).astype(np.float64)
+    # flags_sp = read_flags(os.path.join(dambreak_path, f"flags_{frame}.bin"))
 
     # A_sp = readA_sparse("cxx_src/test_data/A_999.bin")
     # rhs_sp = load_vector("cxx_src/test_data/b_999.bin")
     # flags_sp = read_flags("cxx_src/test_data/flags_999.bin")
 
     # compressed A and rhs
-    A_comp = compressedMat(A_sp, flags_sp)
-    rhs_comp = compressedVec(rhs_sp, flags_sp)
+    # A_comp = compressedMat(A_sp, flags_sp)
+    # rhs_comp = compressedVec(rhs_sp, flags_sp)
 
-    flags_sp = convert_to_binary_images(flags_sp, num_imgs)
+    # flags_sp = convert_to_binary_images(flags_sp, num_imgs)
 
-    A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float64, device=device)
-    rhs = torch.tensor(rhs_sp, dtype=torch.float64, device=device)
-    flags = torch.tensor(flags_sp, dtype=torch.float64, device=device)
+    # A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float64, device=device)
+    # rhs = torch.tensor(rhs_sp, dtype=torch.float64, device=device)
+    # flags = torch.tensor(flags_sp, dtype=torch.float64, device=device)
+    A = torch.load(f"{dambreak_path}/preprocessed/{frame}/A.pt").double().cuda()
+    rhs = torch.load(f"{dambreak_path}/preprocessed/{frame}/rhs.pt").double().cuda()
+    flags = torch.load(f"{dambreak_path}/preprocessed/{frame}/flags_binary_3.pt").double().cuda()
 
     ###############
     # AMGCG (CPU)
@@ -132,18 +135,18 @@ for frame in frames:
         if rhs.is_cuda:
             t0 = timeit.default_timer()
             res_amgcl = 0
-            for _ in range(50):
-                x_amgcl, (iters_amgcl, res_amgcl) = AMGCL_VEXCL(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
-            t_amgcl = (timeit.default_timer()-t0) / 50
+            for _ in range(10):
+                x_amgcl, (iters_amgcl, tot_time, res_amgcl) = AMGCL_CUDA(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
+            t_amgcl = (timeit.default_timer()-t0) / 10
             amgcl_time.append(t_amgcl)
             amgcl_iters.append(iters_amgcl)
             print("AMGCL took", t_amgcl, 's after', iters_amgcl, 'iterations', f'to {res_amgcl}')
         else:
             t0 = timeit.default_timer()
             res_amgcl = 0
-            for _ in range(50):
-                x_amgcl, (iters_amgcl, res_amgcl) = AMGCL(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
-            t_amgcl = (timeit.default_timer()-t0) / 50
+            for _ in range(10):
+                x_amgcl, (iters_amgcl, tot_time, res_amgcl) = AMGCL(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
+            t_amgcl = (timeit.default_timer()-t0) / 10
             amgcl_time.append(t_amgcl)
             amgcl_iters.append(iters_amgcl)
             print("AMGCL took", t_amgcl, 's after', iters_amgcl, 'iterations', f'to {res_amgcl}')
@@ -170,11 +173,20 @@ for frame in frames:
             print("CG took", t_cg, 's after', len(res_cg), 'iterations', f'to {res_cg[-1]}')
 
     if tests['MLPCG']:
-        timer_res = torch_timer('res')
-        result_res = timer_res.timeit(1)
-        mlpcg_time.append(result_res.times[0])
+        # timer_res = torch_timer('res')
+        # result_res = timer_res.timeit(1)
+        start = time.time()
+        tot_time = 0.0
+        for _ in range(10):
+            x_fluidnet_res, res_fluidnet_res, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), fluidnet_predict(fluidnet_model_res, flags), pcg_max_iter, tol=tol, atol=atol)
+        end = time.time()
+        mlpcg_time.append((end-start)/10)
         mlpcg_iters.append(len(res_fluidnet_res))
-        print(f"MLPCG", result_res.times[0], 's after', len(res_fluidnet_res), 'iterations', f'to {res_fluidnet_res[-1]}')
+        time_sorted = sorted(tot_time.items(), key=lambda x:x[1], reverse=True)
+        for item in time_sorted:
+            print(item)
+        print(f"MLPCG took", (end-start)/10, 's after', len(res_fluidnet_res), 'iterations', f'to {res_fluidnet_res[-1]}')
+        # print(f"MLPCG", result_res.times[0], 's after', len(res_fluidnet_res), 'iterations', f'to {res_fluidnet_res[-1]}')
 
     print()
 
@@ -188,9 +200,11 @@ print('CG took', np.mean(cg_iters), 'iters', np.mean(cg_time), 's')
 print('MLPCG took', np.mean(mlpcg_iters), 'iters', np.mean(mlpcg_time), 's')
 
 output_file = fluidnet_model_res_file.replace("checkpt", f"test_{scene}").replace(".tar", ".txt")
-with open(output_file, 'w') as f:
-    for i in range(len(mlpcg_iters)):
-        f.write(f"{frames[i]:<4}, {amgcl_iters[i]:^4}, {amgcl_time[i]:>6.4f}, {cg_iters[i]:^4}, {cg_time[i]:>6.4f}, {mlpcg_iters[i]:^4}, {mlpcg_time[i]:>6.4f}\n")
+# with open(output_file, 'w') as f:
+#     for i in range(len(mlpcg_iters)):
+#         f.write(f"{frames[i]:<4}, {amgcl_iters[i]:^4}, {amgcl_time[i]:>6.4f}, {cg_iters[i]:^4}, {cg_time[i]:>6.4f}, {mlpcg_iters[i]:^4}, {mlpcg_time[i]:>6.4f}\n")
+#     f.write(f"{'Avg':<4}, {np.mean(amgcl_iters):^4}, {np.mean(amgcl_time):>6.4f}, {np.mean(cg_iters):^4}, {np.mean(cg_time):>6.4f}, {np.mean(mlpcg_iters):^4}, {np.mean(mlpcg_time):>6.4f}\n")
+
 # import matplotlib.pyplot as plt
 # plt.plot(res_fluidnet_res, label=f'{NN} MLPCG')
 # plt.plot(res_amgcg, label='amgcg')
