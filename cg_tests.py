@@ -18,7 +18,6 @@ import cupy as cp
 import cupyx.scipy.sparse as cpsp
 import cupyx.scipy.sparse.linalg as gslin # https://docs.cupy.dev/en/stable/reference/scipy_sparse_linalg.html#module-cupyx.scipy.sparse.linalg
 import pyamg # https://github.com/pyamg/pyamg
-from cxx_src.build import pysolverconfig
 from cxx_src.build import pyamgcl
 from cxx_src.build import pyamgcl_cuda
 from cxx_src.build import pyamgcl_vexcl
@@ -131,66 +130,65 @@ def AMGCG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
     return x, residuals
 
 def AMGCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
-    solver_config = pysolverconfig.SolverConfig()
-    solver_config.tol = tol
-    solver_config.max_iter = max_it
-    amgcl_solver = pyamgcl.AMGCLSolver(solver_config)
-    x_comp, (iters, residual) = amgcl_solver.solve(A_comp, b_comp)
-    return x_comp, (iters, residual)
+    x_comp, info = pyamgcl.solve(A_comp, b_comp, tol, atol, max_it)
+    iters, time, residual = info[0], info[1]+info[2], info[3]
+    return x_comp, (iters, time, residual)
 
 def AMGCL_CUDA(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
-    solver_config = pysolverconfig.SolverConfig()
-    solver_config.tol = tol
-    solver_config.max_iter = max_it
-    amgcl_solver = pyamgcl_cuda.AMGCLSolverCUDA(solver_config)
-    x_comp, (iters, residual) = amgcl_solver.solve(A_comp, b_comp)
-    return x_comp, (iters, residual)
+    x_comp, info = pyamgcl_cuda.solve(A_comp, b_comp, tol, atol, max_it)
+    iters, time, residual = info[0], info[1]+info[2], info[3]
+    return x_comp, (iters, time, residual)
 
 def AMGCL_VEXCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
-    solver_config = pysolverconfig.SolverConfig()
-    solver_config.tol = tol
-    solver_config.max_iter = max_it
-    amgcl_solver = pyamgcl_vexcl.AMGCLSolverVEXCL(solver_config)
-    x_comp, (iters, residual) = amgcl_solver.solve(A_comp, b_comp)
-    return x_comp, (iters, residual)
+    x_comp, info = pyamgcl_vexcl.solve(A_comp, b_comp, tol, atol, max_it)
+    iters, time, residual = info[0], info[1]+info[2], info[3]
+    return x_comp, (iters, time, residual)
 
 if __name__ == '__main__':
     import sys
     sys.path.append('lib')
     import time
     from lib.read_data import *
-    N = 128
-    frame = 1
-    scene = 'dambreak'
-    flags = read_flags(f"data/{scene}_N{N}_200_3D/flags_{frame}.bin")
-    sol = load_vector(f"data/{scene}_N{N}_200_3D/pressure_{frame}.bin")
-    rhs = load_vector(f"data/{scene}_N{N}_200_3D/div_v_star_{frame}.bin")
-    A = readA_sparse(f"data/{scene}_N{N}_200_3D/A_{frame}.bin")
+    N = 256
+    frame = 200
+    scene = 'ball_bowl'
+    data_path = "data"
+    # data_path = "../tgsl/tgsl_projects/projects/incompressible_flow/build_3d"
+    flags = read_flags(f"{data_path}/{scene}_N{N}_200_3D/flags_{frame}.bin")
+    sol = load_vector(f"{data_path}/{scene}_N{N}_200_3D/pressure_{frame}.bin")
+    rhs = load_vector(f"{data_path}/{scene}_N{N}_200_3D/div_v_star_{frame}.bin")
+    A = readA_sparse(f"{data_path}/{scene}_N{N}_200_3D/A_{frame}.bin")
+
+
     # rhs = load_vector("cxx_src/test_data/b_999.bin")
     # A = readA_sparse("cxx_src/test_data/A_999.bin")
-    rhs = compressedVec(rhs, flags)
-    A = compressedMat(A, flags)
+    # rhs = compressedVec(rhs, flags)
+    # A = compressedMat(A, flags)
 
-    start = time.time()
-    for _ in range(10):
-        x, res = AMGCG(rhs.astype(np.float32), A.astype(np.float32), np.zeros_like(rhs).astype(np.float32), tol=1e-4, max_it=100, callback=None)
-    end = time.time()
-    print("Time:", (end-start)/10, "s.")
-
-    start = time.time()
-    for _ in range(10):
-        x, (iters, res) = AMGCL(rhs, A, np.zeros_like(rhs), tol=1e-4, max_it=100, callback=None)
-    end = time.time()
-    print("Time:", (end-start)/10, "s.")
-
-    # x, res = CG(rhs.astype(np.float32), A.astype(np.float32), np.zeros_like(rhs).astype(np.float32), max_it=100, tol=1e-4, verbose=True)
-
-
-    # rhs_cp, A_cp = cp.array(rhs, dtype=np.float64), cpsp.csr_matrix(A, dtype=np.float64)
     # start = time.time()
-    # for _ in range(100):
-    #     x_cg_cp, res_cg_cp = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), 3000, tol=1e-4, verbose=False)
+    # for _ in range(10):
+    #     x, res = AMGCG(rhs.astype(np.float32), A.astype(np.float32), np.zeros_like(rhs).astype(np.float32), tol=1e-4, max_it=100, callback=None)
     # end = time.time()
-    # print("Time:", (end-start)/100, "s.")
+    # print("Time:", (end-start)/10, "s.")
+
+    # start = time.time()
+    # for _ in range(10):
+    x, (iters, tot_time, res) = AMGCL_CUDA(rhs, A, np.zeros_like(rhs), tol=1e-4, max_it=100, callback=None)
+    # end = time.time()
+    print("AMGCL CUDA Time:", tot_time, "s.")
+
+    # start = time.time()
+    # for _ in range(10):
+    #     x, res = CG(rhs, A, np.zeros_like(rhs), max_it=1000, tol=1e-4, verbose=False)
+    # end = time.time()
+    # print("Time:", (end-start)/10, 's.')
+
+
+    rhs_cp, A_cp = cp.array(rhs, dtype=np.float64), cpsp.csr_matrix(A, dtype=np.float64)
+    start = time.time()
+    for _ in range(10):
+        x_cg_cp, res_cg_cp = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), 3000, tol=1e-4, verbose=False)
+    end = time.time()
+    print("CUDA CG Time:", (end-start)/10, "s.")
 
 

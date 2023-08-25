@@ -9,8 +9,8 @@
 #include <amgcl/amg.hpp>
 #include <amgcl/coarsening/smoothed_aggregation.hpp>
 #include <amgcl/relaxation/spai0.hpp>
-// #include <amgcl/solver/cg.hpp>
-#include <amgcl/solver/bicgstab.hpp>
+#include <amgcl/solver/cg.hpp>
+// #include <amgcl/solver/bicgstab.hpp>
 
 #include <amgcl/adapter/eigen.hpp>
 #include <amgcl/adapter/reorder.hpp>
@@ -18,7 +18,7 @@
 #include <amgcl/io/mm.hpp>
 #include <amgcl/profiler.hpp>
 
-#include <SolverConfig.h>
+#include <Definitions.h>
 
 #ifdef USE_VEXCL
   #include <amgcl/backend/vexcl.hpp>
@@ -56,7 +56,7 @@
 
 // Need a stateful solver object so we can reuse the AMGCL preconditioner between solves
 template <typename PBackend, typename SBackend>
-class AMGCLSolver {
+struct AMGCLSolver {
 
  public:
   typedef amgcl::make_solver<
@@ -65,114 +65,67 @@ class AMGCLSolver {
       amgcl::coarsening::smoothed_aggregation,
       amgcl::relaxation::spai0
       >,
-    amgcl::solver::bicgstab<SBackend>
+    amgcl::solver::cg<SBackend>
     > Solver;
-  std::unique_ptr<Solver> solver;
-  amgcl::profiler<> prof{"AMGCL solve"};
-  const SolverConfig& config;
-  typename SBackend::params bprm;
-  boost::property_tree::ptree prm;
-
-  #ifdef USE_VEXCL
-    vex::Context* ctx;
-  #endif
 
 
-  AMGCLSolver(const SpMat& A, const SolverConfig& _config) : config(_config) {
-    #ifdef USE_VEXCL
-      std::cout << "Using VexCL" << std::endl;
-      ctx = new vex::Context(vex::Filter::Exclusive(vex::Filter::GPU && vex::Filter::Env && vex::Filter::Count(1)));  // vex::Filter::DoublePrecision && vex::Filter::Count(1)));
-    #elif USE_CUDA
-      std::cout << "Using CUDA" << std::endl;
-      cusparseCreate(&bprm.cusparse_handle);
-    #else
-      std::cout << "Using OpenMP" << std::endl;
-    #endif
-    #ifdef MIXED_PRECISION
-      std::cout << "Using mixed precesion" << std::endl;
-    #endif
-    setParams();
+  static std::tuple<int, T, T, T> Solve(const SpMat& A, VXT& x, const VXT& b, double tol=1e-4, double atol=1e-10, int max_iters=100) {
 
-    n = A.rows();
-    solver = std::make_unique<Solver>(A, prm, bprm);
-  }
-
-  AMGCLSolver(const SolverConfig& _config) : config(_config) {
-  #ifdef USE_VEXCL
-    std::cout << "Using VexCL" << std::endl;
-    ctx = new vex::Context(vex::Filter::Exclusive(vex::Filter::GPU && vex::Filter::Env && vex::Filter::Count(1)));  // vex::Filter::DoublePrecision && vex::Filter::Count(1)));
-  #elif USE_CUDA
-    std::cout << "Using CUDA" << std::endl;
-    cusparseCreate(&bprm.cusparse_handle);
-  #else
-    std::cout << "Using OpenMP" << std::endl;
-  #endif
-  #ifdef MIXED_PRECISION
-    // std::cout << "Using mixed precesion" << std::endl;
-  #endif
-    setParams();
-  }
-
-  ~AMGCLSolver() {
-  #ifdef USE_VEXCL
-    if (ctx)
-      delete ctx;
-  #endif
-  }
-
-  // recompute pc
-  std::tuple<int, T> Solve(const SpMat& A, VXT& x, const VXT& b, bool profile=false) {
     typename Solver::params prm;
-    prm.solver.tol = 1e-4;
-    if (profile) prof.tic("setup");
-    solver = std::make_unique<Solver>(A, prm, bprm);
-    if (profile) prof.toc("setup");
-    auto info = Solve(x, b, profile);
-    if (profile) {
-      std::cout << *solver << std::endl;
-      std::cout << prof << std::endl;
-    }
-    return info;
-  }
+    prm.solver.tol = std::max(tol, atol / b.norm());
+    prm.solver.maxiter = max_iters;
 
-  // reuse pc
-  std::tuple<int, T> Solve(VXT& x, const VXT& b, bool profile=false) {
-    sz iters;
+    typename SBackend::params bprm;
+  #ifdef USE_VEXCL
+    vex::Context ctx(vex::Filter::Exclusive(vex::Filter::GPU && vex::Filter::Env && vex::Filter::Count(1)));
+    bprm.q = ctx;
+  #elif USE_CUDA
+    cusparseCreate(&bprm.cusparse_handle);
+  #endif
+
+    amgcl::profiler<> prof("AMGCL solver");
+    T setup_time, solve_time;
+
+    prof.tic("setup");
+    Solver solver(A, prm, bprm);
+    setup_time = prof.toc("setup");
+
+    int iters;
     T error;
   #ifdef USE_VEXCL
-    vex::vector<T> b_vexcl(*ctx, b.size(), b.data());
-    vex::vector<T> x_vexcl(*ctx, x.size(), x.data());
-    if (profile) prof.tic("solve");
-    std::tie(iters, error) = solver->operator()(b_vexcl, x_vexcl);
-    if (profile) prof.toc("solve");
+    prof.tic("Transferring data");
+    vex::vector<T> b_vexcl(ctx, b.size(), b.data());
+    vex::vector<T> x_vexcl(ctx, x.size(), x.data());
+    prof.toc("Transferring data");
+
+    prof.tic("solve");
+    std::tie(iters, error) = solver(b_vexcl, x_vexcl);
+    solve_time = prof.toc("solve");
+
     vex::copy(x_vexcl.begin(), x_vexcl.end(), x.data());
   #elif USE_CUDA
+    prof.tic("Transferring data");
     thrust::device_vector<T> b_cuda(b.data(), b.data() + b.size());
     thrust::device_vector<T> x_cuda(x.data(), x.data() + x.size());
-    if (profile) prof.tic("solve");
-    std::tie(iters, error) = solver->operator()(b_cuda, x_cuda);
-    if (profile) prof.toc("solve");
+    prof.toc("Transferring data");
+
+    prof.tic("solve");
+    std::tie(iters, error) = solver(b_cuda, x_cuda);
+    solve_time = prof.toc("solve");
+
     thrust::copy(x_cuda.begin(), x_cuda.end(), x.begin());
   #else
-    if (profile) prof.tic("solve");
-    std::tie(iters, error) = solver->operator()(b, x);
-    if (profile) prof.toc("solve");
+    prof.tic("solve");
+    std::tie(iters, error) = solver(b, x);
+    solve_time = prof.toc("solve");
   #endif
-    return std::make_tuple(iters, error);
+
+    std::cout << solver << std::endl;
+    std::cout << prof << std::endl;
+
+    return std::make_tuple(iters, setup_time, solve_time, error);
   }
 
- private:
-  void setParams() {
-    // std::cout << "Tol: " << config.tol << std::endl;
-    // std::cout << "Max iters: " << config.max_iter << std::endl;
-  #ifdef USE_VEXCL
-    bprm.q = *ctx;
-  #endif
-    prm.put("solver.tol", config.tol);
-    prm.put("solver.maxiter", config.max_iter);
-  }
-
-  int n;
 };
 
 #endif
