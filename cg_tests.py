@@ -26,7 +26,7 @@ import time
 ###################
 # DCDM
 ###################
-def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, norm_type='l2'):
+def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
     tot_time = {"Total": 0.0, "NN": 0.0, "Ortho": 0.0, "CG": 0.0, "Norm": 0.0, "Init": 0.0}
 
     tot_start = time.time()
@@ -34,22 +34,22 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
 
     norm_b = b.norm().item()
     r = b - A @ x_init
-    if norm_type == 'l2': norm = r.norm().item() / norm_b
-    else: norm = x_init.dot(A @ x_init).item() / 2 - x_init.dot(b)
-    res_history = [norm]
-    if verbose:
-        print(f"Iter {0}, residual {res_history[-1]}, ares {r.norm().item()}")
+    norm = r.norm().item() / norm_b
+    if callback:
+        torch.cuda.synchronize()
+        callback(norm, time.time() - tot_start)
 
-    num_prev = 2
+    if verbose:
+        print(f"Iter {0}, residual {norm}, ares {r.norm().item()}")
+
+    num_prev = 18
     p = []
     Ap = []
     alfa = []
-    for _ in range(num_prev):
-        p.append(torch.zeros_like(b))
-        Ap.append(torch.zeros_like(b))
-        alfa.append(1.0)
+
     x_sol = torch.clone(x_init)
 
+    torch.cuda.synchronize()
     tot_time['Init'] += time.time() - start
 
     for i in range(1, max_it+1):
@@ -57,92 +57,113 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
 
         q = model_predict(r)
 
+        torch.cuda.synchronize()
         tot_time['NN'] += time.time() - start
 
         start = time.time()
 
-        for j in reversed(range(num_prev)):
-            q = q - q.dot(Ap[j])/alfa[j] * p[j]
-        for j in range(num_prev-1):
-            p[j] = p[j+1]
-            Ap[j] = Ap[j+1]
-            alfa[j] = alfa[j+1]
+        if i > num_prev:
+            for j in reversed(range(num_prev)):
+                q = q - q.dot(Ap[j])/alfa[j] * p[j]
+            for j in range(num_prev-1):
+                p[j] = p[j+1]
+                Ap[j] = Ap[j+1]
+                alfa[j] = alfa[j+1]
+        else:
+            for j in reversed(range(i-1)):
+                q = q - q.dot(Ap[j])/alfa[j] * p[j]
 
+        torch.cuda.synchronize()
         tot_time['Ortho'] += time.time() - start
 
         start = time.time()
 
-        p[num_prev-1] = q
-        Ap[num_prev-1] = A @ q
-        alfa[num_prev-1] = p[-1].dot(Ap[-1])
+        if i > num_prev:
+            p[num_prev-1] = q
+            Ap[num_prev-1] = A @ q
+            alfa[num_prev-1] = p[-1].dot(Ap[-1])
+        else:
+            p.append(q)
+            Ap.append(A @ q)
+            alfa.append(p[-1].dot(Ap[-1]))
+
         beta = p[-1].dot(r)/alfa[-1]
+
         x_sol += p[-1] * beta
         r = b - A @ x_sol
 
+        torch.cuda.synchronize()
         tot_time['CG'] += time.time() - start
 
         start = time.time()
 
-        if norm_type == 'l2': norm = r.norm().item() / norm_b
-        else: norm = x_sol.dot(A @ x_sol).item() / 2 - x_sol.dot(b)
-        res_history.append(norm)
+        norm = r.norm().item() / norm_b
+        if callback:
+            torch.cuda.synchronize()
+            callback(norm, time.time() - tot_start)
 
+        torch.cuda.synchronize()
         tot_time['Norm'] += time.time() - start
 
+
         if verbose:
-            print(f"Iter {i}, residual {res_history[-1]}, ares {r.norm().item()}")
+            print(f"Iter {i}, residual {norm}, ares {r.norm().item()}")
         if norm < max(tol, atol/norm_b):
+            torch.cuda.synchronize()
             tot_time['Total'] += time.time() - tot_start
-            return x_sol, res_history, tot_time
-    return x_sol, res_history, tot_time
+            return x_sol, i, tot_time
+    return x_sol, max_it, tot_time
 
 ###################
 # CG CPU
 ###################
-def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, norm_type='l2'):
+def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
+    tot_start = time.time()
     count = 0
     norm_b = np.linalg.norm(b)
 
-    if norm_type == 'l2': norm = np.linalg.norm(b - A @ x_init) / norm_b
-    else: norm = x_init.dot(A @ x_init) / 2 - x_init.dot(b)
-    res_history = [norm]
+    norm = np.linalg.norm(b - A @ x_init) / norm_b
+    if callback:
+        callback(norm.item(), time.time() - tot_start)
     if verbose:
-        print(f"Iter {count}, residual {res_history[-1]}")
+        print(f"Iter {count}, residual {norm}")
     def res_callback(x):
         nonlocal count
         count += 1
         r = b - A @ x
-
-        if norm_type == 'l2': norm = np.linalg.norm(b - A @ x) / norm_b
-        else: norm = x.dot(A @ x) / 2 - x.dot(b)
-        res_history.append(norm)
+        norm = np.linalg.norm(r) / norm_b
+        if callback:
+            callback(norm, time.time() - tot_start)
+        # res_history.append(norm)
         if verbose:
-            print(f"Iter {count}, residual {res_history[-1]}")
+            print(f"Iter {count}, residual {norm}")
     x, info = slin.cg(A, b, x0=x_init, tol=tol, atol=atol, maxiter=max_it, callback=res_callback)
-    return x, res_history
+    return x, count
 
 ###################
 # CG CUDA
 ###################
-def CG_GPU(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, norm_type='l2'):
+def CG_GPU(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
+    tot_start = time.time()
     count = 0
     norm_b = cp.linalg.norm(b)
 
-    if norm_type == 'l2': norm = cp.linalg.norm(b - A @ x_init) / norm_b
-    else: norm = x_init.dot(A @ x_init) / 2 - x_init.dot(b)
-    res_history = [norm.item()]
+    norm = cp.linalg.norm(b - A @ x_init) / norm_b
+    if callback:
+        callback(norm.item(), time.time() - tot_start)
     if verbose:
-        print(f"Iter {count}, residual {res_history[-1]}")
-    def callback(x):
+        print(f"Iter {count}, residual {norm}")
+    def res_callback(x):
         nonlocal count
         count += 1
-        if norm_type == 'l2': norm = cp.linalg.norm(b - A @ x) / norm_b
-        else: norm = x.dot(A @ x) / 2 - x.dot(b)
-        res_history.append(norm.item())
+        norm = cp.linalg.norm(b - A @ x) / norm_b
+        # res_history.append(norm.item())
         if verbose:
-            print(f"Iter {count}, residual {res_history[-1]}")
-    x, info = gslin.cg(A, b, x0=x_init, tol=tol, atol=atol, maxiter=max_it, callback=callback)
-    return x, res_history
+            print(f"Iter {count}, residual {norm}")
+        if callback:
+            callback(norm.item(), time.time() - tot_start)
+    x, info = gslin.cg(A, b, x0=x_init, tol=tol, atol=atol, maxiter=max_it, callback=res_callback)
+    return x, count
 
 def AMGCG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
     ml = pyamg.ruge_stuben_solver(A)
@@ -175,7 +196,7 @@ if __name__ == '__main__':
     from lib.read_data import *
     N = 256
     frame = 200
-    scene = 'ball_bowl'
+    scene = 'standing_dipping_block'
     data_path = "data"
     # data_path = "../tgsl/tgsl_projects/projects/incompressible_flow/build_3d"
     flags = read_flags(f"{data_path}/{scene}_N{N}_200_3D/flags_{frame}.bin")
@@ -195,10 +216,11 @@ if __name__ == '__main__':
     # end = time.time()
     # print("Time:", (end-start)/10, "s.")
 
-    # start = time.time()
-    # for _ in range(10):
-    x, (iters, tot_time, res) = AMGCL_CUDA(rhs, A, np.zeros_like(rhs), tol=1e-4, max_it=100, callback=None)
-    # end = time.time()
+    x, (iters, tot_time, res) = AMGCL(rhs, A, np.zeros_like(rhs), tol=1e-4, max_it=100, callback=None)
+    print("AMGCL CUDA Time:", tot_time, "s.")
+    x, (iters, tot_time, res) = AMGCL(rhs, A, np.zeros_like(rhs), tol=1e-4, max_it=100, callback=None)
+    print("AMGCL CUDA Time:", tot_time, "s.")
+    x, (iters, tot_time, res) = AMGCL(rhs, A, np.zeros_like(rhs), tol=1e-4, max_it=100, callback=None)
     print("AMGCL CUDA Time:", tot_time, "s.")
 
     # start = time.time()

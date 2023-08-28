@@ -165,14 +165,14 @@ def compressedVec(b, flags):
     return b[selection]
 def expandVec(b, flags):
     flags = flags.ravel()
-    selection = np.where(flags == 2)[0]
+    selection = np.where(flags == FLUID)[0]
     v = np.zeros(flags.shape, b.dtype)
     v[selection] = b
     return v
 
 if __name__ == '__main__':
-    frame = 1
-    N = 256
+    frame = 10
+    N = 64
     DIM = 3
     prefix = ''
     bc = 'dambreak'
@@ -180,10 +180,12 @@ if __name__ == '__main__':
         suffix = ''
     else:
         suffix = '_3D'
-    file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"div_v_star_{frame}.bin")
-    file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"flags_{frame}.bin")
+
+    DATA_PATH = "../tgsl/tgsl_projects/projects/incompressible_flow/build_3d"
+    file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_20{suffix}", f"A_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_20{suffix}", f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_20{suffix}", f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_20{suffix}", f"flags_{frame}.bin")
     A = readA_sparse(file_A)
     rhs = load_vector(file_rhs)
     sol = load_vector(file_sol)
