@@ -2,7 +2,7 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
-
+#include "half.hpp"
 #include <vector>
 
 #define NUM_IMAGES 3

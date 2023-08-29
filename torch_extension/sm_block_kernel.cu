@@ -11,7 +11,7 @@
 __constant__ unsigned char WEIGHT_BYTES[WEIGHT_SIZE*sizeof(double)];
 __constant__ unsigned char BIAS_BYTES[KERNEL_SIZE*sizeof(double)];
 
-#define LOCATIONS_PER_BLOCK 16
+#define LOCATIONS_PER_BLOCK 4
 #define NUM_THREADS_FORWARD 256
 #define NUM_THREADS_BACKWARD 256
 

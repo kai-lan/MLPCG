@@ -310,100 +310,100 @@ if __name__ == '__main__':
     sys.path.append(path + "/lib")
     from lib.read_data import *
     import matplotlib.pyplot as plt
-    torch.set_default_dtype(torch.float32)
+    torch.set_default_dtype(torch.float64)
     torch.manual_seed(0)
-    torch.backends.cudnn.deterministic = False
+    torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.allow_tf32 = True # for debugging
+    # torch.backends.cudnn.allow_tf32 = True # for debugging
     # torch.use_deterministic_algorithms(True)
 
     N = 256
     frame = 45
     num_imgs = 3
+    cuda_device = torch.device("cuda")
 
-    # file_A = os.path.join(path, "data_fluidnet", "ball_cube_2D_64", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"div_v_star_{frame}.bin")
-    # file_sol = os.path.join(DATA_PATH, f"ball_cube_N{N}_200_3D", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"flags_{frame}.bin")
-    # A = readA_sparse(64, file_A, DIM=2)
-    rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float32)
-    flags = torch.tensor(convert_to_binary_images(read_flags(file_flags), num_imgs), dtype=torch.float32)
+    file_rhs = os.path.join(DATA_PATH, f"ball_cube_N{N}_200", f"div_v_star_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"ball_cube_N{N}_200", f"flags_{frame}.bin")
+
+    rhs = torch.tensor(load_vector(file_rhs), dtype=torch.float64)
+    flags = torch.tensor(convert_to_binary_images(read_flags(file_flags), num_imgs), dtype=torch.float64)
+
     # sol = torch.tensor(load_vector(file_sol), dtype=torch.float32)
     # with h5py.File("test.hdf5", "r") as f:
     #   rhs = torch.tensor(f['rhs'], dtype=torch.float32)
     #   flags = torch.tensor(f['flags'], dtype=torch.float32)
 
-    torch.set_grad_enabled(False) # disable autograd globally
+    # torch.set_grad_enabled(False) # disable autograd globally
 
-    # model = SmallSMBlock3DPY(num_imgs).cuda()
-    # model1 = SmallSMBlock3D(num_imgs).cuda()
-    # model = SmallLinearBlockPY(num_imgs).cuda()
-    # model1 = SmallLinearBlock(num_imgs).cuda()
-    # model = SmallSMBlockPY(num_imgs).cuda()
-    # model1 = SmallSMBlock(num_imgs).cuda()
-    model = SmallSMModelDn3DPY(3, num_imgs).cuda()
-    model1 = SmallSMModelDn3D(3, num_imgs).cuda()
+    # model = SmallSMBlock3DPY(num_imgs).to(cuda_device)
+    # model1 = SmallSMBlock3D(num_imgs).to(cuda_device)
+    # # model = SmallLinearBlockPY(num_imgs).to(cuda_device)
+    # model1 = SmallLinearBlock(num_imgs).to(cuda_device)
+    model = SmallSMBlockPY(num_imgs).to(cuda_device)
+    model1 = SmallSMBlock(num_imgs).to(cuda_device)
+    # model = SmallSMModelDn3DPY(3, num_imgs).to(cuda_device)
+    # model1 = SmallSMModelDn3D(3, num_imgs).to(cuda_device)
 
     # image1 = image.detach().clone()
-    img_shape = (num_imgs, N, N, N)
-    rhs_shape = (1, 1, N, N, N)
-    image = flags.reshape(img_shape).cuda()
-    # image = torch.rand(3, 2*N, N).cuda()
-    # x = rhs.reshape(rhs_shape).expand((1,)+ img_shape).cuda()
-    # x.requires_grad = True
-    x1 = rhs.reshape(rhs_shape).expand((1,)+ img_shape).cuda()
-    x1.requires_grad = True
+    img_shape = (num_imgs, N, N)
+    rhs_shape = (1, 1, N, N)
+    image = flags.reshape(img_shape).to(cuda_device)
+    # image = torch.rand(3, N, N, device=cuda_device)
+    # image = torch.rand(3, 2*N, N).to(cuda_device)
+    x = rhs.reshape(rhs_shape).expand((1,)+ rhs_shape[1:]).to(cuda_device)
+    x1 = x.detach().clone()
 
     # torch.set_grad_enabled(False)
     # model1.eval()
     # print(model1.training)
-    for _ in range(10):
-        # y = model(image, x)
+    for _ in range(1):
+        y = model(image, x)
         y1 = model1(image, x1)
         # y.sum().backward()
         # y1.sum().backward()
 
     torch.cuda.synchronize()
 
-    iters = 100
-    forward = 0.0
-    backward = 0.0
-    for _ in range(iters):
-        start = time.time()
-        # y = model(image, x)
-        torch.cuda.synchronize()
-        forward += time.time() - start
+    # iters = 100
+    # forward = 0.0
+    # backward = 0.0
+    # for _ in range(iters):
+    #     start = time.time()
+    #     # y = model(image, x)
+    #     torch.cuda.synchronize()
+    #     forward += time.time() - start
 
-        start = time.time()
-        # y.sum().backward()
-        torch.cuda.synchronize()
-        backward += time.time() - start
+    #     start = time.time()
+    #     # y.sum().backward()
+    #     torch.cuda.synchronize()
+    #     backward += time.time() - start
 
-    print('PyTorch\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
+    # print('PyTorch\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
 
-    grad_output = torch.zeros(1).cuda()
-    padded_image = F.pad(image, (1,)*6)
+    # grad_output = torch.zeros(1).to(cuda_device)
+    # padded_image = F.pad(image, (1,)*6)
 
-    forward = 0.0
-    backward = 0.0
-    for _ in range(iters):
-        start = time.time()
-        y1 = model1(image, x1)
-        torch.cuda.synchronize()
-        forward += time.time() - start
+    # forward = 0.0
+    # backward = 0.0
+    # for _ in range(iters):
+    #     start = time.time()
+    #     y1 = model1(image, x1)
+    #     torch.cuda.synchronize()
+    #     forward += time.time() - start
 
-        start = time.time()
-        # y1.sum().backward()
-        torch.cuda.synchronize()
-        backward += time.time() - start
+    #     start = time.time()
+    #     # y1.sum().backward()
+    #     torch.cuda.synchronize()
+    #     backward += time.time() - start
 
-    print('CUDA kernel\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
+    # print('CUDA kernel\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
 
-    # print((y - y1).abs().max())
-    # y.sum().backward()
-    # y1.sum().backward()
-    # print((model.KL.bias.grad - model1.bias.grad).abs().mean())
-    # print((model.KL.weight.grad - model1.weight.grad).abs().mean())
+    print((y - y1).abs().max())
+    print((y - y1).abs().norm())
+    y.sum().backward()
+    y1.sum().backward()
+    print((model.KL.bias.grad - model1.bias.grad).abs().mean())
+    print((model.KL.weight.grad - model1.weight.grad).abs().mean())
     # print((model.pre[1].KL.weight.grad - model1.pre[1].KL.weight.grad).abs().max())
     # print((x.grad - x1.grad).abs().max())
 

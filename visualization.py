@@ -89,16 +89,16 @@ def visualize_frame_by_frame(num_frames, shape):
         time.sleep(0.1)
 
 if __name__ == '__main__':
-    N = 64
-    DIM = 3
+    N = 1024
+    DIM = 2
 
-    # example_folder = os.path.join(DATA_PATH, f"waterflow_rotating_cube_N{N}_200")
-    example_folder = '../TGSL/tgsl/projects/incompressible_flow/build_3D/dambreak_bunny_N64_200_3D'
+    example_folder = os.path.join(DATA_PATH, f"waterflow_rotating_cube_N{N}_200")
+    # example_folder = '../TGSL/tgsl/projects/incompressible_flow/build_3D/dambreak_bunny_N64_200_3D'
 
-    frame = 1
+    frame = 111
     if len(sys.argv) > 1:
         frame = int(sys.argv[1])
-    flags = vis_flags(frame, (2*N, N))
+    flags = vis_flags(frame, (N, N))
     # flags = vis_flags_binary(frame, (N*3, N), 3)
     print(flags.min(), flags.max())
 

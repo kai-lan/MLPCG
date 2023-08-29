@@ -13,16 +13,17 @@ import time, timeit
 import warnings
 warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
 torch.set_grad_enabled(False) # disable autograd globally
+pcg_dtype = torch.float32
+torch.set_default_dtype(pcg_dtype)
 
-
-DIM = 3
+DIM = 2
 norm_type = 'l2'
 num_imgs = 3
 
-N = 128
-shape = (N*2,) + (N,)*(DIM-1)
+N = 1024
+shape = (N,) + (N,)*(DIM-1)
 
-frames = [128]
+frames = [95]
 
 device = torch.device('cuda')
 
@@ -34,22 +35,22 @@ cg_time, cg_iters = [], []
 mlpcg_time, mlpcg_iters = [], []
 
 if DIM == 2:
-    scene = f'standing_rotating_blade_N{N}_200'
+    scene = f'standing_scooping_N{N}_200'
 else:
     scene = f'dambreak_bunny_N{N}_N{2*N}_200_{DIM}D'
 
-NN = 128
+NN = 1024
 num_mat = 10
-num_ritz = 1600
+num_ritz = 3200
 num_rhs = 800
 tests = {
     "MLPCG": True,
     "AMGCG": False,
-    "AMGCL": False,
+    "AMGCL": True,
     "CG": True,
 }
 
-model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_lr0.0001_iters3.tar")
+model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_105.tar")
 
 model = SmallSMModelDn3D(3, num_imgs) if DIM == 3 else SmallSMModelDn(6, num_imgs)
 model.move_to(device)
@@ -59,7 +60,7 @@ model.eval()
 
 verbose = False
 cg_max_iter = 1500
-pcg_max_iter = 500
+pcg_max_iter = 1000
 tol = 1e-4
 atol = 1e-10 # safe guard for small rhs
 
@@ -69,17 +70,20 @@ def callback(res, time, key):
     time_profile[key].append(time)
 
 
-def model_predict(fluidnet_model, image):
+def model_predict(fluidnet_model, image, fluid_cells):
+    shape = image.shape[1:]
     def predict(r):
         with torch.no_grad():
-            r = normalize(r, dim=0)
-            x = fluidnet_model.eval_forward(image.view((num_imgs,)+shape).float(), r.view((1, 1)+shape).float()).flatten().double()
-        return x
+            r = normalize(r.to(pcg_dtype), dim=0)
+            b = torch.zeros(np.prod(shape), device=device, dtype=pcg_dtype)
+            b[fluid_cells] = r
+            x = fluidnet_model.eval_forward(image, b.view((1, 1)+shape)).flatten().double()
+        return x[fluid_cells]
     return predict
 
 
 def torch_benchmark_dcdm_res(model):
-    x_mlpcg, iters, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags), pcg_max_iter, tol=tol, atol=atol)
+    x_mlpcg, iters, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol)
 def torch_timer(loss):
     return torch_benchmark.Timer(
     stmt=f'torch_benchmark_dcdm_{loss}(model)',
@@ -92,26 +96,21 @@ def cuda_benchmark_cg():
 
 for frame in frames:
     print("Testing frame", frame, "scene", scene)
-    dambreak_path = os.path.join(DATA_PATH, f"{scene}") #_smoke include boundary
+    dambreak_path = os.path.join(DATA_PATH, f"{scene}")
     A_sp = readA_sparse(os.path.join(dambreak_path, f"A_{frame}.bin")).astype(np.float64)
     rhs_sp = load_vector(os.path.join(dambreak_path, f"div_v_star_{frame}.bin")).astype(np.float64)
     flags_sp = read_flags(os.path.join(dambreak_path, f"flags_{frame}.bin"))
-
-    # A_sp = readA_sparse("cxx_src/test_data/A_999.bin")
-    # rhs_sp = load_vector("cxx_src/test_data/b_999.bin")
-    # flags_sp = read_flags("cxx_src/test_data/flags_999.bin")
+    fluid_cells = np.argwhere(flags_sp == FLUID).ravel()
 
     # compressed A and rhs
     A_comp = compressedMat(A_sp, flags_sp)
     rhs_comp = compressedVec(rhs_sp, flags_sp)
     flags_sp = convert_to_binary_images(flags_sp, num_imgs)
 
-    A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float64, device=device)
-    rhs = torch.tensor(rhs_sp, dtype=torch.float64, device=device)
-    flags = torch.tensor(flags_sp, dtype=torch.float64, device=device)
-    # A = torch.load(f"{dambreak_path}/preprocessed/{frame}/A.pt").double().cuda()
-    # rhs = torch.load(f"{dambreak_path}/preprocessed/{frame}/rhs.pt").double().cuda()
-    # flags = torch.load(f"{dambreak_path}/preprocessed/{frame}/flags_binary_3.pt").double().cuda()
+    A = torch.sparse_csr_tensor(A_comp.indptr, A_comp.indices, A_comp.data, A_comp.shape, dtype=torch.float64, device=device)
+    rhs = torch.tensor(rhs_comp, dtype=torch.float64, device=device)
+    flags = torch.tensor(flags_sp, dtype=pcg_dtype, device=device).view(num_imgs, *shape)
+    fluid_cells = torch.from_numpy(fluid_cells).to(device)
 
     ###############
     # AMGCG (CPU)
@@ -132,8 +131,7 @@ for frame in frames:
     if tests['AMGCL']:
         if rhs.is_cuda:
             t0 = timeit.default_timer()
-            res_amgcl = 0
-            x_amgcl, (iters_amgcl, tot_time, res_amgcl) = AMGCL_VEXCL(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
+            x_amgcl, (iters_amgcl, tot_time, res_amgcl) = AMGCL_CUDA(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
             amgcl_time.append(tot_time)
             amgcl_iters.append(iters_amgcl)
             print("AMGCL took", tot_time, 's after', iters_amgcl, 'iterations', f'to {res_amgcl}')
@@ -176,7 +174,7 @@ for frame in frames:
         def mlpcg_callback(r, time):
             res_profile['MLPCG'].append(r)
             time_profile['MLPCG'].append(time)
-        x_mlpcg, iters, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags), pcg_max_iter, tol=tol, atol=atol, callback=mlpcg_callback)
+        x_mlpcg, iters, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol, callback=mlpcg_callback)
         mlpcg_time.append(result_res.times[0])
         mlpcg_iters.append(iters)
         print(f"MLPCG", result_res.times[0], 's after', iters, 'iterations', f"to {res_profile['MLPCG'][-1]}")

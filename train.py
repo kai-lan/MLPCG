@@ -160,7 +160,7 @@ if __name__ == '__main__':
     N = 1024
     DIM = 2
     lr = 0.0001
-    epoch_num_per_matrix = 3
+    epoch_num_per_matrix = 5
     epoch_num = 50
     epochs_per_save = 5
     shape = (1,)+(N,)*DIM
@@ -185,7 +185,7 @@ if __name__ == '__main__':
     kernel_size = 3 # kernel size
     num_imgs = 3
 
-    if DIM == 2: num_levels = 6
+    if DIM == 2: num_levels = 8
     else: num_levels = 3
     cuda = torch.device("cuda") # Use CUDA for training
 
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    suffix += f'_imgs{num_imgs}_lr0.0001_iters3'
+    suffix += f'_imgs{num_imgs}_l10_lr0.0001'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 

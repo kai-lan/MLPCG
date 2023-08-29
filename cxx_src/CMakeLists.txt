@@ -65,12 +65,12 @@ target_compile_definitions(amgcl INTERFACE
     $<$<CXX_COMPILER_ID:MSVC>:_SCL_SECURE_NO_WARNINGS>
     )
 
-find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+# find_package(Eigen3 3.4 REQUIRED NO_MODULE)
 
 include_directories(${CMAKE_SOURCE_DIR}/amgcl)
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 include_directories(SYSTEM ${CMAKE_SOURCE_DIR}/lib)
-include_directories(SYSTEM ${CMAKE_SOURCE_DIR}/../../external_libraries/eigen)
+include_directories(SYSTEM ${CMAKE_SOURCE_DIR}/../../eigen-3.4.0)
 
 
 if (COMPILE_CUDA OR COMPILE_VEXCL)
@@ -83,7 +83,7 @@ if (COMPILE_VEXCL)
   message("Compiling VexCL")
   add_subdirectory(${CMAKE_SOURCE_DIR}/vexcl)
   add_executable(myamgcl_vexcl amg.cpp)
-  target_link_libraries(myamgcl_vexcl amgcl VexCL::CUDA VexCL::OpenCL Eigen3::Eigen)
+  target_link_libraries(myamgcl_vexcl amgcl VexCL::CUDA VexCL::OpenCL)
   target_compile_definitions(myamgcl_vexcl PRIVATE -DUSE_VEXCL)
 endif()
 
@@ -110,14 +110,14 @@ if (COMPILE_CUDA)
     endif()
   endif()
   add_executable(myamgcl_cuda amg.cu)
-  target_link_libraries(myamgcl_cuda amgcl cuda_target Eigen3::Eigen)
+  target_link_libraries(myamgcl_cuda amgcl cuda_target)
   target_compile_definitions(myamgcl_cuda PRIVATE -DUSE_CUDA)
 endif()
 
 if (COMPILE_OPENMP)
   message("Compiling OpenMP(builtin)")
   add_executable(myamgcl amg.cpp)
-  target_link_libraries(myamgcl amgcl Eigen3::Eigen)
+  target_link_libraries(myamgcl amgcl)
 endif()
 
 # if (MIXED_PRECISION) # sadly, it seems mixed precision is not supported here
@@ -135,12 +135,12 @@ if (NOT WIN32)
 
   if (COMPILE_VEXCL)
     pybind11_add_module(pyamgcl_vexcl pyamgcl_vexcl.cpp)
-    target_link_libraries(pyamgcl_vexcl PRIVATE amgcl VexCL::CUDA VexCL::OpenCL Eigen3::Eigen)
+    target_link_libraries(pyamgcl_vexcl PRIVATE amgcl VexCL::CUDA VexCL::OpenCL)
     target_compile_definitions(pyamgcl_vexcl PRIVATE -DUSE_VEXCL)
   endif()
   if (COMPILE_CUDA)
     pybind11_add_module(pyamgcl_cuda pyamgcl.cu)
-    target_link_libraries(pyamgcl_cuda PRIVATE amgcl cuda_target Eigen3::Eigen)
+    target_link_libraries(pyamgcl_cuda PRIVATE amgcl cuda_target)
     target_compile_definitions(pyamgcl_cuda PRIVATE -DUSE_CUDA)
     set_property(TARGET pyamgcl_cuda PROPERTY CUDA_ARCHITECTURES 86)
   endif()
