@@ -23,12 +23,12 @@ num_imgs = 3
 N = 1024
 shape = (N,) + (N,)*(DIM-1)
 
-frames = [95]
+frames = [200]
 
 device = torch.device('cuda')
 
-res_profile = {"AMGCL":[], "CG":[], "MLPCG":[]}
-time_profile = {"AMGCL":[], "CG":[], "MLPCG":[]}
+res_profile = {"AMGCL":[], "CG":[], "MLPCG":[], "NewMLPCG":[]}
+time_profile = {"AMGCL":[], "CG":[], "MLPCG":[],  "NewMLPCG":[]}
 
 amgcl_time, amgcl_iters = [], []
 cg_time, cg_iters = [], []
@@ -45,12 +45,13 @@ num_ritz = 3200
 num_rhs = 800
 tests = {
     "MLPCG": True,
+    "NewMLPCG": True,
     "AMGCG": False,
     "AMGCL": True,
     "CG": True,
 }
 
-model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_105.tar")
+model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}.tar")
 
 model = SmallSMModelDn3D(3, num_imgs) if DIM == 3 else SmallSMModelDn(6, num_imgs)
 model.move_to(device)
@@ -82,12 +83,15 @@ def model_predict(fluidnet_model, image, fluid_cells):
     return predict
 
 
-def torch_benchmark_dcdm_res(model):
-    x_mlpcg, iters, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol)
-def torch_timer(loss):
+def torch_benchmark_dcdm(model, new=False):
+    if new:
+        x_mlpcg, iters, tot_time = dcdm_new(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol)
+    else:
+        x_mlpcg, iters, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol)
+def torch_timer(new=False):
     return torch_benchmark.Timer(
-    stmt=f'torch_benchmark_dcdm_{loss}(model)',
-    setup=f'from __main__ import torch_benchmark_dcdm_{loss}',
+    stmt=f'torch_benchmark_dcdm(model, {new})',
+    setup=f'from __main__ import torch_benchmark_dcdm',
     globals={'model':eval(f"model")})
 
 
@@ -169,12 +173,26 @@ for frame in frames:
             print("CG took", t_cg, 's after', len(res_cg), 'iterations', f'to {res_cg[-1]}')
 
     if tests['MLPCG']:
-        timer_res = torch_timer('res')
+        timer_res = torch_timer()
         result_res = timer_res.timeit(1)
         def mlpcg_callback(r, time):
             res_profile['MLPCG'].append(r)
             time_profile['MLPCG'].append(time)
         x_mlpcg, iters, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol, callback=mlpcg_callback)
+        mlpcg_time.append(result_res.times[0])
+        mlpcg_iters.append(iters)
+        print(f"MLPCG", result_res.times[0], 's after', iters, 'iterations', f"to {res_profile['MLPCG'][-1]}")
+        time_sorted = sorted(tot_time.items(), key=lambda x:x[1], reverse=True)
+        for item in time_sorted:
+            print(item)
+
+    if tests['NewMLPCG']:
+        timer_res = torch_timer(True)
+        result_res = timer_res.timeit(1)
+        def mlpcg_callback(r, time):
+            res_profile['MLPCG'].append(r)
+            time_profile['MLPCG'].append(time)
+        x_mlpcg, iters, tot_time = dcdm_new(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol, callback=mlpcg_callback)
         mlpcg_time.append(result_res.times[0])
         mlpcg_iters.append(iters)
         print(f"MLPCG", result_res.times[0], 's after', iters, 'iterations', f"to {res_profile['MLPCG'][-1]}")
