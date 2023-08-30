@@ -32,19 +32,19 @@ def dcdm_new(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose
     norm_b = b.norm().item()
     r = b - A @ x_init
     norm = r.norm().item() / norm_b
-    # res_history = [norm]
+
     if callback:
         torch.cuda.synchronize()
         callback(norm, time.time() - tot_start)
     if verbose:
         print(f"Iter {0}, residual {norm}, ares {r.norm().item()}")
 
-    num_prev = 10
+    num_prev = 2
     p = []
     Ap = []
     alfa = []
 
-    x_sol = torch.clone(x_init) # optional
+    x_sol = torch.clone(x_init)
 
     torch.cuda.synchronize()
     tot_time['Init'] += time.time() - start
@@ -74,8 +74,9 @@ def dcdm_new(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose
 
         start = time.time()
 
+        Ad1 = A @ d1
         Ad2 = A @ d2
-        aa = d1.dot(A @ d1)
+        aa = d1.dot(Ad1)
         bb = d1.dot(Ad2)
         cc = bb
         dd = d2.dot(Ad2)
@@ -88,27 +89,19 @@ def dcdm_new(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose
         d = c1 * d1 + c2 * d2
 
         if i > num_prev:
-            # for j in reversed(range(num_prev)):
-            #     d = d - d.dot(Au[j])/omiga[j] * u[j]
             for j in range(num_prev-1):
                 p[j] = p[j+1]
                 Ap[j] = Ap[j+1]
                 alfa[j] = alfa[j+1]
             p[num_prev-1] = d
-            Ap[num_prev-1] = A @ d # =c1 * (A@d1) + c2 * (A@d2)
+            Ap[num_prev-1] = c1 * Ad1 + c2 * Ad2
             alfa[num_prev-1] = p[-1].dot(Ap[-1])
         else:
-            # for j in reversed(range(i-1)):
-            #     d = d - d.dot(Au[j])/omiga[j] * u[j]
             p.append(d)
-            Ap.append(A @ d)
+            Ap.append(c1 * Ad1 + c2 * Ad2)
             alfa.append(p[-1].dot(Ap[-1]))
 
         gamma = d.dot(r)/alfa[-1]
-        # gamma = d.dot(r)/omiga[-1]
-        # print(gamma)
-        # x_sol += d1 * gamma
-        # print(c1, c2)
         x_sol += gamma * d
         r = b - A @ x_sol
 
@@ -118,7 +111,6 @@ def dcdm_new(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose
         start = time.time()
 
         norm = r.norm().item() / norm_b
-        # res_history.append(norm)
         if callback:
             torch.cuda.synchronize()
             callback(norm, time.time() - tot_start)
@@ -153,7 +145,7 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
     if verbose:
         print(f"Iter {0}, residual {norm}, ares {r.norm().item()}")
 
-    num_prev = 10
+    num_prev = 8
     p = []
     Ap = []
     alfa = []
@@ -224,6 +216,147 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
             tot_time['Total'] += time.time() - tot_start
             return x_sol, i, tot_time
     return x_sol, max_it, tot_time
+
+def dcdm_cg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
+    tot_time = {"Total": 0.0, "NN": 0.0, "Ortho": 0.0, "CG": 0.0, "Norm": 0.0, "Init": 0.0}
+
+    tot_start = time.time()
+    start = time.time()
+
+    norm_b = b.norm().item()
+    r = b - A @ x_init
+    norm = r.norm().item() / norm_b
+    if callback:
+        torch.cuda.synchronize()
+        callback(norm, time.time() - tot_start)
+
+    if verbose:
+        print(f"Iter {0}, residual {norm}, ares {r.norm().item()}")
+
+    x = torch.clone(x_init)
+
+    z = model_predict(r)
+    # z = r
+    p = z
+    w = A @ p
+    rz = rz_old = r.dot(z)
+    alpha = rz / p.dot(w)
+    x += alpha * p
+    r = b - A @ x
+
+    norm = r.norm().item() / norm_b
+    if callback:
+        torch.cuda.synchronize()
+        callback(norm, time.time() - tot_start)
+
+    torch.cuda.synchronize()
+    tot_time['Init'] += time.time() - start
+
+    k = 1
+    while norm > max(tol, atol/norm_b) and k < max_it:
+        start = time.time()
+
+        z = model_predict(r)
+        # z = r
+
+        torch.cuda.synchronize()
+        tot_time['NN'] += time.time() - start
+
+        rz = r.dot(z)
+        beta = rz / rz_old
+        p = z + beta * p
+        w = A @ p
+        alpha = rz / p.dot(w)
+        x += alpha * p
+        r = b - A @ x
+        k += 1
+        rz_old = rz
+
+        norm = r.norm().item() / norm_b
+
+        if callback:
+            torch.cuda.synchronize()
+            callback(norm, time.time() - tot_start)
+        if verbose:
+            print(f"Iter {k}, residual {norm}, ares {r.norm().item()}")
+
+    torch.cuda.synchronize()
+    tot_time['Total'] += time.time() - tot_start
+    return x, k, tot_time
+
+def dcdm_bicg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
+    tot_time = {"Total": 0.0, "NN": 0.0, "Ortho": 0.0, "CG": 0.0, "Norm": 0.0, "Init": 0.0}
+
+    tot_start = time.time()
+    start = time.time()
+
+    norm_b = b.norm().item()
+    r = b - A @ x_init
+    norm = r.norm().item() / norm_b
+    if callback:
+        torch.cuda.synchronize()
+        callback(norm, time.time() - tot_start)
+
+    if verbose:
+        print(f"Iter {0}, residual {norm}, ares {r.norm().item()}")
+
+    x = torch.clone(x_init)
+
+    rho0 = alpha = omega0 = 1
+    v0 = p0 = torch.zeros_like(x)
+
+    for i in range(1, max_it+1):
+        rho = r.dot(r)
+
+
+    z = model_predict(r)
+    # z = r
+    p = z
+    w = A @ p
+    rz = rz_old = r.dot(z)
+    alpha = rz / p.dot(w)
+    x += alpha * p
+    r = b - A @ x
+
+    norm = r.norm().item() / norm_b
+    if callback:
+        torch.cuda.synchronize()
+        callback(norm, time.time() - tot_start)
+
+    torch.cuda.synchronize()
+    tot_time['Init'] += time.time() - start
+
+    k = 1
+    while norm > max(tol, atol/norm_b) and k < max_it:
+        start = time.time()
+
+        z = model_predict(r)
+        # z = r
+
+        torch.cuda.synchronize()
+        tot_time['NN'] += time.time() - start
+
+        rz = r.dot(z)
+        beta = rz / rz_old
+        p = z + beta * p
+        w = A @ p
+        alpha = rz / p.dot(w)
+        x += alpha * p
+        r = b - A @ x
+        k += 1
+        rz_old = rz
+
+        norm = r.norm().item() / norm_b
+
+        if callback:
+            torch.cuda.synchronize()
+            callback(norm, time.time() - tot_start)
+        if verbose:
+            print(f"Iter {k}, residual {norm}, ares {r.norm().item()}")
+
+    torch.cuda.synchronize()
+    tot_time['Total'] += time.time() - tot_start
+    return x, k, tot_time
 
 ###################
 # CG CPU

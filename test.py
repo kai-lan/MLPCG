@@ -23,12 +23,13 @@ num_imgs = 3
 N = 1024
 shape = (N,) + (N,)*(DIM-1)
 
-frames = [200]
+# frames = [200]
+frames = np.linspace(1, 200, 30, dtype=int)
 
 device = torch.device('cuda')
 
-res_profile = {"AMGCL":[], "CG":[], "MLPCG":[], "NewMLPCG":[]}
-time_profile = {"AMGCL":[], "CG":[], "MLPCG":[],  "NewMLPCG":[]}
+# res_profile = {"AMGCL":[], "CG":[], "MLPCG":[], "NewMLPCG":[]}
+# time_profile = {"AMGCL":[], "CG":[], "MLPCG":[],  "NewMLPCG":[]}
 
 amgcl_time, amgcl_iters = [], []
 cg_time, cg_iters = [], []
@@ -45,13 +46,13 @@ num_ritz = 3200
 num_rhs = 800
 tests = {
     "MLPCG": True,
-    "NewMLPCG": True,
+    "NewMLPCG": False,
     "AMGCG": False,
     "AMGCL": True,
     "CG": True,
 }
 
-model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}.tar")
+model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_lr0.0001_iters3.tar")
 
 model = SmallSMModelDn3D(3, num_imgs) if DIM == 3 else SmallSMModelDn(6, num_imgs)
 model.move_to(device)
@@ -61,7 +62,7 @@ model.eval()
 
 verbose = False
 cg_max_iter = 1500
-pcg_max_iter = 1000
+pcg_max_iter = 1500
 tol = 1e-4
 atol = 1e-10 # safe guard for small rhs
 
@@ -82,12 +83,13 @@ def model_predict(fluidnet_model, image, fluid_cells):
         return x[fluid_cells]
     return predict
 
-
+mlpcg_iter = 0
 def torch_benchmark_dcdm(model, new=False):
+    global mlpcg_iter
     if new:
-        x_mlpcg, iters, tot_time = dcdm_new(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol)
+        x_mlpcg, mlpcg_iter, tot_time = dcdm_cg(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol)
     else:
-        x_mlpcg, iters, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol)
+        x_mlpcg, mlpcg_iter, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol)
 def torch_timer(new=False):
     return torch_benchmark.Timer(
     stmt=f'torch_benchmark_dcdm(model, {new})',
@@ -95,8 +97,10 @@ def torch_timer(new=False):
     globals={'model':eval(f"model")})
 
 
+cg_iter = 0
 def cuda_benchmark_cg():
-    x_cg, iters = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), cg_max_iter, tol=tol, atol=atol, verbose=verbose)
+    global cg_iter
+    x_cg, cg_iter = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), cg_max_iter, tol=tol, atol=atol, verbose=verbose)
 
 for frame in frames:
     print("Testing frame", frame, "scene", scene)
@@ -138,14 +142,14 @@ for frame in frames:
             x_amgcl, (iters_amgcl, tot_time, res_amgcl) = AMGCL_CUDA(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
             amgcl_time.append(tot_time)
             amgcl_iters.append(iters_amgcl)
-            print("AMGCL took", tot_time, 's after', iters_amgcl, 'iterations', f'to {res_amgcl}')
+            print("AMGCL took", tot_time, 's after', iters_amgcl, 'iterations') #, f'to {res_amgcl}')
         else:
             t0 = timeit.default_timer()
             res_amgcl = 0
             x_amgcl, (iters_amgcl, tot_time, res_amgcl) = AMGCL(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol)
             amgcl_time.append(tot_time)
             amgcl_iters.append(iters_amgcl)
-            print("AMGCL took", tot_time, 's after', iters_amgcl, 'iterations', f'to {res_amgcl}')
+            print("AMGCL took", tot_time, 's after', iters_amgcl, 'iterations') #, f'to {res_amgcl}')
 
     ################
     # CG or CUDA CG
@@ -154,15 +158,15 @@ for frame in frames:
         if rhs.is_cuda:
             # rhs_cp, A_cp = cp.array(rhs_sp, dtype=np.float64), cpsp.csr_matrix(A_sp, dtype=np.float64)
             rhs_cp, A_cp = cp.array(rhs_comp, dtype=np.float64), cpsp.csr_matrix(A_comp, dtype=np.float64)
-            def callback(r, time):
-                res_profile['CG'].append(r)
-                time_profile['CG'].append(time)
+            # def callback(r, time):
+            #     res_profile['CG'].append(r)
+            #     time_profile['CG'].append(time)
             result = cuda_benchmark(cuda_benchmark_cg, n_repeat=1)
-            x_cg, iters = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), cg_max_iter, tol=tol, atol=atol, verbose=verbose, callback=callback)
+            # x_cg, iters = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), cg_max_iter, tol=tol, atol=atol, verbose=verbose, callback=callback)
 
             cg_time.append(result.gpu_times[0][0])
-            cg_iters.append(iters)
-            print("CUDA CG took", result.gpu_times[0][0], 's after', iters, 'iterations', f"to {res_profile['CG'][-1]}")
+            cg_iters.append(cg_iter)
+            print("CUDA CG took", result.gpu_times[0][0], 's after', cg_iter, 'iterations') #, f"to {res_profile['CG'][-1]}")
         else:
             t0 = timeit.default_timer()
             # x_cg, res_cg = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), cg_max_iter, tol=tol, atol=atol, norm_type=norm_type, verbose=verbose)
@@ -175,30 +179,30 @@ for frame in frames:
     if tests['MLPCG']:
         timer_res = torch_timer()
         result_res = timer_res.timeit(1)
-        def mlpcg_callback(r, time):
-            res_profile['MLPCG'].append(r)
-            time_profile['MLPCG'].append(time)
-        x_mlpcg, iters, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol, callback=mlpcg_callback)
+        # def mlpcg_callback(r, time):
+        #     res_profile['MLPCG'].append(r)
+        #     time_profile['MLPCG'].append(time)
+        # x_mlpcg, iters, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol, callback=mlpcg_callback)
         mlpcg_time.append(result_res.times[0])
-        mlpcg_iters.append(iters)
-        print(f"MLPCG", result_res.times[0], 's after', iters, 'iterations', f"to {res_profile['MLPCG'][-1]}")
-        time_sorted = sorted(tot_time.items(), key=lambda x:x[1], reverse=True)
-        for item in time_sorted:
-            print(item)
+        mlpcg_iters.append(mlpcg_iter)
+        print(f"MLPCG", result_res.times[0], 's after', mlpcg_iter, 'iterations') #, f"to {res_profile['MLPCG'][-1]}")
+        # time_sorted = sorted(tot_time.items(), key=lambda x:x[1], reverse=True)
+        # for item in time_sorted:
+        #     print(item)
 
-    if tests['NewMLPCG']:
-        timer_res = torch_timer(True)
-        result_res = timer_res.timeit(1)
-        def mlpcg_callback(r, time):
-            res_profile['MLPCG'].append(r)
-            time_profile['MLPCG'].append(time)
-        x_mlpcg, iters, tot_time = dcdm_new(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol, callback=mlpcg_callback)
-        mlpcg_time.append(result_res.times[0])
-        mlpcg_iters.append(iters)
-        print(f"MLPCG", result_res.times[0], 's after', iters, 'iterations', f"to {res_profile['MLPCG'][-1]}")
-        time_sorted = sorted(tot_time.items(), key=lambda x:x[1], reverse=True)
-        for item in time_sorted:
-            print(item)
+    # if tests['NewMLPCG']:
+    #     timer_res = torch_timer(True)
+    #     result_res = timer_res.timeit(1)
+    #     def mlpcg_callback(r, time):
+    #         res_profile['MLPCG'].append(r)
+    #         time_profile['MLPCG'].append(time)
+    #     x_mlpcg, iters, tot_time = dcdm_cg(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol, callback=mlpcg_callback)
+    #     mlpcg_time.append(result_res.times[0])
+    #     mlpcg_iters.append(iters)
+    #     print(f"MLPCG", result_res.times[0], 's after', iters, 'iterations', f"to {res_profile['MLPCG'][-1]}")
+    #     time_sorted = sorted(tot_time.items(), key=lambda x:x[1], reverse=True)
+    #     for item in time_sorted:
+    #         print(item)
 
     print()
 
@@ -211,15 +215,15 @@ print('CG took', np.mean(cg_iters), 'iters', np.mean(cg_time), 's')
 print('MLPCG took', np.mean(mlpcg_iters), 'iters', np.mean(mlpcg_time), 's')
 
 output_file = model_file.replace("checkpt", f"test_{scene}").replace(".tar", ".txt")
-# with open(output_file, 'w') as f:
-#     for i in range(len(mlpcg_iters)):
-#         f.write(f"{frames[i]:<4}, {amgcl_iters[i]:^4}, {amgcl_time[i]:>6.4f}, {cg_iters[i]:^4}, {cg_time[i]:>6.4f}, {mlpcg_iters[i]:^4}, {mlpcg_time[i]:>6.4f}\n")
-#     f.write(f"{'Avg':<4}, {np.mean(amgcl_iters):^4}, {np.mean(amgcl_time):>6.4f}, {np.mean(cg_iters):^4}, {np.mean(cg_time):>6.4f}, {np.mean(mlpcg_iters):^4}, {np.mean(mlpcg_time):>6.4f}\n")
+with open(output_file, 'w') as f:
+    for i in range(len(mlpcg_iters)):
+        f.write(f"{frames[i]:<4}, {amgcl_iters[i]:^4}, {amgcl_time[i]:>6.4f}, {cg_iters[i]:^4}, {cg_time[i]:>6.4f}, {mlpcg_iters[i]:^4}, {mlpcg_time[i]:>6.4f}\n")
+    f.write(f"{'Avg':<4}, {np.mean(amgcl_iters):^4}, {np.mean(amgcl_time):>6.4f}, {np.mean(cg_iters):^4}, {np.mean(cg_time):>6.4f}, {np.mean(mlpcg_iters):^4}, {np.mean(mlpcg_time):>6.4f}\n")
 
-import matplotlib.pyplot as plt
-plt.plot(time_profile['MLPCG'], res_profile['MLPCG'], label=f'{NN} MLPCG')
-plt.plot(time_profile['CG'], res_profile['CG'], label='cg')
-# if norm_type == 'l2': plt.yscale('log')
-plt.title(f"{norm_type} norm VS Iterations")
-plt.legend()
-plt.savefig("test_loss.png")
+# import matplotlib.pyplot as plt
+# plt.plot(time_profile['MLPCG'], res_profile['MLPCG'], label=f'{NN} MLPCG')
+# plt.plot(time_profile['CG'], res_profile['CG'], label='cg')
+# plt.yscale('log')
+# plt.title(f"{norm_type} norm VS Iterations")
+# plt.legend()
+# plt.savefig("test_loss.png")
