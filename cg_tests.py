@@ -22,6 +22,7 @@ from cxx_src.build import pyamgcl
 from cxx_src.build import pyamgcl_cuda
 from cxx_src.build import pyamgcl_vexcl
 import time
+from lib.global_clock import GlobalClock
 
 def dcdm_new(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
     tot_time = {"Total": 0.0, "NN": 0.0, "Ortho": 0.0, "CG": 0.0, "Norm": 0.0, "Init": 0.0}
@@ -39,7 +40,7 @@ def dcdm_new(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose
     if verbose:
         print(f"Iter {0}, residual {norm}, ares {r.norm().item()}")
 
-    num_prev = 2
+    num_prev = 10
     p = []
     Ap = []
     alfa = []
@@ -130,22 +131,22 @@ def dcdm_new(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose
 # DCDM
 ###################
 def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
-    tot_time = {"Total": 0.0, "NN": 0.0, "Ortho": 0.0, "CG": 0.0, "Norm": 0.0, "Init": 0.0}
+    timer = GlobalClock()
 
-    tot_start = time.time()
-    start = time.time()
+    timer.start('Total')
+    timer.start('Init')
 
     norm_b = b.norm().item()
     r = b - A @ x_init
     norm = r.norm().item() / norm_b
     if callback:
         torch.cuda.synchronize()
-        callback(norm, time.time() - tot_start)
+        callback(norm, time.perf_counter() - timer.top_level_clocks['Total'].start)
 
     if verbose:
         print(f"Iter {0}, residual {norm}, ares {r.norm().item()}")
 
-    num_prev = 8
+    num_prev = 10
     p = []
     Ap = []
     alfa = []
@@ -153,18 +154,18 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
     x_sol = torch.clone(x_init)
 
     torch.cuda.synchronize()
-    tot_time['Init'] += time.time() - start
+    timer.stop('Init')
 
     for i in range(1, max_it+1):
-        start = time.time()
 
-        q = model_predict(r)
+        timer.start('NN')
+        q = model_predict(r, timer)
 
         torch.cuda.synchronize()
-        tot_time['NN'] += time.time() - start
+        timer.stop('NN')
 
-        start = time.time()
 
+        timer.start('Ortho')
         if i > num_prev:
             for j in reversed(range(num_prev)):
                 q = q - q.dot(Ap[j])/alfa[j] * p[j]
@@ -177,10 +178,9 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
                 q = q - q.dot(Ap[j])/alfa[j] * p[j]
 
         torch.cuda.synchronize()
-        tot_time['Ortho'] += time.time() - start
+        timer.stop('Ortho')
 
-        start = time.time()
-
+        timer.start('CG')
         if i > num_prev:
             p[num_prev-1] = q
             Ap[num_prev-1] = A @ q
@@ -196,26 +196,25 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
         r = b - A @ x_sol
 
         torch.cuda.synchronize()
-        tot_time['CG'] += time.time() - start
+        timer.stop('CG')
 
-        start = time.time()
-
+        timer.start('Norm')
         norm = r.norm().item() / norm_b
         if callback:
             torch.cuda.synchronize()
             callback(norm, time.time() - tot_start)
 
         torch.cuda.synchronize()
-        tot_time['Norm'] += time.time() - start
+        timer.stop('Norm')
 
 
         if verbose:
             print(f"Iter {i}, residual {norm}, ares {r.norm().item()}")
         if norm < max(tol, atol/norm_b):
             torch.cuda.synchronize()
-            tot_time['Total'] += time.time() - tot_start
-            return x_sol, i, tot_time
-    return x_sol, max_it, tot_time
+            timer.stop('Total')
+            return x_sol, i, timer
+    return x_sol, max_it, timer
 
 def dcdm_cg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
     tot_time = {"Total": 0.0, "NN": 0.0, "Ortho": 0.0, "CG": 0.0, "Norm": 0.0, "Init": 0.0}

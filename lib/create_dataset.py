@@ -82,22 +82,22 @@ def worker(frames):
             out = f"{dir}/preprocessed/{i}"
             os.makedirs(out, exist_ok=True)
             A = hf.readA_sparse(f"{dir}/A_{i}.bin")
-            print(A.shape)
             flags = hf.read_flags(f"{dir}/flags_{i}.bin")
             rhs = hf.load_vector(f"{dir}/div_v_star_{i}.bin")
             # sol = hf.load_vector(f"{dir}/pressure_{i}.bin")
-            print('Compressing A')
-            start = time.time()
-            A = hf.compressedMat(A, flags)
-            print('Compressing A took', time.time()-start, 's')
 
-            print('Compressing rhs')
-            start = time.time()
-            rhs = hf.compressedVec(rhs, flags)
-            print('Compressing rhs took', time.time()-start, 's')
+            # print('Compressing A')
+            # start = time.time()
+            # A = hf.compressedMat(A, flags)
+            # print('Compressing A took', time.time()-start, 's')
+
+            # print('Compressing rhs')
+            # start = time.time()
+            # rhs = hf.compressedVec(rhs, flags)
+            # print('Compressing rhs took', time.time()-start, 's')
 
             ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors, ortho=ortho)
-
+            print(ritz_vals)
             if ortho:
                 np.save(f"{out}/ritz_{num_ritz_vectors}.npy", ritz_vec)
             else:
@@ -105,19 +105,19 @@ def worker(frames):
 
 np.random.seed(2)
 
-N = 128
+N = 256
 DIM = 3
 scenes = [
-    f'dambreak_N{N}',
-    f'dambreak_hill_N{N}_N{2*N}',
-    f'two_balls_N{N}',
+    # f'dambreak_N{N}',
+    # f'dambreak_hill_N{N}_N{2*N}',
+    # f'two_balls_N{N}',
     f'ball_cube_N{N}',
-    f'ball_bowl_N{N}',
-    f'standing_dipping_block_N{N}',
-    f'standing_rotating_blade_N{N}',
-    f'waterflow_pool_N{N}',
-    f'waterflow_panels_N{N}',
-    f'waterflow_rotating_cube_N{N}'
+    # f'ball_bowl_N{N}',
+    # f'standing_dipping_block_N{N}',
+    # f'standing_rotating_blade_N{N}',
+    # f'waterflow_pool_N{N}',
+    # f'waterflow_panels_N{N}',
+    # f'waterflow_rotating_cube_N{N}'
 ]
 
 ortho = True
@@ -128,7 +128,8 @@ num_ritz_vectors = 1600
 if __name__ == '__main__':
     t0 = time.time()
     # total_work = np.linspace(1, 200, 10, dtype=int)
-    total_work = np.linspace(12, 188, 9, dtype=int)
+    # total_work = np.linspace(12, 188, 9, dtype=int)
+    total_work = [111, 133, 155, 45, 67, 89]
     num_threads = len(total_work)
 
     chunks = np.array_split(total_work, num_threads)

@@ -11,25 +11,25 @@ import warnings
 warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
 torch.set_grad_enabled(False)
 
-DIM = 2
-N = 1024
+DIM = 3
+N = 256
 ortho = True
 num_imgs = 3
 
 
 # matrices = np.linspace(1, 200, 10, dtype=int)
-matrices = np.linspace(12, 188, 9, dtype=int)
-# matrices = [200]
+# matrices = np.linspace(12, 188, 9, dtype=int)
+matrices = [133, 89]
 scenes = [
-    f'dambreak_N{N}',
+    # f'dambreak_N{N}',
     # f'dambreak_hill_N{N}',
-    f'dambreak_hill_N{N}_N{2*N}',
-    f'two_balls_N{N}',
+    # f'dambreak_hill_N{N}_N{2*N}',
+    # f'two_balls_N{N}',
     # f'ball_cube_N{N}',
     # f'ball_bowl_N{N}',
     # f'standing_dipping_block_N{N}',
     # f'standing_rotating_blade_N{N}',
-    f'standing_scooping_N{N}',
+    # f'standing_scooping_N{N}',
     # f'waterflow_pool_N{N}',
     # f'waterflow_panels_N{N}',
     # f'waterflow_rotating_cube_N{N}'
@@ -126,9 +126,9 @@ def worker(indices):
             torch.save(rhs, os.path.join(out_folder, f"rhs.pt"))
 
             suffix = '' if ortho else '_no_ortho'
-            # ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}{suffix}.npy")
+            ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}{suffix}.npy")
 
-            # createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder, suffix=suffix)
+            createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder, suffix=suffix)
 
 
 if __name__ == '__main__':

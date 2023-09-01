@@ -15,8 +15,8 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    bs = 4
-    N = 64
+    bs = 1
+    N = 128
     image = torch.rand(3, N, N, N, device=cuda_device)
     image1 = image.detach().clone()
 
@@ -24,8 +24,8 @@ if __name__ == '__main__':
     x1 = x.detach().clone()
     x1.requires_grad = True
 
-    model = SmallSMModelDn3DPY(3, 3).to(cuda_device)
-    model1 = SmallSMModelDn3D(3, 3).to(cuda_device)
+    model = SmallSMBlock3DPY(3).to(cuda_device)
+    model1 = SmallSMBlock3D(3).to(cuda_device)
 
     # model.KL.weight.requires_grad = True
     # model.KL.bias.requires_grad = True
@@ -34,16 +34,17 @@ if __name__ == '__main__':
     y = model(image, x)
     yy = model1(image, x1)
     print((y - yy).abs().max())
+    print((y - yy).norm())
 
     y.sum().backward()
     yy.sum().backward()
 
-    print((model.post[0].KL.weight.grad - model1.post[0].weight.grad).abs().max())
-    print((model.post[0].KL.bias.grad - model1.post[0].bias.grad).abs().max())
+    # print((model.post[0].KL.weight.grad - model1.post[0].weight.grad).abs().max())
+    # print((model.post[0].KL.bias.grad - model1.post[0].bias.grad).abs().max())
 
-    # print((x.grad - x1.grad).abs().max())
+    print((x.grad - x1.grad).abs().max())
     # torch.use_deterministic_algorithms(True)
-    # torch.autograd.gradcheck(SMBlockFunction3D.apply, (image, x, model.KL.weight, model.KL.bias), nondet_tol=1e-13, fast_mode=False)
+    torch.autograd.gradcheck(SMBlockFunction3D.apply, (image, x, model.KL.weight, model.KL.bias), nondet_tol=1e-12, fast_mode=True)
 
     # forward = 0
     # backward = 0

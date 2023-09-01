@@ -157,8 +157,8 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    N = 1024
-    DIM = 2
+    N = 128
+    DIM = 3
     lr = 0.0001
     epoch_num_per_matrix = 5
     epoch_num = 50
@@ -166,21 +166,21 @@ if __name__ == '__main__':
     shape = (1,)+(N,)*DIM
     bcs = [
         (f'dambreak_N{N}', (N,)*DIM),
-        (f'dambreak_hill_N{N}', (N,)+(N,)*(DIM-1)),
-        # (f'dambreak_hill_N{N}_N{2*N}', (2*N,)+(N,)*(DIM-1)),
-        # (f'two_balls_N{N}', (N,)*DIM),
+        # (f'dambreak_hill_N{N}', (N,)+(N,)*(DIM-1)),
+        (f'dambreak_hill_N{N}_N{2*N}', (2*N,)+(N,)*(DIM-1)),
+        (f'two_balls_N{N}', (N,)*DIM),
         (f'ball_cube_N{N}', (N,)*DIM),
         (f'ball_bowl_N{N}', (N,)*DIM),
-        # (f'standing_dipping_block_N{N}', (N,)*DIM),
+        (f'standing_dipping_block_N{N}', (N,)*DIM),
         (f'standing_rotating_blade_N{N}', (N,)*DIM),
-        # (f'waterflow_pool_N{N}', (N,)*DIM),
+        (f'waterflow_pool_N{N}', (N,)*DIM),
         (f'waterflow_panels_N{N}', (N,)*DIM),
-        # (f'waterflow_rotating_cube_N{N}', (N,)*DIM)
+        (f'waterflow_rotating_cube_N{N}', (N,)*DIM)
     ]
     bc = 'mixedBCs6'
     b_size = 16
     total_matrices = 10 # number of matrices chosen for training
-    num_ritz = 3200
+    num_ritz = 1600
     num_rhs = 800 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
     num_imgs = 3
@@ -191,7 +191,7 @@ if __name__ == '__main__':
 
     log = LoggingWriter()
 
-    resume = False
+    resume = True
     loss_type = 'res'
 
     if loss_type == 'res':
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     else:
         raise Exception("No such loss type")
 
-    suffix += f'_imgs{num_imgs}_l10_lr0.0001'
+    suffix += f'_imgs{num_imgs}_lr0.0001'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 

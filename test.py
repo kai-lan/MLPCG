@@ -16,15 +16,18 @@ torch.set_grad_enabled(False) # disable autograd globally
 pcg_dtype = torch.float32
 torch.set_default_dtype(pcg_dtype)
 
-DIM = 2
+DIM = 3
 norm_type = 'l2'
 num_imgs = 3
 
-N = 1024
+N = 128
 shape = (N,) + (N,)*(DIM-1)
 
-# frames = [200]
-frames = np.linspace(1, 200, 30, dtype=int)
+frames = [188]
+# frames = np.linspace(1, 200, 10, dtype=int)
+# more_frames = np.linspace(12, 188, 9, dtype=int)
+# frames = np.concatenate([frames, more_frames])
+# frames = range(1, 201)
 
 device = torch.device('cuda')
 
@@ -38,11 +41,11 @@ mlpcg_time, mlpcg_iters = [], []
 if DIM == 2:
     scene = f'standing_scooping_N{N}_200'
 else:
-    scene = f'dambreak_bunny_N{N}_N{2*N}_200_{DIM}D'
+    scene = f'waterflow_panels_N{N}_200_{DIM}D'
 
-NN = 1024
+NN = 128
 num_mat = 10
-num_ritz = 3200
+num_ritz = 1600
 num_rhs = 800
 tests = {
     "MLPCG": True,
@@ -52,11 +55,17 @@ tests = {
     "CG": True,
 }
 
-model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_lr0.0001_iters3.tar")
+model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_lr0.0001.tar")
 
-model = SmallSMModelDn3D(3, num_imgs) if DIM == 3 else SmallSMModelDn(6, num_imgs)
+if device == torch.device('cuda'):
+    model = SmallSMModelDn3D(3, num_imgs) if DIM == 3 else SmallSMModelDn(6, num_imgs)
+else:
+    model = SmallSMModelDn3D(3, num_imgs) if DIM == 3 else SmallSMModelDnPY(6, num_imgs)
 model.move_to(device)
 state_dict = torch.load(model_file, map_location=device)['model_state_dict']
+if device == torch.device('cpu'):
+    for key in list(state_dict.keys()):
+        state_dict[key.replace('.weight', '.KL.weight').replace('.bias', '.KL.bias')] = state_dict.pop(key)
 model.load_state_dict(state_dict)
 model.eval()
 
@@ -170,25 +179,33 @@ for frame in frames:
         else:
             t0 = timeit.default_timer()
             # x_cg, res_cg = CG(rhs_sp, A_sp, np.zeros_like(rhs_sp), cg_max_iter, tol=tol, atol=atol, norm_type=norm_type, verbose=verbose)
-            x_cg, res_cg = CG(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol, norm_type=norm_type, verbose=verbose)
+            x_cg, cg_iter = CG(rhs_comp, A_comp, np.zeros_like(rhs_comp), cg_max_iter, tol=tol, atol=atol, verbose=verbose)
             t_cg = timeit.default_timer()-t0
             cg_time.append(t_cg)
-            cg_iters.append(len(res_cg))
-            print("CG took", t_cg, 's after', len(res_cg), 'iterations', f'to {res_cg[-1]}')
+            cg_iters.append(cg_iter)
+            print("CG took", t_cg, 's after', cg_iter, 'iterations') #, f'to {res_cg[-1]}')
 
     if tests['MLPCG']:
-        timer_res = torch_timer()
-        result_res = timer_res.timeit(1)
-        # def mlpcg_callback(r, time):
-        #     res_profile['MLPCG'].append(r)
-        #     time_profile['MLPCG'].append(time)
-        # x_mlpcg, iters, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol, callback=mlpcg_callback)
-        mlpcg_time.append(result_res.times[0])
-        mlpcg_iters.append(mlpcg_iter)
-        print(f"MLPCG", result_res.times[0], 's after', mlpcg_iter, 'iterations') #, f"to {res_profile['MLPCG'][-1]}")
-        # time_sorted = sorted(tot_time.items(), key=lambda x:x[1], reverse=True)
-        # for item in time_sorted:
-        #     print(item)
+        if rhs.is_cuda:
+            timer_res = torch_timer(True)
+            result_res = timer_res.timeit(1)
+            # def mlpcg_callback(r, time):
+            #     res_profile['MLPCG'].append(r)
+            #     time_profile['MLPCG'].append(time)
+            # x_mlpcg, iters, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol, callback=mlpcg_callback)
+            mlpcg_time.append(result_res.times[0])
+            mlpcg_iters.append(mlpcg_iter)
+            print(f"MLPCG took", result_res.times[0], 's after', mlpcg_iter, 'iterations') #, f"to {res_profile['MLPCG'][-1]}")
+            # time_sorted = sorted(tot_time.items(), key=lambda x:x[1], reverse=True)
+            # for item in time_sorted:
+            #     print(item)
+        else:
+            t0 = timeit.default_timer()
+            x_mlpcg, mlpcg_iter, tot_time = dcdm(rhs, A, torch.zeros_like(rhs), model_predict(model, flags, fluid_cells), pcg_max_iter, tol=tol, atol=atol)
+            t_mlpcg = timeit.default_timer()-t0
+            mlpcg_time.append(t_mlpcg)
+            mlpcg_iters.append(mlpcg_iter)
+            print("MLPCG took", t_mlpcg, 's after', mlpcg_iter, 'iterations') #, f'to {res_cg[-1]}')
 
     # if tests['NewMLPCG']:
     #     timer_res = torch_timer(True)
