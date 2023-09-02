@@ -4,7 +4,6 @@
 #include <cuda_runtime.h>
 #include <ATen/ATen.h>
 #include <ATen/native/cuda/KernelUtils.cuh>
-// #include <THC/THCAtomics.cuh>    // This contains gpuAtomicAdd
 #include <ATen/cuda/Atomic.cuh>
 #include <vector>
 
@@ -56,11 +55,9 @@ __global__ void sm_linear_3d_cuda_inference_kernel(
   const int l = p % 3;
   p /= 3;
   const int k = p % 3;
-  p /= 3;
-  const int m = p % NUM_IMAGES;
-  const int c = p / NUM_IMAGES;
+  const int m = p / 3;
 
-  if (c >= KERNEL_SIZE) return; // Wasted threads
+  if (m >= NUM_IMAGES) return;
   __syncthreads();
 
   scalar_t _y = 0.0;
@@ -72,7 +69,7 @@ __global__ void sm_linear_3d_cuda_inference_kernel(
       }
     }
   }
-  const int index = c * y.stride(0) + m * y.stride(1) + k * y.stride(2) + l * y.stride(3) + kl * y.stride(4);
+  const int index = m * y.stride(1) + k * y.stride(2) + l * y.stride(3) + kl * y.stride(4);
   at::native::fastAtomicAdd(y.data(), index, y_numel, _y, true);
 }
 
@@ -113,11 +110,9 @@ __global__ void sm_linear_3d_cuda_forward_kernel(
   const int l = p % 3;
   p /= 3;
   const int k = p % 3;
-  p /= 3;
-  const int m = p % NUM_IMAGES;
-  const int c = p / NUM_IMAGES;
+  const int m = p / 3;
 
-  if (c >= KERNEL_SIZE) return; // Wasted threads
+  if (m >= NUM_IMAGES) return;
   __syncthreads();
 
   scalar_t _y = 0.0;
@@ -129,66 +124,8 @@ __global__ void sm_linear_3d_cuda_forward_kernel(
       }
     }
   }
-  const int index = c * y.stride(0) + m * y.stride(1) + k * y.stride(2) + l * y.stride(3) + kl * y.stride(4);
+  const int index = m * y.stride(1) + k * y.stride(2) + l * y.stride(3) + kl * y.stride(4);
   at::native::fastAtomicAdd(y.data(), index, y_numel, _y, true);
-}
-
-
-template <typename scalar_t>
-__global__ void sm_linear_3d_cuda_backward_kernel(
-    const torch::PackedTensorAccessor32<scalar_t,1,torch::RestrictPtrTraits> grad_output, // bs, 1, N, N, N
-    const torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> image, // 1, N, N, N
-    torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grad_w,
-    const int nBlocksPerCopy, const int n1, const int n2, const int n3) {
-
-  __shared__ scalar_t I[NUM_IMAGES][LOCATIONSPERBLOCK+2][LOCATIONSPERBLOCK+2][LOCATIONSPERBLOCK+2];
-
-  const int location = blockIdx.x / nBlocksPerCopy;
-  const int innerBlock = blockIdx.x % nBlocksPerCopy;
-
-  const int ij = (location % n3) * LOCATIONSPERBLOCK;
-  const int j = ((location/n3) % n2) * LOCATIONSPERBLOCK;
-  const int i = ((location/n3) / n2) * LOCATIONSPERBLOCK;
-
-  int tid = threadIdx.x;
-  const int width = LOCATIONSPERBLOCK+2;
-  const int totalSize = NUM_IMAGES * width*width*width;
-  while (tid < totalSize) {
-    int ttid = tid;
-    int iz = tid % width;
-    tid /= width;
-    int iy = tid % width;
-    tid /= width;
-    int ix = tid % width;
-    int m = tid / width;
-    I[m][ix][iy][iz] = image[m][i+ix][j+iy][ij+iz];
-    tid = ttid + blockDim.x;
-  }
-
-  int p = innerBlock * blockDim.x + threadIdx.x;
-  const int kl = p % 3;
-  p /= 3;
-  const int l = p % 3;
-  p /= 3;
-  const int k = p % 3;
-  p /= 3;
-  const int m = p % NUM_IMAGES;
-  const int c = p / NUM_IMAGES;
-
-  if (c >= KERNEL_SIZE) return; // Wasted threads
-  __syncthreads();
-
-  scalar_t d_w = 0.0;
-  #pragma unroll(1)
-  for (int _i = 0; _i < LOCATIONSPERBLOCK; ++_i) {
-    for (int _j = 0; _j < LOCATIONSPERBLOCK; ++_j) {
-      for (int _ij = 0; _ij < LOCATIONSPERBLOCK; ++_ij) {
-        d_w += I[m][_i+k][_j+l][_ij+kl];
-      }
-    }
-  }
-
-  atomicAdd(&grad_w[c][m][k][l][kl], d_w);
 }
 
 } // namespace
@@ -205,7 +142,7 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_inference(
   const int N3 = image.size(3)-2;
 
   const int nThreads = NUM_THREADS_INFERENCE;
-  const int nBlocksPerCopy = (WEIGHT_SIZE + nThreads - 1) / nThreads;
+  const int nBlocksPerCopy = (NUM_IMAGES*KERNEL_SIZE + nThreads - 1) / nThreads;
   const int locationsPerBlock = LOCATIONSPERBLOCK;
 
   assert((N1 % locationsPerBlock == 0) && (N2 % locationsPerBlock == 0) && (N3 % locationsPerBlock == 0)); // Data must be divisible by divisions
@@ -216,8 +153,7 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_inference(
   const dim3 threads(nThreads);
   const dim3 blocks(nBlocksPerCopy*n1*n2*n3);
 
-  auto y = torch::zeros({27, NUM_IMAGES, 3, 3, 3}, torch::dtype(image.dtype()).device(image.device())); // useful for backward
-  auto y_sum = torch::zeros({1}, torch::dtype(image.dtype()).device(image.device()));
+  auto y = torch::zeros({1, NUM_IMAGES, 3, 3, 3}, torch::dtype(image.dtype()).device(image.device())); // useful for backward
 
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(image.scalar_type(), "sm_linear_3d_inference_cuda", ([&] {
     sm_linear_3d_cuda_inference_kernel<scalar_t><<<blocks, threads>>>(
@@ -226,9 +162,8 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_inference(
         nBlocksPerCopy, n1, n2, n3,
         image.numel());
   }));
-  y /= KERNEL_SIZE * N1*N2*N3;
-  y_sum[0] = weights.ravel().dot(y.ravel());
-  y_sum += bias.mean();
+  y /= N1*N2*N3;
+  auto y_sum = (weights.flatten(1).matmul(y.flatten())).mean() + bias.mean();
   return {y_sum, y};
 }
 
@@ -244,7 +179,7 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_forward(
   const int N3 = image.size(3)-2;
 
   const int nThreads = NUM_THREADS_FORWARD;
-  const int nBlocksPerCopy = (WEIGHT_SIZE + nThreads - 1) / nThreads;
+  const int nBlocksPerCopy = (NUM_IMAGES*KERNEL_SIZE + nThreads - 1) / nThreads;
   const int locationsPerBlock = LOCATIONSPERBLOCK;
 
   assert((N1 % locationsPerBlock == 0) && (N2 % locationsPerBlock == 0) && (N3 % locationsPerBlock == 0)); // Data must be divisible by divisions
@@ -255,8 +190,7 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_forward(
   const dim3 threads(nThreads);
   const dim3 blocks(nBlocksPerCopy*n1*n2*n3);
 
-  auto y = torch::zeros({27, NUM_IMAGES, 3, 3, 3}, torch::dtype(image.dtype()).device(image.device())); // useful for backward
-  auto y_sum = torch::zeros({1}, torch::dtype(image.dtype()).device(image.device()));
+  auto y = torch::zeros({1, NUM_IMAGES, 3, 3, 3}, torch::dtype(image.dtype()).device(image.device())); // useful for backward
 
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(image.scalar_type(), "sm_linear_3d_forward_cuda", ([&] {
     sm_linear_3d_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
@@ -265,9 +199,8 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_forward(
         nBlocksPerCopy, n1, n2, n3,
         image.numel());
   }));
-  y /= KERNEL_SIZE * N1*N2*N3;
-  y_sum[0] = weights.ravel().dot(y.ravel());
-  y_sum += bias.mean();
+  y /= N1*N2*N3;
+  auto y_sum = (weights.flatten(1).matmul(y.flatten())).mean() + bias.mean();
   return {y_sum, y};
 }
 
@@ -277,7 +210,7 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_backward(
 
   auto grad_b = torch::ones({27}, torch::dtype(grad_output.dtype()).device(grad_output.device())) / KERNEL_SIZE * grad_output;
 
-  auto grad_w = y * grad_output;
+  auto grad_w = y.expand({27, -1, -1, -1, -1}) * grad_output / KERNEL_SIZE;
 
   return {grad_w, grad_b};
 }
