@@ -7,6 +7,11 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_forward(
     torch::Tensor weights,
     torch::Tensor bias);
 
+std::vector<torch::Tensor> sm_linear_3d_cuda_inference(
+    torch::Tensor image,
+    torch::Tensor weights,
+    torch::Tensor bias);
+
 std::vector<torch::Tensor> sm_linear_3d_cuda_backward(
     torch::Tensor grad_output,
     torch::Tensor y);
@@ -28,6 +33,17 @@ std::vector<torch::Tensor> sm_linear_3d_forward(
   return sm_linear_3d_cuda_forward(image, weights, bias);
 }
 
+std::vector<torch::Tensor> sm_linear_3d_inference(
+    torch::Tensor image,
+    torch::Tensor weights,
+    torch::Tensor bias) {
+  CHECK_INPUT(image);
+  CHECK_INPUT(weights);
+  CHECK_INPUT(bias);
+
+  return sm_linear_3d_cuda_inference(image, weights, bias);
+}
+
 std::vector<torch::Tensor> sm_linear_3d_backward(
     torch::Tensor grad_output,
     torch::Tensor y) {
@@ -39,5 +55,6 @@ std::vector<torch::Tensor> sm_linear_3d_backward(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &sm_linear_3d_forward, "SM linear 3D forward (CUDA)");
+  m.def("inference", &sm_linear_3d_inference, "SM linear 3D inference (CUDA)");
   m.def("backward", &sm_linear_3d_backward, "SM linear 3D backward (CUDA)");
 }

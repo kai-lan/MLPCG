@@ -2,7 +2,8 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
-
+#include <ATen/ATen.h>
+#include <THC/THCAtomics.cuh>    // This contains gpuAtomicAdd
 #include <vector>
 
 #define NUM_IMAGES 3
@@ -230,15 +231,19 @@ std::vector<torch::Tensor> sm_block_3d_cuda_forward(
     torch::Tensor x,
     torch::Tensor weights,
     torch::Tensor bias) {
-
   assert(image.size(0) == NUM_IMAGES);
 
   if (x.dtype() == torch::ScalarType::Double) {
     cudaMemcpyToSymbol(WEIGHT_BYTES, weights.data_ptr<double>(), WEIGHT_SIZE * sizeof(double));
     cudaMemcpyToSymbol(BIAS_BYTES, bias.data_ptr<double>(), KERNEL_SIZE * sizeof(double));
-  } else {
+  }
+  else if (x.dtype() == torch::ScalarType::Float){
     cudaMemcpyToSymbol(WEIGHT_BYTES, weights.data_ptr<float>(), WEIGHT_SIZE * sizeof(float));
     cudaMemcpyToSymbol(BIAS_BYTES, bias.data_ptr<float>(), KERNEL_SIZE * sizeof(float));
+  }
+  else {
+    cudaMemcpyToSymbol(WEIGHT_BYTES, weights.data_ptr<at::Half>(), WEIGHT_SIZE * sizeof(at::Half));
+    cudaMemcpyToSymbol(BIAS_BYTES, bias.data_ptr<at::Half>(), KERNEL_SIZE * sizeof(at::Half));
   }
 
   const int B = x.size(0);
@@ -253,7 +258,7 @@ std::vector<torch::Tensor> sm_block_3d_cuda_forward(
   const dim3 threads(nThreads);
   const dim3 blocks(nBlocks);
 
-  AT_DISPATCH_FLOATING_TYPES(x.type(), "sm_block_3d_forward_cuda", ([&] {
+  AT_DISPATCH_FLOATING_TYPES_AND_HALF(x.type(), "sm_block_3d_forward_cuda", ([&] {
     sm_block_3d_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
         image.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
         x.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
@@ -276,9 +281,14 @@ std::vector<torch::Tensor> sm_block_3d_cuda_backward(
   if (x.dtype() == torch::ScalarType::Double) {
     cudaMemcpyToSymbol(WEIGHT_BYTES, weights.data_ptr<double>(), WEIGHT_SIZE * sizeof(double));
     cudaMemcpyToSymbol(BIAS_BYTES, bias.data_ptr<double>(), KERNEL_SIZE * sizeof(double));
-  } else {
+  }
+  else if (x.dtype() == torch::ScalarType::Float){
     cudaMemcpyToSymbol(WEIGHT_BYTES, weights.data_ptr<float>(), WEIGHT_SIZE * sizeof(float));
     cudaMemcpyToSymbol(BIAS_BYTES, bias.data_ptr<float>(), KERNEL_SIZE * sizeof(float));
+  }
+  else {
+    cudaMemcpyToSymbol(WEIGHT_BYTES, weights.data_ptr<at::Half>(), WEIGHT_SIZE * sizeof(at::Half));
+    cudaMemcpyToSymbol(BIAS_BYTES, bias.data_ptr<at::Half>(), KERNEL_SIZE * sizeof(at::Half));
   }
 
   const int B = x.size(0);
@@ -303,7 +313,7 @@ std::vector<torch::Tensor> sm_block_3d_cuda_backward(
   auto grad_w = torch::zeros({27, NUM_IMAGES, 3, 3, 3}, torch::dtype(x.dtype()).device(x.device()));
   auto grad_b = torch::zeros({27}, torch::dtype(x.dtype()).device(x.device()));
 
-  AT_DISPATCH_FLOATING_TYPES(grad_output.type(), "sm_block_3d_cuda_dwdb", ([&] {
+  AT_DISPATCH_FLOATING_TYPES_AND_HALF(grad_output.type(), "sm_block_3d_cuda_dwdb", ([&] {
     sm_block_3d_cuda_dwdb_fast_kernel<scalar_t><<<dwdb_blocks, threads>>>(
         grad_output.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
         image.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
@@ -312,7 +322,7 @@ std::vector<torch::Tensor> sm_block_3d_cuda_backward(
         grad_b.packed_accessor32<scalar_t,1,torch::RestrictPtrTraits>(),
         nBlocksPerCopy, B, n1, n2, n3);
   }));
-  AT_DISPATCH_FLOATING_TYPES(grad_output.type(), "sm_block_3d_cuda_dx", ([&] {
+  AT_DISPATCH_FLOATING_TYPES_AND_HALF(grad_output.type(), "sm_block_3d_cuda_dx", ([&] {
     sm_block_3d_cuda_dx_kernel<scalar_t><<<dx_blocks, threads>>>(
         grad_output.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
         image.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
@@ -335,6 +345,5 @@ int main() {
   // cudaMalloc(&d_states, CNT * sizeof(curandState));
   // kernel_setup_randstates_2d<<<1,CNT>>>(d_states, 1,1, 1);
   auto y = sm_block_3d_cuda_forward(image, x, weight, bias);
-  std::cout << y  << std::endl;
   cudaDeviceSynchronize();
 }
