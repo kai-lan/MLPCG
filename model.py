@@ -31,21 +31,25 @@ class BaseModel(nn.Module):
                 nn.init.uniform_(bias, -bound, bound)
     def error_loss(self, x, x_):
         bs = x.shape[0]
-        r = torch.zeros(1).to(x.device)
+        r = torch.zeros(1, device=x.device)
         for i in range(bs):
             r += (x - x_).norm(1)
         return r / bs
-    def residual_loss(self, x, y, A):
+    def residual_loss_old(slef, x, y, A):
         bs = x.shape[0]
-        N = A.shape[0]
-        r = torch.zeros(1).to(x.device)
+        r = torch.zeros(1, device=x.device)
         for i in range(bs):
             r_norm = (y[i] - A @ x[i]).norm()
             r += r_norm # No need to compute relative residual because inputs are all unit vectors
         return r / bs
+    def residual_loss(self, x, y, A): # Please use CSC format for A!
+        if A.layout != torch.sparse_csc:
+            print("You are not using CSC format, so expect it slow!")
+        r = y - x.matmul(A)
+        return r.norm(dim=1).mean()
     def squared_loss(self, x, y, A):
         bs = x.shape[0]
-        r = torch.zeros(1).to(x.device)
+        r = torch.zeros(1, device=x.device)
         for i in range(bs):
             r += (y[i] - A @ x[i]).square().sum() # No need to compute relative residual because inputs are all unit vectors
         return r / bs
@@ -53,7 +57,7 @@ class BaseModel(nn.Module):
     # Energy loss: negative decreasing
     def energy_loss(self, x, b, A):
         bs = x.shape[0]
-        r = torch.zeros(1).to(x.device)
+        r = torch.zeros(1, device=x.device)
         for i in range(bs):
             r += 0.5 * x[i].dot(A @ x[i]) - x[i].dot(b[i])
         return r / bs
