@@ -13,10 +13,12 @@ __constant__ unsigned char WEIGHT_BYTES[WEIGHT_SIZE*sizeof(double)];
 __constant__ unsigned char BIAS_BYTES[KERNEL_SIZE*sizeof(double)];
 
 #define LOCATIONS_PER_BLOCK 8
+#define NUM_THREADS_INFERENCE 512 // 1024 produced wrong results, don't know why
 #define NUM_THREADS_FORWARD 256
 #define NUM_THREADS_BACKWARD 256
 
 namespace {
+
 template <typename scalar_t>
 __global__ void sm_block_3d_cuda_forward_kernel(
     const torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> image, // num_imgs, N, N, N
@@ -36,25 +38,28 @@ __global__ void sm_block_3d_cuda_forward_kernel(
   const int i = threadId % N1;
   const int c = threadId / N1;
 
-
   scalar_t zz = 0.0;
-  #pragma unroll
   for (int k = 0; k <= 2; ++k) {
+    int alpha = i+k;
     for (int l = 0; l <= 2; ++l) {
+      int beta = j+l;
       for (int kl = 0; kl <= 2; ++kl) {
+        int gamma = ij+kl;
         int p = 3 * (3 * k + l) + kl;
         scalar_t z = BIAS[p];
-        #pragma unroll
         for (int s = 0; s < NUM_IMAGES; ++s) {
           for (int m = 0; m <= 2; ++m) {
+            int aa = i+m;
             for (int n = 0; n <= 2; ++n) {
+              int bb = j+n;
               for (int mn = 0; mn <= 2; ++mn) {
-                z += (WEIGHT[3*(3*(3*(NUM_IMAGES*p+s)+m)+n)+mn] * image[s][i+m][j+n][ij+mn]);
+                int cc = ij+mn;
+                z += (WEIGHT[3*(3*(3*(NUM_IMAGES*p+s)+m)+n)+mn] * image[s][aa][bb][cc]);
               }
             }
           }
         }
-        z *= x[c][0][i+k][j+l][ij+kl];
+        z *= x[c][0][alpha][beta][gamma];
         zz += z;
       }
     }
@@ -198,9 +203,14 @@ __global__ void sm_block_3d_cuda_dx_kernel(
     scalar_t zz = 0.0;
     #pragma unroll
     for (int k = 0; k <= 2; ++k) {
+      int ii = i + 1 - k;
+      // if (ii < 0 || ii >= N1) continue;
       for (int l = 0; l <= 2; ++l) {
+        int jj = j + 1 - l;
+        // if (jj < 0 || jj >= N2) continue;
         for (int kl = 0; kl <= 2; ++kl) {
-          int ii = i + 1 - k, jj = j + 1 - l, iijj = ij + 1 - kl;
+          int iijj = ij + 1 - kl;
+          // int ii = i + 1 - k, jj = j + 1 - l, iijj = ij + 1 - kl;
           if (ii < 0 || ii >= N1 || jj < 0 || jj >= N2 || iijj < 0 || iijj >= N3) continue;
 
           int idx_kl = 3 * (3 * k + l) + kl;
@@ -225,6 +235,49 @@ __global__ void sm_block_3d_cuda_dx_kernel(
   }
 } // backward dx
 } // namespace
+
+std::vector<torch::Tensor> sm_block_3d_cuda_inference(
+    torch::Tensor image,
+    torch::Tensor x,
+    torch::Tensor weights,
+    torch::Tensor bias) {
+  assert(image.size(0) == NUM_IMAGES);
+
+  if (x.dtype() == torch::ScalarType::Double) {
+    cudaMemcpyToSymbol(WEIGHT_BYTES, weights.data_ptr<double>(), WEIGHT_SIZE * sizeof(double));
+    cudaMemcpyToSymbol(BIAS_BYTES, bias.data_ptr<double>(), KERNEL_SIZE * sizeof(double));
+  }
+  else if (x.dtype() == torch::ScalarType::Float){
+    cudaMemcpyToSymbol(WEIGHT_BYTES, weights.data_ptr<float>(), WEIGHT_SIZE * sizeof(float));
+    cudaMemcpyToSymbol(BIAS_BYTES, bias.data_ptr<float>(), KERNEL_SIZE * sizeof(float));
+  }
+  else {
+    cudaMemcpyToSymbol(WEIGHT_BYTES, weights.data_ptr<at::Half>(), WEIGHT_SIZE * sizeof(at::Half));
+    cudaMemcpyToSymbol(BIAS_BYTES, bias.data_ptr<at::Half>(), KERNEL_SIZE * sizeof(at::Half));
+  }
+
+  const int B = x.size(0);
+  const int N1 = image.size(1)-2;
+  const int N2 = image.size(2)-2;
+  const int N3 = image.size(3)-2;
+  auto y = torch::zeros({B, x.size(1), N1, N2, N3}, torch::dtype(x.dtype()).device(x.device()));
+
+  const int nThreads = NUM_THREADS_INFERENCE;
+  const int nBlocks = (B*N1*N2*N3 + nThreads - 1) / nThreads;
+
+  const dim3 threads(nThreads);
+  const dim3 blocks(nBlocks);
+
+  AT_DISPATCH_FLOATING_TYPES_AND_HALF(x.type(), "sm_block_3d_forward_cuda", ([&] {
+    sm_block_3d_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
+        image.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
+        x.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
+        y.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
+        B, N1, N2, N3);
+  }));
+
+  return {y};
+}
 
 std::vector<torch::Tensor> sm_block_3d_cuda_forward(
     torch::Tensor image,
@@ -252,7 +305,7 @@ std::vector<torch::Tensor> sm_block_3d_cuda_forward(
   const int N3 = image.size(3)-2;
   auto y = torch::zeros({B, x.size(1), N1, N2, N3}, torch::dtype(x.dtype()).device(x.device()));
 
-  const int nThreads = NUM_THREADS_FORWARD; // for 2D num_threads = 32*32 = 1024
+  const int nThreads = NUM_THREADS_FORWARD;
   const int nBlocks = (B*N1*N2*N3 + nThreads - 1) / nThreads;
 
   const dim3 threads(nThreads);
