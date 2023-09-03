@@ -30,6 +30,10 @@ __global__ void sm_linear_3d_cuda_inference_kernel(
   const int location = blockIdx.x / nBlocksPerCopy;
   const int innerBlock = blockIdx.x % nBlocksPerCopy;
 
+  const int N1 = n1 * LOCATIONSPERBLOCK;
+  const int N2 = n2 * LOCATIONSPERBLOCK;
+  const int N3 = n3 * LOCATIONSPERBLOCK;
+
   const int ij = (location % n3) * LOCATIONSPERBLOCK;
   const int j = ((location/n3) % n2) * LOCATIONSPERBLOCK;
   const int i = ((location/n3) / n2) * LOCATIONSPERBLOCK;
@@ -45,7 +49,11 @@ __global__ void sm_linear_3d_cuda_inference_kernel(
     tid /= width;
     int ix = tid % width;
     int m = tid / width;
-    I[m][ix][iy][iz] = image[m][i+ix][j+iy][ij+iz];
+    const int a = i+ix-1, b = j+iy-1, c = ij+iz-1;
+    if (a >= 0 && a < N1 && b >= 0 && b < N2 && c >= 0 && c < N3)
+      I[m][ix][iy][iz] = image[m][a][b][c];
+    else
+      I[m][ix][iy][iz] = 0.0;
     tid = ttid + blockDim.x;
   }
 
@@ -85,6 +93,10 @@ __global__ void sm_linear_3d_cuda_forward_kernel(
   const int location = blockIdx.x / nBlocksPerCopy;
   const int innerBlock = blockIdx.x % nBlocksPerCopy;
 
+  const int N1 = n1 * LOCATIONSPERBLOCK;
+  const int N2 = n2 * LOCATIONSPERBLOCK;
+  const int N3 = n3 * LOCATIONSPERBLOCK;
+
   const int ij = (location % n3) * LOCATIONSPERBLOCK;
   const int j = ((location/n3) % n2) * LOCATIONSPERBLOCK;
   const int i = ((location/n3) / n2) * LOCATIONSPERBLOCK;
@@ -100,7 +112,11 @@ __global__ void sm_linear_3d_cuda_forward_kernel(
     tid /= width;
     int ix = tid % width;
     int m = tid / width;
-    I[m][ix][iy][iz] = image[m][i+ix][j+iy][ij+iz];
+    const int a = i+ix-1, b = j+iy-1, c = ij+iz-1;
+    if (a >= 0 && a < N1 && b >= 0 && b < N2 && c >= 0 && c < N3)
+      I[m][ix][iy][iz] = image[m][a][b][c];
+    else
+      I[m][ix][iy][iz] = 0.0;
     tid = ttid + blockDim.x;
   }
 
@@ -137,9 +153,9 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_inference(
 
   assert(image.size(0) == NUM_IMAGES);
 
-  const int N1 = image.size(1)-2;
-  const int N2 = image.size(2)-2;
-  const int N3 = image.size(3)-2;
+  const int N1 = image.size(1);
+  const int N2 = image.size(2);
+  const int N3 = image.size(3);
 
   const int nThreads = NUM_THREADS_INFERENCE;
   const int nBlocksPerCopy = (NUM_IMAGES*KERNEL_SIZE + nThreads - 1) / nThreads;
@@ -174,9 +190,9 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_forward(
 
   assert(image.size(0) == NUM_IMAGES);
 
-  const int N1 = image.size(1)-2;
-  const int N2 = image.size(2)-2;
-  const int N3 = image.size(3)-2;
+  const int N1 = image.size(1);
+  const int N2 = image.size(2);
+  const int N3 = image.size(3);
 
   const int nThreads = NUM_THREADS_FORWARD;
   const int nBlocksPerCopy = (NUM_IMAGES*KERNEL_SIZE + nThreads - 1) / nThreads;
