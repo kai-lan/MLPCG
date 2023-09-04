@@ -12,7 +12,7 @@ __constant__ unsigned char WEIGHT_BYTES[WEIGHT_SIZE*sizeof(double)];
 __constant__ unsigned char BIAS_BYTES[KERNEL_SIZE*sizeof(double)];
 
 #define LOCATIONSPERBLOCK 16
-#define NUM_THREADS_FORWARD 512
+#define NUM_THREADS_FORWARD 256
 #define NUM_THREADS_INFERENCE 256
 
 namespace {
@@ -28,6 +28,9 @@ __global__ void sm_linear_cuda_forward_kernel(
   const int location = blockIdx.x / nBlocksPerCopy;
   const int innerBlock = blockIdx.x % nBlocksPerCopy;
 
+  const int N1 = n1 * LOCATIONSPERBLOCK;
+  const int N2 = n2 * LOCATIONSPERBLOCK;
+
   const int j = (location % n2) * LOCATIONSPERBLOCK;
   const int i = (location / n2) * LOCATIONSPERBLOCK;
 
@@ -40,7 +43,11 @@ __global__ void sm_linear_cuda_forward_kernel(
     tid /= width;
     int ix = tid % width;
     int m = tid / width;
-    I[m][ix][iy] = image[m][i+ix][j+iy];
+    const int a = i+ix-1, b = j+iy-1;
+    if (a >= 0 && a < N1 && b >= 0 && b < N2)
+      I[m][ix][iy] = image[m][a][b];
+    else
+      I[m][ix][iy] = 0.0;
     tid = ttid + blockDim.x;
   }
 
@@ -48,11 +55,9 @@ __global__ void sm_linear_cuda_forward_kernel(
   const int l = p % 3;
   p /= 3;
   const int k = p % 3;
-  p /= 3;
-  const int m = p % NUM_IMAGES;
-  const int c = p / NUM_IMAGES;
+  const int m = p / 3;
 
-  if (c >= KERNEL_SIZE) return; // Wasted threads
+  if (m >= NUM_IMAGES) return;
   __syncthreads();
 
   scalar_t _y = 0.0;
@@ -63,7 +68,7 @@ __global__ void sm_linear_cuda_forward_kernel(
     }
   }
 
-  atomicAdd(&y[c][m][k][l], _y);
+  atomicAdd(&y[0][m][k][l], _y);
 }
 
 // template <size_t blockSize, typename T>
@@ -123,38 +128,38 @@ __global__ void sm_linear_cuda_forward_kernel(
 //   if (tid == 0) atomicAdd(&y[0], z[0]);
 // }
 
-template <typename scalar_t>
-__global__ void sm_linear_cuda_inference_kernel(
-    const torch::PackedTensorAccessor32<scalar_t,3,torch::RestrictPtrTraits> image, // num_imgs, N, N
-    torch::PackedTensorAccessor32<scalar_t,2,torch::RestrictPtrTraits> y,
-    const int N1, const int N2) { // bs, 1, N, N
+// template <typename scalar_t>
+// __global__ void sm_linear_cuda_inference_kernel(
+//     const torch::PackedTensorAccessor32<scalar_t,3,torch::RestrictPtrTraits> image, // num_imgs, N, N
+//     torch::PackedTensorAccessor32<scalar_t,2,torch::RestrictPtrTraits> y,
+//     const int N1, const int N2) { // bs, 1, N, N
 
-  const scalar_t *WEIGHT = (const scalar_t *)(WEIGHT_BYTES);
-  const scalar_t *BIAS = (const scalar_t *)(BIAS_BYTES);
+//   const scalar_t *WEIGHT = (const scalar_t *)(WEIGHT_BYTES);
+//   const scalar_t *BIAS = (const scalar_t *)(BIAS_BYTES);
 
-  const int threadId = blockIdx.x * blockDim.x + threadIdx.x;
-  if (threadId >= N1*N2) return;
-  const int j = threadId % N2;
-  const int i = threadId / N2;
+//   const int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+//   if (threadId >= N1*N2) return;
+//   const int j = threadId % N2;
+//   const int i = threadId / N2;
 
-  scalar_t zz = 0.0;
-  #pragma unroll
-  for (int k = 0; k <= 2; ++k) {
-    for (int l = 0; l <= 2; ++l) {
-      int p = 3 * k + l;
-      zz += BIAS[p];
-      #pragma unroll
-      for (int s = 0; s < NUM_IMAGES; ++s) {
-        for (int m = 0; m <= 2; ++m) {
-          for (int n = 0; n <= 2; ++n) {
-            zz += WEIGHT[3*(3*(NUM_IMAGES*p+s)+m)+n] * image[s][i+m][j+n];
-          }
-        }
-      }
-    }
-  }
-  y[i][j] = zz;
-}
+//   scalar_t zz = 0.0;
+//   #pragma unroll
+//   for (int k = 0; k <= 2; ++k) {
+//     for (int l = 0; l <= 2; ++l) {
+//       int p = 3 * k + l;
+//       zz += BIAS[p];
+//       #pragma unroll
+//       for (int s = 0; s < NUM_IMAGES; ++s) {
+//         for (int m = 0; m <= 2; ++m) {
+//           for (int n = 0; n <= 2; ++n) {
+//             zz += WEIGHT[3*(3*(NUM_IMAGES*p+s)+m)+n] * image[s][i+m][j+n];
+//           }
+//         }
+//       }
+//     }
+//   }
+//   y[i][j] = zz;
+// }
 
 } // namespace
 
@@ -167,11 +172,11 @@ std::vector<torch::Tensor> sm_linear_cuda_forward(
 
   assert(image.size(0) == NUM_IMAGES);
 
-  const int N1 = image.size(1)-2;
-  const int N2 = image.size(2)-2;
+  const int N1 = image.size(1);
+  const int N2 = image.size(2);
 
   const int nThreads = NUM_THREADS_FORWARD;
-  const int nBlocksPerCopy = (WEIGHT_SIZE + nThreads - 1) / nThreads;
+  const int nBlocksPerCopy = (NUM_IMAGES*KERNEL_SIZE + nThreads - 1) / nThreads;
   const int locationsPerBlock = LOCATIONSPERBLOCK;
 
   assert((N1 % locationsPerBlock == 0) && (N2 % locationsPerBlock == 0)); // Data must be divisible by divisions
@@ -181,8 +186,7 @@ std::vector<torch::Tensor> sm_linear_cuda_forward(
   const dim3 threads(nThreads);
   const dim3 blocks(nBlocksPerCopy*n1*n2);
 
-  auto y = torch::zeros({9, NUM_IMAGES, 3, 3}, torch::dtype(image.dtype()).device(image.device())); // useful for backward
-  auto y_sum = torch::zeros({1}, torch::dtype(image.dtype()).device(image.device()));
+  auto y = torch::zeros({1, NUM_IMAGES, 3, 3}, torch::dtype(image.dtype()).device(image.device())); // useful for backward
 
   AT_DISPATCH_FLOATING_TYPES(image.type(), "sm_linear_forward_cuda", ([&] {
     sm_linear_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
@@ -191,9 +195,8 @@ std::vector<torch::Tensor> sm_linear_cuda_forward(
         nBlocksPerCopy, n1, n2);
   }));
 
-  y /= KERNEL_SIZE * N1*N2;
-  y_sum[0] = weights.ravel().dot(y.ravel());
-  y_sum += bias.mean();
+  y /= N1*N2;
+  auto y_sum = (weights.flatten(1).matmul(y.flatten())).mean() + bias.mean();
   return {y_sum, y};
 }
 
@@ -239,31 +242,30 @@ std::vector<torch::Tensor> sm_linear_cuda_inference(
 
   assert(image.size(0) == NUM_IMAGES);
 
-  if (image.dtype() == torch::ScalarType::Double) {
-    cudaMemcpyToSymbol(WEIGHT_BYTES, weights.data_ptr<double>(), WEIGHT_SIZE * sizeof(double));
-    cudaMemcpyToSymbol(BIAS_BYTES, bias.data_ptr<double>(), KERNEL_SIZE * sizeof(double));
-  } else {
-    cudaMemcpyToSymbol(WEIGHT_BYTES, weights.data_ptr<float>(), WEIGHT_SIZE * sizeof(float));
-    cudaMemcpyToSymbol(BIAS_BYTES, bias.data_ptr<float>(), KERNEL_SIZE * sizeof(float));
-  }
-
-  const int N1 = image.size(1)-2;
-  const int N2 = image.size(2)-2;
-  auto y = torch::zeros({N1, N2}, torch::dtype(image.dtype()).device(image.device()));
+  const int N1 = image.size(1);
+  const int N2 = image.size(2);
 
   const int nThreads = NUM_THREADS_INFERENCE;
-  const int nBlocks = (N1*N2 + nThreads - 1) / nThreads;
+  const int nBlocksPerCopy = (NUM_IMAGES*KERNEL_SIZE + nThreads - 1) / nThreads;
+  const int locationsPerBlock = LOCATIONSPERBLOCK;
 
+  assert((N1 % locationsPerBlock == 0) && (N2 % locationsPerBlock == 0)); // Data must be divisible by divisions
+
+  const int n1 = N1 / locationsPerBlock;
+  const int n2 = N2 / locationsPerBlock;
   const dim3 threads(nThreads);
-  const dim3 blocks(nBlocks);
+  const dim3 blocks(nBlocksPerCopy*n1*n2);
+
+  auto y = torch::zeros({1, NUM_IMAGES, 3, 3}, torch::dtype(image.dtype()).device(image.device())); // useful for backward
 
   AT_DISPATCH_FLOATING_TYPES(image.type(), "sm_linear_inference_cuda", ([&] {
-    sm_linear_cuda_inference_kernel<scalar_t><<<blocks, threads>>>(
+    sm_linear_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
         image.packed_accessor32<scalar_t,3,torch::RestrictPtrTraits>(),
-        y.packed_accessor32<scalar_t,2,torch::RestrictPtrTraits>(),
-        N1, N2);
+        y.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
+        nBlocksPerCopy, n1, n2);
   }));
-  auto y_sum = y.mean() / KERNEL_SIZE;
+  y /= N1*N2;
+  auto y_sum = (weights.flatten(1).matmul(y.flatten())).mean() + bias.mean();
   return {y_sum};
 }
 
@@ -273,7 +275,8 @@ std::vector<torch::Tensor> sm_linear_cuda_backward(
 
   auto grad_b = torch::ones({9}, torch::dtype(grad_output.dtype()).device(grad_output.device())) / KERNEL_SIZE * grad_output;
 
-  auto grad_w = y * grad_output;
+  // auto grad_w = y * grad_output;
+  auto grad_w = y.expand({9, -1, -1, -1}) * grad_output / KERNEL_SIZE;
 
   return {grad_w, grad_b};
 }
