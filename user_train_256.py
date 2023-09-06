@@ -149,14 +149,15 @@ if __name__ == '__main__':
     num_imgs = 3
 
     if DIM == 2: num_levels = 6
-    else: num_levels = 4
+    else: num_levels = 3
 
     cuda = torch.device("cuda") # Use CUDA for training
 
-    resume = False
+    resume = True
     randomize = True
 
-    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_bs{b_size}'
+    # file name to resume training from
+    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_from128'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 

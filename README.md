@@ -44,5 +44,12 @@ waterflow_pool_N256_200_3D
 waterflow_panels_N256_200_3D
 waterflow_rotating_cube_N256_200_3D
 ```
+
 The ritz vectors (`ritz_1600.npy`) have been generated for you inside `preprocessed` folder except for `dambreak_hill_N128_N256_200_3D`, which includes all the `*.pt` vectors ready.
+
+A trained model is also included in `trained_model` folder. Download it and place it in `{PROJECT_DIR}/output/output_3D_256`.
+
+Run `python user_preprocess.py` to generate all the necessary `*.pt` files for training.
+
+Run `python user_train_256.py` for training. Adjust the batch size to maximize GPU usage.
 
