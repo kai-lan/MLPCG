@@ -70,7 +70,7 @@ def train_(image, A, fluid_cells, epoch_num, train_loader, validation_loader, mo
 
     return training_loss, validation_loss, time_history, grad_history, update_history
 
-def saveData(model, optimizer, epoch, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history):
+def saveData(model, optimizer, epoch, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history, overwrite=True):
     if log is not None:
         log.record({"N": N,
                     "DIM": DIM,
@@ -81,7 +81,7 @@ def saveData(model, optimizer, epoch, log, outdir, suffix, train_loss, valid_los
                     "batch size": b_size,
                     "Num matrices": total_matrices,
                     "Num RHS": num_rhs})
-        log.write(os.path.join(outdir, f"settings_{suffix}.log"))
+        log.write(os.path.join(outdir, f"settings_{suffix}.log"), overwrite=overwrite)
     torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
@@ -108,10 +108,10 @@ def loadData(outdir, suffix):
 if __name__ == '__main__':
     np.random.seed(0)
     torch.manual_seed(0)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
 
-    N = 256
+    N = 128
     DIM = 3
     lr = 0.0001
     epoch_num_per_matrix = 5
@@ -120,32 +120,35 @@ if __name__ == '__main__':
     shape = (1,)+(N,)*DIM
     bcs = [
         (f'dambreak_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        (f'dambreak_hill_N{N//2}_N{N}',     (N,)+(N//2,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
-        (f'dambreak_dragons_N{N//2}_N{N}',  (N,)+(N//2,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44]),
-        (f'ball_cube_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'ball_bowl_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        (f'dambreak_hill_N{N}_N{N*2}',     (N*2,)+(N,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
+        # (f'two_balls_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+        (f'dambreak_dragons_N{N}_N{N*2}',  (N*2,)+(N,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
+        (f'ball_cube_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+        (f'ball_bowl_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+        (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
         (f'standing_rotating_blade_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
         (f'waterflow_pool_N{N}',            (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        (f'waterflow_panels_N{N}',          (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:])
+        (f'waterflow_panels_N{N}',          (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+        (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int))
     ]
     bc = 'mixedBCs10'
-    b_size = 16
-    total_matrices = np.sum([len(bc[-1]) for bc in bcs]) # number of matrices chosen for training
+    b_size = 32
+    # total_matrices = np.sum([len(bc[-1]) for bc in bcs]) # number of matrices chosen for training
+    total_matrices = 10
     num_ritz = 1600
     num_rhs = 800 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
     num_imgs = 3
 
     if DIM == 2: num_levels = 6
-    else: num_levels = 4
+    else: num_levels = 3
 
     cuda = torch.device("cuda") # Use CUDA for training
 
-    resume = False
+    resume = True
+    randomize = True
 
-    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001'
+    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_lr0.0001'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 
@@ -193,14 +196,17 @@ if __name__ == '__main__':
 
     for i in range(start_epoch+1, epoch_num+start_epoch+1):
         tl, vl = 0.0, 0.0
-        for bc, sha, matrices in bcs:
+        if randomize: np.random.shuffle(bcs)
+        for count, (bc, sha, matrices) in enumerate(bcs, 1):
             shape = (1,)+sha
             if DIM == 2: inpdir = f"{DATA_PATH}/{bc}_200/preprocessed"
             else:        inpdir = f"{DATA_PATH}/{bc}_200_{DIM}D/preprocessed"
-            for j in matrices:
+            num_matrices = len(matrices)
+            if randomize: np.random.shuffle(matrices)
+            for j_mat, j in enumerate(matrices, 1):
                 print(f"Epoch: {i}/{epoch_num}")
-                print(bc)
-                print('Matrix', j)
+                print(bc, f'{count} / {len(bcs)}')
+                print('Matrix', j, f'{j_mat}/{num_matrices}')
 
                 train_set.data_folder = os.path.join(f"{inpdir}/{j}")
                 valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
@@ -219,9 +225,9 @@ if __name__ == '__main__':
         valid_loss.append(vl)
         time_history.append(time.time() - start_time)
 
-        saveData(model, optimizer, i, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history)
+        saveData(model, optimizer, i, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
         if i % 5 == 0:
-            saveData(model, optimizer, i, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history)
+            saveData(model, optimizer, i, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
 
     end_time = time.time()
     print("Took", end_time-start_time, 's')
