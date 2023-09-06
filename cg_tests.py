@@ -18,9 +18,8 @@ import cupy as cp
 import cupyx.scipy.sparse as cpsp
 import cupyx.scipy.sparse.linalg as gslin # https://docs.cupy.dev/en/stable/reference/scipy_sparse_linalg.html#module-cupyx.scipy.sparse.linalg
 import pyamg # https://github.com/pyamg/pyamg
-from cxx_src.build import pyamgcl
-from cxx_src.build import pyamgcl_cuda
-from cxx_src.build import pyamgcl_vexcl
+from cxx_src.build import pyamgcl, pyamgcl_cuda, pyamgcl_vexcl
+from cxx_src.build import pyic, pyic_cuda, pyic_vexcl
 import time
 from lib.global_clock import GlobalClock
 
@@ -216,146 +215,6 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
             return x_sol, i, timer
     return x_sol, max_it, timer
 
-def dcdm_cg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
-    tot_time = {"Total": 0.0, "NN": 0.0, "Ortho": 0.0, "CG": 0.0, "Norm": 0.0, "Init": 0.0}
-
-    tot_start = time.time()
-    start = time.time()
-
-    norm_b = b.norm().item()
-    r = b - A @ x_init
-    norm = r.norm().item() / norm_b
-    if callback:
-        torch.cuda.synchronize()
-        callback(norm, time.time() - tot_start)
-
-    if verbose:
-        print(f"Iter {0}, residual {norm}, ares {r.norm().item()}")
-
-    x = torch.clone(x_init)
-
-    z = model_predict(r)
-    # z = r
-    p = z
-    w = A @ p
-    rz = rz_old = r.dot(z)
-    alpha = rz / p.dot(w)
-    x += alpha * p
-    r = b - A @ x
-
-    norm = r.norm().item() / norm_b
-    if callback:
-        torch.cuda.synchronize()
-        callback(norm, time.time() - tot_start)
-
-    torch.cuda.synchronize()
-    tot_time['Init'] += time.time() - start
-
-    k = 1
-    while norm > max(tol, atol/norm_b) and k < max_it:
-        start = time.time()
-
-        z = model_predict(r)
-        # z = r
-
-        torch.cuda.synchronize()
-        tot_time['NN'] += time.time() - start
-
-        rz = r.dot(z)
-        beta = rz / rz_old
-        p = z + beta * p
-        w = A @ p
-        alpha = rz / p.dot(w)
-        x += alpha * p
-        r = b - A @ x
-        k += 1
-        rz_old = rz
-
-        norm = r.norm().item() / norm_b
-
-        if callback:
-            torch.cuda.synchronize()
-            callback(norm, time.time() - tot_start)
-        if verbose:
-            print(f"Iter {k}, residual {norm}, ares {r.norm().item()}")
-
-    torch.cuda.synchronize()
-    tot_time['Total'] += time.time() - tot_start
-    return x, k, tot_time
-
-def dcdm_bicg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
-    tot_time = {"Total": 0.0, "NN": 0.0, "Ortho": 0.0, "CG": 0.0, "Norm": 0.0, "Init": 0.0}
-
-    tot_start = time.time()
-    start = time.time()
-
-    norm_b = b.norm().item()
-    r = b - A @ x_init
-    norm = r.norm().item() / norm_b
-    if callback:
-        torch.cuda.synchronize()
-        callback(norm, time.time() - tot_start)
-
-    if verbose:
-        print(f"Iter {0}, residual {norm}, ares {r.norm().item()}")
-
-    x = torch.clone(x_init)
-
-    rho0 = alpha = omega0 = 1
-    v0 = p0 = torch.zeros_like(x)
-
-    for i in range(1, max_it+1):
-        rho = r.dot(r)
-
-
-    z = model_predict(r)
-    # z = r
-    p = z
-    w = A @ p
-    rz = rz_old = r.dot(z)
-    alpha = rz / p.dot(w)
-    x += alpha * p
-    r = b - A @ x
-
-    norm = r.norm().item() / norm_b
-    if callback:
-        torch.cuda.synchronize()
-        callback(norm, time.time() - tot_start)
-
-    torch.cuda.synchronize()
-    tot_time['Init'] += time.time() - start
-
-    k = 1
-    while norm > max(tol, atol/norm_b) and k < max_it:
-        start = time.time()
-
-        z = model_predict(r)
-        # z = r
-
-        torch.cuda.synchronize()
-        tot_time['NN'] += time.time() - start
-
-        rz = r.dot(z)
-        beta = rz / rz_old
-        p = z + beta * p
-        w = A @ p
-        alpha = rz / p.dot(w)
-        x += alpha * p
-        r = b - A @ x
-        k += 1
-        rz_old = rz
-
-        norm = r.norm().item() / norm_b
-
-        if callback:
-            torch.cuda.synchronize()
-            callback(norm, time.time() - tot_start)
-        if verbose:
-            print(f"Iter {k}, residual {norm}, ares {r.norm().item()}")
-
-    torch.cuda.synchronize()
-    tot_time['Total'] += time.time() - tot_start
-    return x, k, tot_time
 
 ###################
 # CG CPU
@@ -408,15 +267,6 @@ def CG_GPU(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=
     x, info = gslin.cg(A, b, x0=x_init, tol=tol, atol=atol, maxiter=max_it, callback=res_callback)
     return x, count
 
-def AMGCG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
-    ml = pyamg.ruge_stuben_solver(A)
-    residuals = []
-    x = ml.solve(b, x0=x_init, maxiter=max_it, tol=tol, residuals=residuals, callback=callback)
-    b_norm = np.linalg.norm(b)
-    for i in range(len(residuals)):
-        residuals[i] /= b_norm
-    return x, residuals
-
 def AMGCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
     x_comp, info = pyamgcl.solve(A_comp, b_comp, tol, atol, max_it)
     iters, time, residual = info[0], info[1]+info[2], info[3]
@@ -429,6 +279,21 @@ def AMGCL_CUDA(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=N
 
 def AMGCL_VEXCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
     x_comp, info = pyamgcl_vexcl.solve(A_comp, b_comp, tol, atol, max_it)
+    iters, time, residual = info[0], info[1]+info[2], info[3]
+    return x_comp, (iters, time, residual)
+
+def IC(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
+    x_comp, info = pyic.solve(A_comp, b_comp, tol, atol, max_it)
+    iters, time, residual = info[0], info[1]+info[2], info[3]
+    return x_comp, (iters, time, residual)
+
+def IC_CUDA(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
+    x_comp, info = pyic_cuda.solve(A_comp, b_comp, tol, atol, max_it)
+    iters, time, residual = info[0], info[1]+info[2], info[3]
+    return x_comp, (iters, time, residual)
+
+def IC_VEXCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
+    x_comp, info = pyic_vexcl.solve(A_comp, b_comp, tol, atol, max_it)
     iters, time, residual = info[0], info[1]+info[2], info[3]
     return x_comp, (iters, time, residual)
 

@@ -7,6 +7,7 @@ class LoggingWriter():
         self.info = "\n" + "Basic variables\n" + '-'*50 + '\n'
         for key in value_dict:
             self.info += self.__class__.log(key, value_dict[key])
-    def write(self, file):
-        logging.basicConfig(filename=file, filemode='w', format='%(asctime)s %(message)s', level=logging.INFO)
+    def write(self, file, overwrite=True):
+        mode = 'w' if overwrite else 'a'
+        logging.basicConfig(filename=file, filemode=mode, format='%(asctime)s %(message)s', level=logging.INFO)
         logging.info(self.info)

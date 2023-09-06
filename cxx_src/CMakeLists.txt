@@ -82,9 +82,14 @@ endif()
 if (COMPILE_VEXCL)
   message("Compiling VexCL")
   add_subdirectory(${CMAKE_SOURCE_DIR}/vexcl)
+
   add_executable(myamgcl_vexcl amg.cpp)
   target_link_libraries(myamgcl_vexcl amgcl VexCL::CUDA VexCL::OpenCL)
   target_compile_definitions(myamgcl_vexcl PRIVATE -DUSE_VEXCL)
+
+  add_executable(myic_vexcl ic.cpp)
+  target_link_libraries(myic_vexcl amgcl VexCL::CUDA VexCL::OpenCL)
+  target_compile_definitions(myic_vexcl PRIVATE -DUSE_VEXCL)
 endif()
 
 if (COMPILE_CUDA)
@@ -93,7 +98,6 @@ if (COMPILE_CUDA)
     if (CUDA_FOUND)
         set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_86,code=sm_86")
 
-        # set(CUDA_TARGET_ARCH "Kepler Maxwell Pascal" CACHE STRING "Target architecture(s) for CUDA")
         cuda_select_nvcc_arch_flags(CUDA_ARCH_FLAGS ${CUDA_TARGET_ARCH})
 
         if (OPENMP_FOUND)
@@ -109,15 +113,24 @@ if (COMPILE_CUDA)
         target_link_libraries(cuda_target INTERFACE ${CUDA_cusparse_LIBRARY})
     endif()
   endif()
+
   add_executable(myamgcl_cuda amg.cu)
   target_link_libraries(myamgcl_cuda amgcl cuda_target)
   target_compile_definitions(myamgcl_cuda PRIVATE -DUSE_CUDA)
+
+  add_executable(myic_cuda ic.cu)
+  target_link_libraries(myic_cuda amgcl cuda_target)
+  target_compile_definitions(myic_cuda PRIVATE -DUSE_CUDA)
 endif()
 
 if (COMPILE_OPENMP)
   message("Compiling OpenMP(builtin)")
+
   add_executable(myamgcl amg.cpp)
   target_link_libraries(myamgcl amgcl)
+
+  add_executable(myic ic.cpp)
+  target_link_libraries(myic amgcl)
 endif()
 
 # if (MIXED_PRECISION) # sadly, it seems mixed precision is not supported here
@@ -137,16 +150,28 @@ if (NOT WIN32)
     pybind11_add_module(pyamgcl_vexcl pyamgcl_vexcl.cpp)
     target_link_libraries(pyamgcl_vexcl PRIVATE amgcl VexCL::CUDA VexCL::OpenCL)
     target_compile_definitions(pyamgcl_vexcl PRIVATE -DUSE_VEXCL)
+
+    pybind11_add_module(pyic_vexcl pyic_vexcl.cpp)
+    target_link_libraries(pyic_vexcl PRIVATE amgcl VexCL::CUDA VexCL::OpenCL)
+    target_compile_definitions(pyic_vexcl PRIVATE -DUSE_VEXCL)
   endif()
   if (COMPILE_CUDA)
     pybind11_add_module(pyamgcl_cuda pyamgcl.cu)
     target_link_libraries(pyamgcl_cuda PRIVATE amgcl cuda_target)
     target_compile_definitions(pyamgcl_cuda PRIVATE -DUSE_CUDA)
     set_property(TARGET pyamgcl_cuda PROPERTY CUDA_ARCHITECTURES 86)
+
+    pybind11_add_module(pyic_cuda pyic.cu)
+    target_link_libraries(pyic_cuda PRIVATE amgcl cuda_target)
+    target_compile_definitions(pyic_cuda PRIVATE -DUSE_CUDA)
+    set_property(TARGET pyic_cuda PROPERTY CUDA_ARCHITECTURES 86)
   endif()
   if (COMPILE_OPENMP)
     pybind11_add_module(pyamgcl pyamgcl.cpp)
     target_link_libraries(pyamgcl PRIVATE amgcl)
+
+    pybind11_add_module(pyic pyic.cpp)
+    target_link_libraries(pyic PRIVATE amgcl)
   endif()
 
 endif()
