@@ -32,7 +32,7 @@ scenes = [
 
 
 num_ritz_vectors = 1600
-num_rhs = 800
+num_rhs = 1280
 
 def createTrainingData(N, DIM, ritz_vectors, sample_size, fluid_cells, outdir, suffix=''):
     small_matmul_size = sample_size

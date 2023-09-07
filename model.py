@@ -35,7 +35,7 @@ class BaseModel(nn.Module):
         for i in range(bs):
             r += (x - x_).norm(1)
         return r / bs
-    def residual_loss_old(slef, x, y, A):
+    def residual_loss_old(self, x, y, A):
         bs = x.shape[0]
         r = torch.zeros(1, device=x.device)
         for i in range(bs):
