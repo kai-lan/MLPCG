@@ -23,7 +23,7 @@ from cxx_src.build import pyic, pyic_cuda, pyic_vexcl
 import time
 from lib.global_clock import GlobalClock
 
-def dcdm_new(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
+def dcdm_new(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
     tot_time = {"Total": 0.0, "NN": 0.0, "Ortho": 0.0, "CG": 0.0, "Norm": 0.0, "Init": 0.0}
 
     tot_start = time.time()
@@ -129,7 +129,7 @@ def dcdm_new(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose
 ###################
 # DCDM
 ###################
-def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
+def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
     timer = GlobalClock()
 
     timer.start('Total')
@@ -203,23 +203,26 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
             torch.cuda.synchronize()
             callback(norm, time.time() - tot_start)
 
+        if verbose:
+            print(f"Iter {i}, residual {norm}, ares {r.norm().item()}")
+
+        stop = norm < max(tol, atol/norm_b)
         torch.cuda.synchronize()
         timer.stop('Norm')
 
-
-        if verbose:
-            print(f"Iter {i}, residual {norm}, ares {r.norm().item()}")
-        if norm < max(tol, atol/norm_b):
+        if stop:
             torch.cuda.synchronize()
             timer.stop('Total')
             return x_sol, i, timer
+    torch.cuda.synchronize()
+    timer.stop('Total')
     return x_sol, max_it, timer
 
 
 ###################
 # CG CPU
 ###################
-def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
+def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
     tot_start = time.time()
     count = 0
     norm_b = np.linalg.norm(b)
@@ -245,7 +248,7 @@ def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None
 ###################
 # CG CUDA
 ###################
-def CG_GPU(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
+def CG_GPU(b, A, x_init, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
     tot_start = time.time()
     count = 0
     norm_b = cp.linalg.norm(b)
@@ -267,32 +270,32 @@ def CG_GPU(b, A, x_init, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=
     x, info = gslin.cg(A, b, x0=x_init, tol=tol, atol=atol, maxiter=max_it, callback=res_callback)
     return x, count
 
-def AMGCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
+def AMGCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, callback=None):
     x_comp, info = pyamgcl.solve(A_comp, b_comp, tol, atol, max_it)
     iters, time, residual = info[0], info[1]+info[2], info[3]
     return x_comp, (iters, time, residual)
 
-def AMGCL_CUDA(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
+def AMGCL_CUDA(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, callback=None):
     x_comp, info = pyamgcl_cuda.solve(A_comp, b_comp, tol, atol, max_it)
     iters, time, residual = info[0], info[1]+info[2], info[3]
     return x_comp, (iters, time, residual)
 
-def AMGCL_VEXCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
+def AMGCL_VEXCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, callback=None):
     x_comp, info = pyamgcl_vexcl.solve(A_comp, b_comp, tol, atol, max_it)
     iters, time, residual = info[0], info[1]+info[2], info[3]
     return x_comp, (iters, time, residual)
 
-def IC(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
+def IC(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, callback=None):
     x_comp, info = pyic.solve(A_comp, b_comp, tol, atol, max_it)
     iters, time, residual = info[0], info[1]+info[2], info[3]
     return x_comp, (iters, time, residual)
 
-def IC_CUDA(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
+def IC_CUDA(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, callback=None):
     x_comp, info = pyic_cuda.solve(A_comp, b_comp, tol, atol, max_it)
     iters, time, residual = info[0], info[1]+info[2], info[3]
     return x_comp, (iters, time, residual)
 
-def IC_VEXCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-12, callback=None):
+def IC_VEXCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, callback=None):
     x_comp, info = pyic_vexcl.solve(A_comp, b_comp, tol, atol, max_it)
     iters, time, residual = info[0], info[1]+info[2], info[3]
     return x_comp, (iters, time, residual)
