@@ -2,7 +2,6 @@
 File: read_data.py
 File Created: Thursday, 5th January 2023 12:53:43 am
 
-Modified from Osman's code.
 --------------
 '''
 import os
@@ -11,6 +10,7 @@ import struct
 import numpy as np
 import scipy.sparse as sparse
 
+BOUNDARY = 0 # also solid
 SOLID = 1
 FLUID = 2
 AIR = 3
@@ -171,27 +171,28 @@ def expandVec(b, flags):
     return v
 
 if __name__ == '__main__':
-    frame = 10
-    N = 64
+    frame = 3
+    N = 128
     DIM = 3
     prefix = ''
-    bc = 'dambreak'
+    bc = 'smoke_solid'
     if DIM == 2:
         suffix = ''
     else:
         suffix = '_3D'
 
-    DATA_PATH = "../tgsl/tgsl_projects/projects/incompressible_flow/build_3d"
-    file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_20{suffix}", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_20{suffix}", f"div_v_star_{frame}.bin")
-    file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_20{suffix}", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_20{suffix}", f"flags_{frame}.bin")
+    # DATA_PATH = "../tgsl/tgsl_projects/projects/incompressible_flow/build_3d"
+    file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"A_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"flags_{frame}.bin")
     A = readA_sparse(file_A)
     rhs = load_vector(file_rhs)
     sol = load_vector(file_sol)
 
-    # print(A.shape)
-    # flags = read_flags(file_flags)
+    # print(A.shape, rhs.shape, sol.shape)
+    flags = read_flags(file_flags)
+    print(flags.min(), flags.max())
     # flags_binray = convert_to_binary_images(flags)
     # print(flags_binray.shape)
     # air = np.where(flags == 3)[0]
@@ -205,7 +206,6 @@ if __name__ == '__main__':
     # rhs = compressedVec(rhs, flags)
     # sol = compressedVec(sol, flags)
     # print(len(rhs))
-    print(rhs.shape, A.shape, sol.shape)
     r = rhs - A @ sol
     r_norm = np.linalg.norm(r)
     b_norm = np.linalg.norm(rhs)

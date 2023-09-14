@@ -15,7 +15,7 @@ Ritz vector for matrix A.
 '''
 
 from GLOBAL_VARS import *
-os.environ['OMP_NUM_THREADS'] = '2'
+os.environ['OMP_NUM_THREADS'] = '1'
 import numpy as np
 import scipy
 import time
@@ -110,13 +110,14 @@ DIM = 3
 scenes = [
     # f'dambreak_N{N}',
     # f'dambreak_hill_N{N}_N{2*N}',
+    # f'dambreak_dragons_N{N}_N{2*N}',
     # f'two_balls_N{N}',
-    f'ball_cube_N{N}',
+    # f'ball_cube_N{N}',
     # f'ball_bowl_N{N}',
     # f'standing_dipping_block_N{N}',
     # f'standing_rotating_blade_N{N}',
     # f'waterflow_pool_N{N}',
-    # f'waterflow_panels_N{N}',
+    f'waterflow_panels_N{N}',
     # f'waterflow_rotating_cube_N{N}'
 ]
 
@@ -128,8 +129,9 @@ num_ritz_vectors = 1600
 if __name__ == '__main__':
     t0 = time.time()
     # total_work = np.linspace(1, 200, 10, dtype=int)
-    # total_work = np.linspace(12, 188, 9, dtype=int)
-    total_work = [111, 133, 155, 45, 67, 89]
+    # total_work = np.linspace(12, 188, 9, dtype=int)[4:7]
+    total_work = [144, 166, 188]
+
     num_threads = len(total_work)
 
     chunks = np.array_split(total_work, num_threads)

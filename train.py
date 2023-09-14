@@ -15,6 +15,7 @@ from lib.GLOBAL_VARS import *
 from lib.global_clock import GlobalClock
 from model import *
 from sm_model import *
+from loss_functions import residual_loss
 import matplotlib.pyplot as plt
 
 def move_data(data, device):
@@ -122,7 +123,7 @@ if __name__ == '__main__':
     DIM = 3
     lr = 0.0001
     epoch_num_per_matrix = 5
-    epoch_num = 50
+    epoch_num = 100
     epochs_per_save = 5
     shape = (1,)+(N,)*DIM
     bcs = [
@@ -147,14 +148,14 @@ if __name__ == '__main__':
     num_imgs = 3
 
     if DIM == 2: num_levels = 6
-    else: num_levels = 4
+    else: num_levels = 3
 
     cuda = torch.device("cuda") # Use CUDA for training
 
     resume = True
     randomize = True
 
-    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_bs32'
+    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_from128'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 
@@ -166,7 +167,7 @@ if __name__ == '__main__':
         model = SmallSMModelDn3D(num_levels, num_imgs)
 
     model.move_to(cuda)
-    loss_fn = model.residual_loss
+    loss_fn = residual_loss
 
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -200,7 +201,7 @@ if __name__ == '__main__':
 
     start_time = time.time()
 
-    for i in range(start_epoch+1, epoch_num+start_epoch+1):
+    for i in range(start_epoch+1, epoch_num+1):
         tl, vl = 0.0, 0.0
         if randomize: np.random.shuffle(bcs)
         for count, (bc, sha, matrices) in enumerate(bcs, 1):

@@ -23,109 +23,6 @@ from cxx_src.build import pyic, pyic_cuda, pyic_vexcl
 import time
 from lib.global_clock import GlobalClock
 
-def dcdm_new(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
-    tot_time = {"Total": 0.0, "NN": 0.0, "Ortho": 0.0, "CG": 0.0, "Norm": 0.0, "Init": 0.0}
-
-    tot_start = time.time()
-    start = time.time()
-
-    norm_b = b.norm().item()
-    r = b - A @ x_init
-    norm = r.norm().item() / norm_b
-
-    if callback:
-        torch.cuda.synchronize()
-        callback(norm, time.time() - tot_start)
-    if verbose:
-        print(f"Iter {0}, residual {norm}, ares {r.norm().item()}")
-
-    num_prev = 10
-    p = []
-    Ap = []
-    alfa = []
-
-    x_sol = torch.clone(x_init)
-
-    torch.cuda.synchronize()
-    tot_time['Init'] += time.time() - start
-
-    for i in range(1, max_it+1):
-        start = time.time()
-
-        d1 = model_predict(r)
-        d2 = r
-
-        torch.cuda.synchronize()
-        tot_time['NN'] += time.time() - start
-
-        start = time.time()
-
-        if i > num_prev:
-            for j in reversed(range(num_prev)):
-                d1 = d1 - d1.dot(Ap[j])/alfa[j] * p[j]
-                d2 = d2 - d2.dot(Ap[j])/alfa[j] * p[j]
-        else:
-            for j in reversed(range(i-1)):
-                d1 = d1 - d1.dot(Ap[j])/alfa[j] * p[j]
-                d2 = d2 - d2.dot(Ap[j])/alfa[j] * p[j]
-
-        torch.cuda.synchronize()
-        tot_time['Ortho'] += time.time() - start
-
-        start = time.time()
-
-        Ad1 = A @ d1
-        Ad2 = A @ d2
-        aa = d1.dot(Ad1)
-        bb = d1.dot(Ad2)
-        cc = bb
-        dd = d2.dot(Ad2)
-        f1 = r.dot(d1)
-        f2 = r.dot(d2)
-
-        det = aa * dd - bb * cc
-        c1 = (dd * f1 - bb * f2) / det
-        c2 = (-cc * f1 + aa * f2) / det
-        d = c1 * d1 + c2 * d2
-
-        if i > num_prev:
-            for j in range(num_prev-1):
-                p[j] = p[j+1]
-                Ap[j] = Ap[j+1]
-                alfa[j] = alfa[j+1]
-            p[num_prev-1] = d
-            Ap[num_prev-1] = c1 * Ad1 + c2 * Ad2
-            alfa[num_prev-1] = p[-1].dot(Ap[-1])
-        else:
-            p.append(d)
-            Ap.append(c1 * Ad1 + c2 * Ad2)
-            alfa.append(p[-1].dot(Ap[-1]))
-
-        gamma = d.dot(r)/alfa[-1]
-        x_sol += gamma * d
-        r = b - A @ x_sol
-
-        torch.cuda.synchronize()
-        tot_time['CG'] += time.time() - start
-
-        start = time.time()
-
-        norm = r.norm().item() / norm_b
-        if callback:
-            torch.cuda.synchronize()
-            callback(norm, time.time() - tot_start)
-        torch.cuda.synchronize()
-        tot_time['Norm'] += time.time() - start
-
-
-        if verbose:
-            print(f"Iter {i}, residual {norm}, ares {r.norm().item()}")
-        if norm < max(tol, atol/norm_b):
-            torch.cuda.synchronize()
-            tot_time['Total'] += time.time() - tot_start
-            return x_sol, i, tot_time
-    return x_sol, max_it, tot_time
-
 ###################
 # DCDM
 ###################
@@ -145,7 +42,7 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-10, verbose=Fal
     if verbose:
         print(f"Iter {0}, residual {norm}, ares {r.norm().item()}")
 
-    num_prev = 10
+    num_prev = 6
     p = []
     Ap = []
     alfa = []
@@ -239,7 +136,6 @@ def CG(b, A, x_init, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None
         norm = np.linalg.norm(r) / norm_b
         if callback:
             callback(norm, time.time() - tot_start)
-        # res_history.append(norm)
         if verbose:
             print(f"Iter {count}, residual {norm}")
     x, info = slin.cg(A, b, x0=x_init, tol=tol, atol=atol, maxiter=max_it, callback=res_callback)
@@ -262,7 +158,6 @@ def CG_GPU(b, A, x_init, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=
         nonlocal count
         count += 1
         norm = cp.linalg.norm(b - A @ x) / norm_b
-        # res_history.append(norm.item())
         if verbose:
             print(f"Iter {count}, residual {norm}")
         if callback:
