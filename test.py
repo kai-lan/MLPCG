@@ -78,7 +78,7 @@ class Tests:
             fluid_cells = torch.from_numpy(fluid_cells).to(device)
 
             out = f"{frame:<4}"
-            title = f"{'Sol':<4}"
+            title = f"{'Frames':<4}"
 
             if self.solvers['AMGCL']:
                 x_amgcl, (iters_amgcl, tot_time, res_amgcl) = AMGCL_CUDA(rhs_comp, A_comp, np.zeros_like(rhs_comp), self.max_cg_iters, tol=self.rel_tol)
@@ -109,17 +109,17 @@ class Tests:
             if self.solvers['MLPCG']:
                 predict = self.model_predict(model, flags, fluid_cells)
                 for _ in range(10): # warm up
-                    dcdm(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                    dcdm_cg(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
                 total_time = 0.0
                 steps = 10
                 for _ in range(steps):
                     start_time = time.perf_counter()
-                    dcdm(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                    dcdm_cg(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
                     torch.cuda.synchronize()
                     end_time = time.perf_counter()
                     total_time += end_time - start_time
                 total_time /= steps
-                x_mlpcg, iters, timer = dcdm(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                x_mlpcg, iters, timer = dcdm_cg(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
                 results['mlpcg_time'].append(total_time)
                 results['mlpcg_iters'].append(iters)
                 print(f"MLPCG took", total_time, 's after', iters, 'iterations') #, f"to {res_profile['MLPCG'][-1]}")
@@ -132,13 +132,13 @@ class Tests:
                     f.write(out)
         avg = f"{'Avg':<4}"
         if solvers['AMGCL']:
-            avg += f", {np.mean(results['amgcl_iters']):^4}, {np.mean(results['amgcl_time']):>6.4f}"
+            avg += f", {np.mean(results['amgcl_iters']):^4.4f}, {np.mean(results['amgcl_time']):>6.4f}"
         if solvers['IC']:
-            avg += f", {np.mean(results['ic_iters']):^4}, {np.mean(results['ic_time']):>6.4f}"
+            avg += f", {np.mean(results['ic_iters']):^4.4f}, {np.mean(results['ic_time']):>6.4f}"
         if solvers['CG']:
-            avg += f", {np.mean(results['cg_iters']):^4}, {np.mean(results['cg_time']):>6.4f}"
+            avg += f", {np.mean(results['cg_iters']):^4.4f}, {np.mean(results['cg_time']):>6.4f}"
         if solvers['MLPCG']:
-            avg += f", {np.mean(results['mlpcg_iters']):^4}, {np.mean(results['mlpcg_time']):>6.4f}\n"
+            avg += f", {np.mean(results['mlpcg_iters']):^4.4f}, {np.mean(results['mlpcg_time']):>6.4f}\n"
         if output is not None:
             with open(output_file, 'a') as f:
                 f.write(avg)
@@ -157,30 +157,30 @@ class Tests:
 
 solvers = {
         "MLPCG": True,
-        "AMGCL": True,
-        "IC": True,
-        "CG": True
+        "AMGCL": False,
+        "IC": False,
+        "CG": False
         }
 
 DIM = 3
 
 N = 256
-shape = (N,) + (N,)*(DIM-1)
+shape = (N,) + (N//2,)*(DIM-1)
 device = torch.device('cuda')
-# frames = reversed(np.linspace(1, 200, 5, dtype=int))
-frames = [90]
+frames = np.linspace(1, 200, 30, dtype=int)
+# frames = [90]
 
-scene = f'waterflow_spiky_torus_N{N}_200_{DIM}D'
+scene = f'dambreak_pillars_N{N//2}_N{N}_200_{DIM}D'
 # scene = f'smoke_solid_N{N}_200_3D'
 
 
-NN = 256
-num_mat = 97
+NN = 128
+num_mat = 10
 num_ritz = 1600
 num_rhs = 800
 num_imgs = 3
 num_levels = 3
-model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_from128.tar")
+model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_lr0.0001.tar")
 model = SmallSMModelDn3D(num_levels, num_imgs)
 model.move_to(device)
 state_dict = torch.load(model_file, map_location=device)['model_state_dict']
