@@ -23,7 +23,7 @@ from cxx_src.build import pyic, pyic_cuda, pyic_vexcl
 import time
 from lib.global_clock import GlobalClock
 
-def dcdm_cg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
+def npcg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
     timer = GlobalClock()
 
     timer.start('Total')
@@ -103,7 +103,7 @@ def dcdm_cg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=
     timer.stop('Total')
     return x, k, timer
 
-def dcdm_flex_cg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
+def npcg_flex(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
     timer = GlobalClock()
 
     timer.start('Total')
@@ -189,7 +189,7 @@ def dcdm_flex_cg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, ver
 ###################
 # DCDM
 ###################
-def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
+def npsd(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
     timer = GlobalClock()
 
     timer.start('Total')
@@ -205,7 +205,7 @@ def dcdm(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-10, verbose=Fal
     if verbose:
         print(f"Iter {0}, residual {norm}, ares {r.norm().item()}")
 
-    num_prev = 6
+    num_prev = 2
     p = []
     Ap = []
     alfa = []

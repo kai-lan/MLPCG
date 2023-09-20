@@ -109,17 +109,17 @@ class Tests:
                 fluid_cells = torch.from_numpy(fluid_cells).to(device)
                 predict = self.model_predict(model, flags, fluid_cells)
                 for _ in range(10): # warm up
-                    dcdm(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                    npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
                 total_time = 0.0
                 steps = 10
                 for _ in range(steps):
                     start_time = time.perf_counter()
-                    dcdm(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                    npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
                     torch.cuda.synchronize()
                     end_time = time.perf_counter()
                     total_time += end_time - start_time
                 total_time /= steps
-                x_mlpcg, iters, timer = dcdm(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                x_mlpcg, iters, timer = npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
                 results['mlpcg_time'].append(total_time)
                 results['mlpcg_iters'].append(iters)
                 print(f"MLPCG took", total_time, 's after', iters, 'iterations') #, f"to {res_profile['MLPCG'][-1]}")
@@ -154,12 +154,14 @@ class Tests:
             res_profile[key].append(res)
             time_profile[key].append(time)
 
+if len(sys.argv) > 1:
+    solver = sys.argv[1]
 
 solvers = {
-        "MLPCG": True,
+        "MLPCG": False,
         "AMGCL": False,
         "IC": False,
-        "CG": False
+        "CG": True
         }
 
 DIM = 3
@@ -168,9 +170,9 @@ N = 256
 shape = (N,) + (N,)*(DIM-1)
 device = torch.device('cuda')
 frames = range(1, 201)
-# scene = f'standing_pool_scooping_N{N}_200_{DIM}D'
+scene = f'smoke_solid_N{N}_200_{DIM}D'
 # scene = f'dambreak_pillars_N{N}_N{2*N}_200_{DIM}D'
-scene = f'waterflow_ball_N{N}_200_3D'
+# scene = f'waterflow_ball_N{N}_200_3D'
 
 
 NN = 128
