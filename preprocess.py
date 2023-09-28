@@ -81,10 +81,9 @@ def worker(indices):
             np.save(f"{out_folder}/fluid_cells.npy", fluid_cells)
             torch.save(torch.from_numpy(fluid_cells).to(device), os.path.join(out_folder, f"fluid_cells.pt"))
 
-            A_sp = readA_sparse(os.path.join(data_folder, f"A_{index}.bin"), sparse_type='csr')
+            A_sp = readA_sparse(os.path.join(data_folder, f"A_{index}.bin"), sparse_type='csc')
 
             # A_sp = compressedMat(A_sp, flags_sp)
-
 
             A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float32, device=device).to_sparse_csc()
             torch.save(A, os.path.join(out_folder, f"A.pt"))

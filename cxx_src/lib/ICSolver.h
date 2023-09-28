@@ -73,11 +73,12 @@ struct ICSolver {
     > Solver;
 
 
-  static std::tuple<int, T, T, T> Solve(const SpMat& A, VXT& x, const VXT& b, double tol=1e-4, double atol=1e-10, int max_iters=100) {
+  static std::tuple<int, T, T, T> Solve(const SpMat& A, VXT& x, const VXT& b, double tol=1e-4, double atol=1e-10, int max_iters=100, bool verbose=false) {
 
     typename Solver::params prm;
     prm.solver.tol = std::max(tol, atol / b.norm());
     prm.solver.maxiter = max_iters;
+    prm.solver.verbose = verbose;
 
     typename SBackend::params bprm;
   #ifdef USE_VEXCL

@@ -9,10 +9,10 @@ using AMGCL = AMGCLSolver<PBackend, SBackend>;
 
 PYBIND11_MODULE(pyamgcl_vexcl, m) {
     m.doc() = "python binding for AMGCL solver VexCL version";
-    m.def("solve", [](const SpMat& A, const VXT& b, double tol=1e-4, double atol=1e-10, int max_iters=100) {
+    m.def("solve", [](const SpMat& A, const VXT& b, double tol=1e-4, double atol=1e-10, int max_iters=100, bool verbose=false) {
         VXT x(b.size());
         x.setZero();
-        auto info = AMGCL::Solve(A, x, b, tol, atol, max_iters);
+        auto info = AMGCL::Solve(A, x, b, tol, atol, max_iters, verbose);
         return std::make_tuple(x, info);
     });
 }

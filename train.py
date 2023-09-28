@@ -119,7 +119,7 @@ if __name__ == '__main__':
     # torch.backends.cudnn.deterministic = True
     # torch.backends.cudnn.benchmark = False
 
-    N = 256
+    N = 128
     DIM = 3
     lr = 0.0001
     epoch_num_per_matrix = 5
@@ -128,9 +128,9 @@ if __name__ == '__main__':
     shape = (1,)+(N,)*DIM
     bcs = [
         (f'dambreak_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        (f'dambreak_hill_N{N//2}_N{N}',     (N,)+(N//2,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
+        (f'dambreak_hill_N{N}_N{N*2}',     (N*2,)+(N,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
         # (f'two_balls_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'dambreak_dragons_N{N//2}_N{N}',  (N,)+(N//2,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
+        (f'dambreak_dragons_N{N}_N{N*2}',  (N*2,)+(N,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
         (f'ball_cube_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
         (f'ball_bowl_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
         (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
@@ -140,8 +140,9 @@ if __name__ == '__main__':
         (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:])
     ]
     bc = 'mixedBCs10'
-    b_size = 64
-    total_matrices = np.sum([len(bc[-1]) for bc in bcs]) # number of matrices chosen for training
+    b_size = 32
+    # total_matrices = np.sum([len(bc[-1]) for bc in bcs]) # number of matrices chosen for training
+    total_matrices = 10
     num_ritz = 1600
     num_rhs = 800 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
@@ -155,7 +156,7 @@ if __name__ == '__main__':
     resume = True
     randomize = True
 
-    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_from128'
+    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_lr0.0001'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     os.makedirs(outdir, exist_ok=True)
 
