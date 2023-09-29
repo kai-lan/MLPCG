@@ -186,9 +186,9 @@ def npcg_flex(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbos
     return x, k, timer, norm
 
 
-#####################################################################
-# Our Neural-preconditioned steepest descent with orthogonalization
-#####################################################################
+###########################################################################
+# Our Neural-preconditioned steepest descent with orthogonalization (NPSDO)
+###########################################################################
 def npsd(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
     timer = GlobalClock()
 
@@ -340,8 +340,8 @@ def AMGCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, verbose=False, 
 
 def AMGCL_CUDA(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
     x_comp, info = pyamgcl_cuda.solve(A_comp, b_comp, tol, atol, max_it, verbose)
-    iters, time, residual = info[0], info[1]+info[2], info[3]
-    return x_comp, (iters, time, residual)
+    iters, setup_time, solve_time, residual = info
+    return x_comp, (iters, setup_time, solve_time, residual)
 
 def AMGCL_VEXCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
     x_comp, info = pyamgcl_vexcl.solve(A_comp, b_comp, tol, atol, max_it, verbose)
@@ -355,8 +355,8 @@ def IC(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, verbose=False, cal
 
 def IC_CUDA(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
     x_comp, info = pyic_cuda.solve(A_comp, b_comp, tol, atol, max_it, verbose)
-    iters, time, residual = info[0], info[1]+info[2], info[3]
-    return x_comp, (iters, time, residual)
+    iters, setup_time, solve_time, residual = info
+    return x_comp, (iters, setup_time, solve_time, residual)
 
 def IC_VEXCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
     x_comp, info = pyic_vexcl.solve(A_comp, b_comp, tol, atol, max_it, verbose)

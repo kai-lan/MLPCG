@@ -70,7 +70,7 @@ target_compile_definitions(amgcl INTERFACE
 include_directories(${CMAKE_SOURCE_DIR}/amgcl)
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 include_directories(SYSTEM ${CMAKE_SOURCE_DIR}/lib)
-include_directories(SYSTEM ${CMAKE_SOURCE_DIR}/../../eigen-3.4.0)
+include_directories(SYSTEM ${CMAKE_SOURCE_DIR}/../eigen-3.4.0)
 
 
 if (COMPILE_CUDA OR COMPILE_VEXCL)

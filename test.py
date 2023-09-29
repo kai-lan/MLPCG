@@ -9,7 +9,7 @@ from sm_model import *
 from lib.read_data import *
 from lib.discrete_laplacian import *
 from torch.nn.functional import normalize
-import time, timeit
+import time
 import warnings
 warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
 torch.set_grad_enabled(False) # disable autograd globally

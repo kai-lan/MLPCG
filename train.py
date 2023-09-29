@@ -8,7 +8,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import time
-from tqdm import tqdm
 from lib.write_log import LoggingWriter
 from lib.dataset import *
 from lib.GLOBAL_VARS import *

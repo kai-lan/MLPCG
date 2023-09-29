@@ -3,7 +3,6 @@ sys.path.insert(1, 'lib')
 os.environ['OMP_NUM_THREADS'] = '1'
 import torch
 from lib.read_data import *
-from tqdm import tqdm
 from multiprocessing import Process
 import time
 import warnings
