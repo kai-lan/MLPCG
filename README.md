@@ -1,37 +1,25 @@
-# MLPCG
+# A Neural-preconditioned Poisson Solver for Mixed Dirichlet and Neumann Boundary Conditions
 
-Machine Learned Preconditioned Conjugate Gradient (MLPCG) methods invents a compact linear neural network that approximate an inverse of a discrete Poisson matrix, and is used as a preconditioner for solving the Poisson equations. The Poisson equations arise from fluid simulation, where both fluid and solid object are present in the domain.
-This project studies machine learning approach to accelerate the pressure Poisson solver in fluid simulations. Previous related work include [DeepGradient](https://arxiv.org/pdf/2205.10763.pdf) and [FluidNet](https://arxiv.org/pdf/1607.03597.pdf).
+This is the codebase for our paper.
 
 
 ## Requirements and dependencies
 * Python
 * Pytorch: > 2.0
-* AMGCL: https://github.com/ddemidov/amgcl
+We recommend using a virtual environment such as conda.
+
+
+
+## Setup
+* Clone AMGCL: https://github.com/ddemidov/amgcl into `cxx_src` folder.
     * Boost: required by AMGCL
-We recommend using virtual environment such as conda.
-
-### Training dataset
+* CUDA Tookit required: https://developer.nvidia.com/cuda-downloads
 
 
-#### For developers
----
-
-The dataset can be generated from [tgsl](https://gitlab.com/teran-group/tgsl). Inside the `projects/incompressible_flow`.
-
-The output includes `*.bgeo` files for visualization in Houdini, `flags_*.bin` for integer-valued images, `div_v_star_*.bin` rhs for pressure equation, `pressure_*.bin` solution, `A_*.bin` sparse matrix.
-
-Your data should has the following path:
-```
-{PROJECT_FOLDER}/data/{scene}/{A_*.bin, div_v_star_*.bin, flags_*.bin, pressure_*.bin, *.bgeo}
-{PROJECT_FOLDER}/data/{scene}/preprocessed/{rhs.pt, A.pt, fluid_cells.pt, b_*.pt}
-```
-
-To generate ritz vectors, modify and run `lib/create_dataset.py`. To generate training rhs, modify and run `preprocess.py`.
 
 #### For users
 ---
-Download the corresponding data from [here](https://drive.google.com/drive/folders/1q1D5LJmQqfNcJUDj5x3tC5cpIyRoSyGR?usp=drive_link). For 3D 256 training, we use the following data:
+Download the corresponding data from [here]. For 3D 256 training, we use the following data:
 ```
 dambreak_N256_200_3D
 dambreak_hill_N128_N256_200_3D
