@@ -10,7 +10,6 @@ import scipy.sparse.linalg as slin
 import cupy as cp
 import cupyx.scipy.sparse as cpsp
 import cupyx.scipy.sparse.linalg as gslin # https://docs.cupy.dev/en/stable/reference/scipy_sparse_linalg.html#module-cupyx.scipy.sparse.linalg
-import pyamg # https://github.com/pyamg/pyamg
 from cxx_src.build import pyamgcl, pyamgcl_cuda, pyamgcl_vexcl
 from cxx_src.build import pyic, pyic_cuda, pyic_vexcl
 import time
