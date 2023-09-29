@@ -1,19 +1,3 @@
-'''
-File: datasetcreate.py
-File Created: Saturday, 25th February 2023 1:27:07 am
-
-Author: Kai Lan (kai.weixian.lan@gmail.com)
-
-Create Ritz vectors (approximated eigenvectors) for training.
-https://en.wikipedia.org/wiki/Lanczos_algorithm suggested the reduced number of vectors
-should be selected to be approximately 1.5 times the number of accurate eigenvalues desired.
-For symmetric matrix, we first reduce the matrix A to tridiagonal (H = Q^T A Q),
-then compute eigenvalues (a_0, a_1...) and eigenvectors (u_0, u_1...) for H, then Qu_j is a
-Ritz vector for matrix A.
-
---------------
-'''
-
 from GLOBAL_VARS import *
 os.environ['OMP_NUM_THREADS'] = '1'
 import numpy as np
@@ -23,7 +7,6 @@ import time
 import read_data as hf
 import scipy.sparse as sparse
 import scipy.sparse.linalg as slin
-from tqdm import tqdm
 from multiprocessing import Process
 
 # Given A n x n, return V, T with A = VTV^T
@@ -105,7 +88,7 @@ def worker(frames):
 
 np.random.seed(2)
 
-N = 256
+N = 128
 DIM = 3
 scenes = [
     # f'dambreak_N{N}',
@@ -128,10 +111,9 @@ num_ritz_vectors = 1600
 
 if __name__ == '__main__':
     t0 = time.time()
-    # total_work = np.linspace(1, 200, 10, dtype=int)
-    # total_work = np.linspace(12, 188, 9, dtype=int)[4:7]
-    total_work = [144, 166, 188]
-
+    # total_work = np.linspace(1, 200, 10, dtype=int)[:5]
+    # total_work = np.linspace(12, 188, 9, dtype=int)
+    total_work = [34, 56, 100]
     num_threads = len(total_work)
 
     chunks = np.array_split(total_work, num_threads)

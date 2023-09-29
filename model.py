@@ -1,10 +1,3 @@
-'''
-File: model.py
-File Created: Tuesday, 10th January 2023 12:51:41 am
-
-Author: Kai Lan (kai.weixian.lan@gmail.com)
---------------
-'''
 from math import inf, log2
 import numpy as np
 import torch

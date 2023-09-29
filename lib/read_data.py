@@ -1,9 +1,3 @@
-'''
-File: read_data.py
-File Created: Thursday, 5th January 2023 12:53:43 am
-
---------------
-'''
 import os
 from GLOBAL_VARS import *
 import struct
@@ -107,7 +101,7 @@ void Serialize(SparseMatrix<T, OptionsBitFlag, Index>& m, const std::string& fil
   }
 }
 """
-def readA_sparse(filenameA, dtype='d', sparse_type='csr'):
+def readA_sparse(filenameA, dtype='d', sparse_type='csr', shape=None):
     '''
     dim: grid points in each dimenstion
     DIM: 2D or 3D
@@ -151,10 +145,14 @@ def readA_sparse(filenameA, dtype='d', sparse_type='csr'):
     outerIdxPtr = outerIdxPtr + [nnz]
     for ii in range(num_rows):
         rows[outerIdxPtr[ii]:outerIdxPtr[ii+1]] = [ii]*(outerIdxPtr[ii+1] - outerIdxPtr[ii])
+    if shape is None:
+        shape = [num_rows, num_cols]
     if sparse_type.lower() == 'csr':
-        return sparse.csr_matrix((data, (rows, cols)),[num_rows, num_cols], dtype=dtype)
+        return sparse.csr_matrix((data, (rows, cols)), dtype=dtype, shape=shape)
+    elif sparse_type.lower() == 'csc':
+        return sparse.csc_matrix((data, (rows, cols)), dtype=dtype, shape=shape)
     elif sparse_type.lower() == 'coo':
-        return sparse.coo_matrix((data, (rows, cols)), [num_rows, num_cols], dtype=dtype)
+        return sparse.coo_matrix((data, (rows, cols)), dtype=dtype, shape=shape)
     else:
         raise Exception("Sparse type only supports coo or csr")
 
@@ -171,28 +169,29 @@ def expandVec(b, flags):
     return v
 
 if __name__ == '__main__':
-    frame = 3
-    N = 128
+    frame = 197
+    N = 256
     DIM = 3
-    prefix = ''
-    bc = 'smoke_solid'
+    bc = 'smoke_bunny'
     if DIM == 2:
         suffix = ''
     else:
         suffix = '_3D'
 
-    # DATA_PATH = "../tgsl/tgsl_projects/projects/incompressible_flow/build_3d"
-    file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"div_v_star_{frame}.bin")
-    file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"flags_{frame}.bin")
-    A = readA_sparse(file_A)
+    # DATA_PATH = "../dataset_mlpcg/test_matrices_and_vectors/N128/rotating_fluid"
+    # file_A = f"{DATA_PATH}/matrixA_{frame}.bin"
+    # file_rhs = f"{DATA_PATH}/div_v_star_{frame}.bin"
+    # file_A = os.path.join(DATA_PATH, f"{bc}_N{N}_200{suffix}", f"A_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"{bc}_N{N}_200{suffix}", f"div_v_star_{frame}.bin")
+    # file_sol = os.path.join(DATA_PATH, f"{bc}_N{N}_200{suffix}", f"pressure_{frame}.bin")
+    # file_flags = os.path.join(DATA_PATH, f"{bc}_N{N}_200{suffix}", f"flags_{frame}.bin")
+    # A = readA_sparse(file_A, 'd')
     rhs = load_vector(file_rhs)
-    sol = load_vector(file_sol)
+    # sol = load_vector(file_sol)
 
-    # print(A.shape, rhs.shape, sol.shape)
-    flags = read_flags(file_flags)
-    print(flags.min(), flags.max())
+    print(rhs.shape)
+    # flags = read_flags(file_flags)
+    # print(flags.min(), flags.max())
     # flags_binray = convert_to_binary_images(flags)
     # print(flags_binray.shape)
     # air = np.where(flags == 3)[0]
@@ -206,8 +205,8 @@ if __name__ == '__main__':
     # rhs = compressedVec(rhs, flags)
     # sol = compressedVec(sol, flags)
     # print(len(rhs))
-    r = rhs - A @ sol
-    r_norm = np.linalg.norm(r)
-    b_norm = np.linalg.norm(rhs)
-    print(r_norm, r_norm/b_norm)
+    # r = rhs - A @ sol
+    # r_norm = np.linalg.norm(r)
+    # b_norm = np.linalg.norm(rhs)
+    # print(r_norm, r_norm/b_norm)
 

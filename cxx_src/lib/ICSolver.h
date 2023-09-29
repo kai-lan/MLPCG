@@ -79,7 +79,6 @@ struct ICSolver {
     prm.solver.tol = std::max(tol, atol / b.norm());
     prm.solver.maxiter = max_iters;
     prm.solver.verbose = verbose;
-
     typename SBackend::params bprm;
   #ifdef USE_VEXCL
     vex::Context ctx(vex::Filter::Exclusive(vex::Filter::GPU && vex::Filter::Env && vex::Filter::Count(1)));

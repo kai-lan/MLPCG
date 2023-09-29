@@ -124,7 +124,7 @@ class Tests:
                     npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
 
                 total_time = 0.0
-                steps = 3
+                steps = 10
                 for _ in range(steps):
                     start_time = time.perf_counter()
                     npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
