@@ -4,29 +4,29 @@ This is the codebase for our paper.
 
 
 ## Requirements and dependencies
-* Python
-* Pytorch: > 2.0
-* CUDA Tookit required: https://developer.nvidia.com/cuda-downloads
-* Clone `AMGCL`: https://github.com/ddemidov/amgcl into `cxx_src` folder.
-    * Boost: required by AMGCL
+* Python.
+* [Pytorch](https://pytorch.org/get-started/locally/) > 2.0.
+* [CUDA Tookit](https://developer.nvidia.com/cuda-downloads) required.
+* Clone [AMGCL](https://github.com/ddemidov/amgcl) into `cxx_src` folder.
+    * [Boost](https://www.boost.org/): required by AMGCL
     * In order to test `AMGCL` or `IC`, you need to do the following:
         ```
             mkdir build && cd build
             cmake ..
             make -j
         ```
-* Clone `VexCL`: https://github.com/ddemidov/vexcl into `cxx_src` folder.
-* Clone `PyBind11`: https://github.com/pybind/pybind11 into `cxx_src` folder.
-* Download `eigen 3.4` from https://eigen.tuxfamily.org/index.php?title=Main_Page into the project folder, and name it `eigen-3.4.0`.
-* CuPy: https://cupy.dev/
-* SciPy
-* Ninja: required to load Torch C++ extension. Download in https://ninja-build.org/.
+* Clone [VexCL](https://github.com/ddemidov/vexcl) into `cxx_src` folder.
+* Clone [PyBind11](https://github.com/pybind/pybind11) into `cxx_src` folder.
+* Download [eigen 3.4](https://eigen.tuxfamily.org/index.php?title=Main_Page) into the project folder, and name it `eigen-3.4.0`.
+* [CuPy](https://cupy.dev/) for CUDA implementation of CG.
+* [SciPy](https://scipy.org/) for linear algebra support.
+* [Ninja](https://ninja-build.org/) required to load Torch C++ extension.
 
 We recommend using a virtual environment such as conda.
 
 
 
-### Testing
+## Testing
 Download test data and trained model from [here](https://drive.google.com/file/d/1HvPYeFbw34-esAd6Lk5LaQu4w2DuFUMq/view?usp=drive_link).
 
 Inside the project folder, unzip it, and you should expect the following files:
