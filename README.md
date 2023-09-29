@@ -20,6 +20,7 @@ This is the codebase for our paper.
 * Download `eigen 3.4` from https://eigen.tuxfamily.org/index.php?title=Main_Page into the project folder, and name it `eigen-3.4.0`.
 * CuPy: https://cupy.dev/
 * SciPy
+* Ninja: required to load Torch C++ extension. Download in https://ninja-build.org/.
 
 We recommend using a virtual environment such as conda.
 
