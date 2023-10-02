@@ -159,7 +159,6 @@ class Tests:
                 if i == 0: title += f", {'CG':>4}, {'':>6}"
 
             if self.solvers['MLPCG']:
-                print('here')
                 flags_sp = convert_to_binary_images(flags_sp, num_imgs)
                 A = torch.sparse_csr_tensor(A_comp.indptr, A_comp.indices, A_comp.data, A_comp.shape, dtype=torch.float64, device=device)
                 rhs = torch.tensor(rhs_comp, dtype=torch.float64, device=device)
@@ -189,7 +188,7 @@ class Tests:
                 out += f", {iters:^4}, {total_time:>6.4f}"
                 if i == 0: title += f", {'ML':>4}, {'':>6}"
             if output is not None:
-                with open(output_file, 'a') as f:
+                with open(output, 'a') as f:
                     if i == 0: f.write(title + '\n')
                     f.write(out + '\n')
         avg = f"{'Avg':<4}"
@@ -202,7 +201,7 @@ class Tests:
         if solvers['MLPCG']:
             avg += f", {np.mean(results['mlpcg_iters']):^4.4f}, {np.mean(results['mlpcg_time']):>6.4f}\n"
         if output is not None:
-            with open(output_file, 'a') as f:
+            with open(output, 'a') as f:
                 f.write(avg)
 
         return results
@@ -297,8 +296,8 @@ if len(sys.argv) > 1:
     solver = sys.argv[1]
 
 solvers = {
-        "MLPCG": False,
-        "AMGCL": True,
+        "MLPCG": True,
+        "AMGCL": False,
         "IC": False,
         "CG": False
         }
@@ -308,39 +307,14 @@ DIM = 3
 N = 128
 N2 = 256
 device = torch.device('cuda')
-frames = range(1, 201)
-# frames = np.linspace(1, 200, 30, dtype=int)
+frames = range(200, 201)
 # frames = [200]
+# scene = f'dambreak_bunny_N{N//2}_N{N}_200_{DIM}D'
+# scene = f'dambreak_pillars_N{N}_N{2*N}_200_{DIM}D'
+scene = f'waterflow_ball_N{N2}_200_3D'
+# scene = f'standing_scooping_N{N}_200_3D'
 
-scene = [
-        #  f'standing_pool_scooping_N{N}_200_3D',
-        #  f'standing_pool_scooping_N{N2}_200_3D',
-        #  f'dambreak_pillars_N{N}_N{N2}_200_{DIM}D',
-        #  f'dambreak_bunny_N{N}_N{N2}_200_{DIM}D',
-        #  f'waterflow_spiky_torus_N{N}_200_{DIM}D',
-        #  f'waterflow_spiky_torus_N{N2}_200_{DIM}D',
-        #  f'waterflow_ball_N{N}_200_{DIM}D',
-        #  f'waterflow_ball_N{N2}_200_{DIM}D',
-        # f'smoke_solid_N{N}_200_{DIM}D',
-         f'smoke_bunny_N{N}_200_{DIM}D',
-        #  f'smoke_bunny_N{N2}_200_{DIM}D',
-        #  f'smoke_solid_N{N2}_200_{DIM}D',
-        ]
-shapes = [
-        #  (N,) + (N,)*(DIM-1),
-        #  (N2,) + (N2,)*(DIM-1),
-        #  (N2,) + (N,)*(DIM-1),
-        #  (N2,) + (N,)*(DIM-1),
-        #  (N,) + (N,)*(DIM-1),
-        #  (N2,) + (N2,)*(DIM-1),
-        #  (N,) + (N,)*(DIM-1),
-        #  (N2,) + (N2,)*(DIM-1),
-        # (N,) + (N,)*(DIM-1),
-         (N,) + (N,)*(DIM-1),
-        #  (N2,) + (N2,)*(DIM-1),
-        #  (N2,) + (N2,)*(DIM-1),
-        ]
-
+shape = (N2,) * DIM
 
 NN = 128
 num_mat = 10
@@ -348,24 +322,28 @@ num_ritz = 1600
 num_rhs = 800
 num_imgs = 3
 num_levels = 4
-# model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_from128_35.tar")
-# model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_lr0.0001_50.tar")
 model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_30.tar")
 model = SmallSMModelDn3D(num_levels, num_imgs)
 model.move_to(device)
 state_dict = torch.load(model_file, map_location=device)['model_state_dict']
+
+for i in range(num_levels):
+    state_dict[f'c0.{i}.bias'] = state_dict[f'c0.{i}.bias'].mean(dim=0, keepdim=True)
+    state_dict[f'c1.{i}.bias'] = state_dict[f'c1.{i}.bias'].mean(dim=0, keepdim=True)
+    state_dict[f'c0.{i}.weight'] = state_dict[f'c0.{i}.weight'].mean(dim=0, keepdim=True)
+    state_dict[f'c1.{i}.weight'] = state_dict[f'c1.{i}.weight'].mean(dim=0, keepdim=True)
+
 model.load_state_dict(state_dict)
 model.eval()
 
-for bc, shape in zip(scene, shapes):
-    output_file1 = model_file.replace("checkpt", f"test_{bc}").replace(".tar", ".txt")
-    # output_file = model_file.replace("checkpt", f"res_iters_{bc}").replace(".tar", ".txt")
-    # with open(output_file, 'w') as f:
-        # f.write('')
-    with open(output_file1, 'w') as f:
-        f.write('')
-    tests = Tests(model, solvers, 1e-6)
-    results = tests.run_frames(bc, shape, frames, output=output_file1)
+output_file1 = model_file.replace("checkpt", f"test_{scene}").replace(".tar", ".txt")
+# output_file = model_file.replace("checkpt", f"res_iters_{bc}").replace(".tar", ".txt")
+# with open(output_file, 'w') as f:
+    # f.write('')
+with open(output_file1, 'w') as f:
+    f.write('')
+tests = Tests(model, solvers, 1e-6)
+results = tests.run_frames(scene, shape, frames, output=output_file1)
 
 
     ################

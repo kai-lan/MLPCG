@@ -221,6 +221,17 @@ class SmallLinearBlock3D(BaseModel):
     def eval_forward(self, image, timer=None):
         return SMLinearFunction3D.inference(image, self.weight, self.bias, timer)
 
+class SmallLinearBlock3DNew(BaseModel):
+    def __init__(self, num_imgs):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(1, num_imgs, 3, 3, 3))
+        self.bias = nn.Parameter(torch.ones(1))
+        self.reset_parameters(self.weight, self.bias)
+    def forward(self, image):
+        return SMLinearFunction3D.apply(image, self.weight, self.bias)
+    def eval_forward(self, image, timer=None):
+        return SMLinearFunction3D.inference(image, self.weight, self.bias, timer)
+
 class SmallLinearBlock3DPY(BaseModel):
     def __init__(self, num_imgs):
         super().__init__()
@@ -418,8 +429,8 @@ class SmallSMModelDn3D(BaseModel):
 
         self.l = SmallSMBlock3D(num_imgs)
 
-        self.c0 = nn.ModuleList([SmallLinearBlock3D(num_imgs) for _ in range(n)])
-        self.c1 = nn.ModuleList([SmallLinearBlock3D(num_imgs) for _ in range(n)])
+        self.c0 = nn.ModuleList([SmallLinearBlock3DNew(num_imgs) for _ in range(n)])
+        self.c1 = nn.ModuleList([SmallLinearBlock3DNew(num_imgs) for _ in range(n)])
 
     def eval_forward(self, image, b, timer):
         timer.start('SM block')

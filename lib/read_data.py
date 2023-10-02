@@ -107,7 +107,7 @@ void Serialize(SparseMatrix<T, OptionsBitFlag, Index>& m, const std::string& fil
   }
 }
 """
-def readA_sparse(filenameA, dtype='d', sparse_type='csr'):
+def readA_sparse(filenameA, dtype='d', sparse_type='csr', shape=None):
     '''
     dim: grid points in each dimenstion
     DIM: 2D or 3D
@@ -151,10 +151,13 @@ def readA_sparse(filenameA, dtype='d', sparse_type='csr'):
     outerIdxPtr = outerIdxPtr + [nnz]
     for ii in range(num_rows):
         rows[outerIdxPtr[ii]:outerIdxPtr[ii+1]] = [ii]*(outerIdxPtr[ii+1] - outerIdxPtr[ii])
+
+    if shape is None:
+        shape = [num_rows, num_cols]
     if sparse_type.lower() == 'csr':
-        return sparse.csr_matrix((data, (rows, cols)),[num_rows, num_cols], dtype=dtype)
+        return sparse.csr_matrix((data, (rows, cols)), dtype=dtype, shape=shape)
     elif sparse_type.lower() == 'coo':
-        return sparse.coo_matrix((data, (rows, cols)), [num_rows, num_cols], dtype=dtype)
+        return sparse.coo_matrix((data, (rows, cols)), dtype=dtype, shape=shape)
     else:
         raise Exception("Sparse type only supports coo or csr")
 

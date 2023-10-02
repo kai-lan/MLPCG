@@ -105,11 +105,11 @@ def worker(frames):
 
 np.random.seed(2)
 
-N = 256
+N = 128
 DIM = 3
 scenes = [
     # f'dambreak_N{N}',
-    # f'dambreak_hill_N{N}_N{2*N}',
+    f'dambreak_hill_N{N}_N{2*N}',
     # f'dambreak_dragons_N{N}_N{2*N}',
     # f'two_balls_N{N}',
     # f'ball_cube_N{N}',
@@ -117,7 +117,7 @@ scenes = [
     # f'standing_dipping_block_N{N}',
     # f'standing_rotating_blade_N{N}',
     # f'waterflow_pool_N{N}',
-    f'waterflow_panels_N{N}',
+    # f'waterflow_panels_N{N}',
     # f'waterflow_rotating_cube_N{N}'
 ]
 
@@ -130,7 +130,7 @@ if __name__ == '__main__':
     t0 = time.time()
     # total_work = np.linspace(1, 200, 10, dtype=int)
     # total_work = np.linspace(12, 188, 9, dtype=int)[4:7]
-    total_work = [144, 166, 188]
+    total_work = [144]
 
     num_threads = len(total_work)
 

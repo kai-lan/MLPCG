@@ -179,7 +179,8 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_inference(
         image.numel());
   }));
   y /= N1*N2*N3;
-  auto y_sum = (weights.flatten(1).matmul(y.flatten())).mean() + bias.mean();
+  auto y_sum = weights.ravel().dot(y.ravel()) + bias;
+  // auto y_sum = (weights.flatten(1).matmul(y.flatten())).mean() + bias.mean();
   return {y_sum, y};
 }
 
@@ -216,7 +217,7 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_forward(
         image.numel());
   }));
   y /= N1*N2*N3;
-  auto y_sum = (weights.flatten(1).matmul(y.flatten())).mean() + bias.mean();
+  auto y_sum = weights.ravel().dot(y.ravel()) + bias;
   return {y_sum, y};
 }
 
@@ -224,9 +225,9 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_backward(
     torch::Tensor grad_output,
     torch::Tensor y) { // computed from forward
 
-  auto grad_b = torch::ones({27}, torch::dtype(grad_output.dtype()).device(grad_output.device())) / KERNEL_SIZE * grad_output;
+  auto grad_b = torch::ones({1}, torch::dtype(grad_output.dtype()).device(grad_output.device())) * grad_output;
 
-  auto grad_w = y.expand({27, -1, -1, -1, -1}) * grad_output / KERNEL_SIZE;
+  auto grad_w = y * grad_output;
 
   return {grad_w, grad_b};
 }

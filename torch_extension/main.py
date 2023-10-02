@@ -10,40 +10,40 @@ if __name__ == '__main__':
     import time
     torch.set_default_dtype(torch.float64)
     assert torch.cuda.is_available()
-    cuda_device = torch.device("cpu")
+    cuda_device = torch.device("cuda")
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
     bs = 1
-    N = 64
-    image = torch.rand(3, N, N, device=cuda_device)
+    N = 128
+    image = torch.rand(3, N, N, N, device=cuda_device)
 
-    x = torch.rand(bs, 1, N, N, device=cuda_device, requires_grad=True)
+    x = torch.rand(bs, 1, N, N, N, device=cuda_device, requires_grad=True)
     x1 = x.detach().clone()
     x1.requires_grad = True
 
-    model = SmallLinearBlockPY(3).to(cuda_device)
-    model1 = SmallLinearBlock(3).to(cuda_device)
+    # model = SmallSMBlock3DPY(3).to(cuda_device)
+    model1 = SmallLinearBlock3DNew(3).to(cuda_device)
 
     # model.KL.weight.requires_grad = True
     # model.KL.bias.requires_grad = True
     # model1.weight.requires_grad = True
     # model1.bias.requires_grad = True
-    yy = model1(image, x1)
-    y = model(image, x)
-    print((y - yy).abs().max())
-    print((y - yy).norm())
+    yy = model1(image)
+    # y = model(image, x)
+    # print((y - yy).abs().max())
+    # print((y - yy).norm())
 
     # y.sum().backward()
     # yy.sum().backward()
 
-    # print((model.post[0].KL.weight.grad - model1.post[0].weight.grad).abs().max())
-    # print((model.post[0].KL.bias.grad - model1.post[0].bias.grad).abs().max())
+    # print((model.KL.weight.grad - model1.weight.grad).abs().max())
+    # print((model.KL.bias.grad - model1.bias.grad).abs().max())
 
     # print((x.grad - x1.grad).abs().max())
     # torch.use_deterministic_algorithms(True)
-    # torch.autograd.gradcheck(SMBlockFunction.apply, (image, x, model.KL.weight, model.KL.bias), nondet_tol=1e-12, fast_mode=True)
+    torch.autograd.gradcheck(SMLinearFunction3D.apply, (image, model1.weight, model1.bias), nondet_tol=1e-12, fast_mode=False)
 
     # forward = 0
     # backward = 0

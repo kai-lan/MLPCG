@@ -133,7 +133,7 @@ gpus = tf.config.list_physical_devices('GPU')
 
 print(gpus)
 
-N = 128
+N = 256
 N2 = N**3
 dim = N+2
 dim2 = dim**3
