@@ -31,11 +31,11 @@ def validation(train_loader, validation_loader, model, loss_fn, image, A, fluid_
         for data in train_loader:
             # data = data.to(A.device)
             x_pred = model(image, data) # input: (bs, 1, dim, dim)
-            tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1)[:, fluid_cells], data[:, 0].flatten(1)[:, fluid_cells], A)
+            tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1)[:, fluid_cells], data[:, 0].flatten(1)[:, fluid_cells], A, False)
         for data in validation_loader:
             # data = data.to(A.device)
             x_pred = model(image, data) # input: (bs, 1, dim, dim)
-            tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1)[:, fluid_cells], data[:, 0].flatten(1)[:, fluid_cells], A)
+            tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1)[:, fluid_cells], data[:, 0].flatten(1)[:, fluid_cells], A, False)
     return tot_loss_train.item(), tot_loss_val.item()
 
 
@@ -114,8 +114,8 @@ def loadData(outdir, suffix):
     return epoch, model_params, optim_params, list(training_loss), list(validation_loss), list(time_history), list(grad_history), list(update_history)
 
 if __name__ == '__main__':
-    # np.random.seed(0)
-    # torch.manual_seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
     # torch.backends.cudnn.deterministic = True
     # torch.backends.cudnn.benchmark = False
 
@@ -140,7 +140,7 @@ if __name__ == '__main__':
         (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)]))
     ]
     bc = 'mixedBCs10'
-    b_size = 128
+    b_size = 32
     # total_matrices = np.sum([len(bc[-1]) for bc in bcs]) # number of matrices chosen for training
     total_matrices = len(bcs)
     num_ritz = 1600
@@ -153,11 +153,11 @@ if __name__ == '__main__':
 
     cuda = torch.device("cuda") # Use CUDA for training
 
-    resume = True
-    randomize = True
+    resume = False
+    randomize = False
 
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
-    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001'
+    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}'
     # ep, model_params, optim_params, train_loss, valid_loss, time_history, grad_history, update_history = loadData(outdir, suffix)
 
 

@@ -13,10 +13,13 @@ def residual_loss_old(x, y, A):
         r_norm = (y[i] - A @ x[i]).norm()
         r += r_norm # No need to compute relative residual because inputs are all unit vectors
     return r / bs
-def residual_loss(x, y, A): # Please use CSC format for A!
+# Please use CSC format for A!
+# mean is used for training, and sum is for loss evaluation
+def residual_loss(x, y, A, mean=True):
     if A.layout != torch.sparse_csc:
         print("You are not using CSC format, so expect it slow!")
     r = y - x.matmul(A)
+    if not mean: return r.norm(dim=1).sum()
     return r.norm(dim=1).mean()
 def squared_loss(x, y, A):
     bs = x.shape[0]
