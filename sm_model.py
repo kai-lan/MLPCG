@@ -224,9 +224,11 @@ class SmallLinearBlock3D(BaseModel):
 class SmallLinearBlock3DNew(BaseModel):
     def __init__(self, num_imgs):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(1, num_imgs, 3, 3, 3))
-        self.bias = nn.Parameter(torch.ones(1))
+        self.weight = torch.ones(27, num_imgs, 3, 3, 3)
+        self.bias = torch.ones(27)
         self.reset_parameters(self.weight, self.bias)
+        self.weight = nn.Parameter(self.weight.mean(dim=0, keepdim=True))
+        self.bias = nn.Parameter(self.bias.mean(dim=0, keepdim=True))
     def forward(self, image):
         return SMLinearFunction3D.apply(image, self.weight, self.bias)
     def eval_forward(self, image, timer=None):
@@ -554,13 +556,13 @@ if __name__ == '__main__':
     torch.backends.cudnn.allow_tf32 = False # for debugging
     # torch.use_deterministic_algorithms(True)
 
-    N = 1024
+    N = 128
     frame = 200
     num_imgs = 3
     cuda_device = torch.device("cuda")
 
-    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"div_v_star_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200", f"flags_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"div_v_star_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, f"dambreak_N{N}_200_3D", f"flags_{frame}.bin")
     rhs = torch.tensor(load_vector(file_rhs), dtype=torch.get_default_dtype())
     image = read_flags(file_flags)
     fluid_cells = np.argwhere(image == FLUID).ravel()
@@ -577,10 +579,14 @@ if __name__ == '__main__':
 
     # model = SmallSMBlockPY(num_imgs).to(cuda_device)
     # model1 = SmallSMBlock(num_imgs).to(cuda_device)
-    model = SmallLinearBlockPY(num_imgs).to(cuda_device)
-    model1 = SmallLinearBlock(num_imgs).to(cuda_device)
+    # model = SmallLinearBlockPY(num_imgs).to(cuda_device)
+    # model1 = SmallLinearBlock(num_imgs).to(cuda_device)
+
     # model = SmallLinearBlock3DPY(num_imgs).to(cuda_device)
     # model1 = SmallLinearBlock3D(num_imgs).to(cuda_device)
+    model1 = SmallLinearBlock3D(num_imgs).to(cuda_device)
+    print(model1.weight.mean(dim=0), model1.bias.mean(dim=0))
+    exit()
     # model = SmallSMModelDnPY(6, num_imgs).to(cuda_device)
     # model1 = SmallSMModelDn(6, num_imgs).to(cuda_device)
 
@@ -598,55 +604,55 @@ if __name__ == '__main__':
     # torch.set_grad_enabled(False)
     # model1.eval()
     # print(model1.training)
-    timer = GlobalClock()
+    # timer = GlobalClock()
 
-    for _ in range(10):
-        y = model(image)
-        y1 = model1.eval_forward(image)
-        # y.sum().backward()
-        # y1.sum().backward()
-    torch.cuda.synchronize()
+    # for _ in range(10):
+    #     y = model(image)
+    #     y1 = model1.eval_forward(image)
+    #     # y.sum().backward()
+    #     # y1.sum().backward()
+    # torch.cuda.synchronize()
 
-    timer = GlobalClock()
+    # timer = GlobalClock()
 
-    iters = 100
-    forward = 0.0
-    backward = 0.0
-    for _ in range(iters):
-        start = time.perf_counter()
-        y = model(image)
-        torch.cuda.synchronize()
-        forward += time.perf_counter() - start
+    # iters = 100
+    # forward = 0.0
+    # backward = 0.0
+    # for _ in range(iters):
+    #     start = time.perf_counter()
+    #     y = model(image)
+    #     torch.cuda.synchronize()
+    #     forward += time.perf_counter() - start
 
-        start = time.perf_counter()
-        # y.sum().backward()
-        torch.cuda.synchronize()
-        backward += time.perf_counter() - start
+    #     start = time.perf_counter()
+    #     # y.sum().backward()
+    #     torch.cuda.synchronize()
+    #     backward += time.perf_counter() - start
 
-    print('PyTorch\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
+    # print('PyTorch\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
 
-    # grad_output = torch.zeros(1).to(cuda_device)
-    # padded_image = F.pad(image, (1,)*6)
-    timer.report()
-    timer = GlobalClock()
+    # # grad_output = torch.zeros(1).to(cuda_device)
+    # # padded_image = F.pad(image, (1,)*6)
+    # timer.report()
+    # timer = GlobalClock()
 
-    forward = 0.0
-    backward = 0.0
-    for _ in range(iters):
-        start = time.perf_counter()
-        y1 = model1.eval_forward(image)
-        torch.cuda.synchronize()
-        forward += time.perf_counter() - start
+    # forward = 0.0
+    # backward = 0.0
+    # for _ in range(iters):
+    #     start = time.perf_counter()
+    #     y1 = model1.eval_forward(image)
+    #     torch.cuda.synchronize()
+    #     forward += time.perf_counter() - start
 
-        start = time.perf_counter()
-        # y1.sum().backward()
-        torch.cuda.synchronize()
-        backward += time.perf_counter() - start
+    #     start = time.perf_counter()
+    #     # y1.sum().backward()
+    #     torch.cuda.synchronize()
+    #     backward += time.perf_counter() - start
 
-    print('CUDA kernel\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
-    timer.report()
-    print((y - y1).abs().max())
-    print((y - y1).abs().norm())
+    # print('CUDA kernel\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
+    # timer.report()
+    # print((y - y1).abs().max())
+    # print((y - y1).abs().norm())
     # y.sum().backward()
     # y1.sum().backward()
     # print((model.KL.bias.grad - model1.bias.grad).abs().max())
