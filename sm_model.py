@@ -224,11 +224,15 @@ class SmallLinearBlock3D(BaseModel):
 class SmallLinearBlock3DNew(BaseModel):
     def __init__(self, num_imgs):
         super().__init__()
-        self.weight = torch.ones(27, num_imgs, 3, 3, 3)
-        self.bias = torch.ones(27)
+        self.weight = nn.Parameter(torch.ones(1, num_imgs, 3, 3, 3))
+        self.bias = nn.Parameter(torch.ones(1))
         self.reset_parameters(self.weight, self.bias)
-        self.weight = nn.Parameter(self.weight.mean(dim=0, keepdim=True))
-        self.bias = nn.Parameter(self.bias.mean(dim=0, keepdim=True))
+
+        # self.weight = torch.ones(27, num_imgs, 3, 3, 3)
+        # self.bias = torch.ones(27)
+        # self.reset_parameters(self.weight, self.bias)
+        # self.weight = nn.Parameter(self.weight.mean(dim=0, keepdim=True))
+        # self.bias = nn.Parameter(self.bias.mean(dim=0, keepdim=True))
     def forward(self, image):
         return SMLinearFunction3D.apply(image, self.weight, self.bias)
     def eval_forward(self, image, timer=None):
@@ -584,17 +588,22 @@ if __name__ == '__main__':
 
     # model = SmallLinearBlock3DPY(num_imgs).to(cuda_device)
     # model1 = SmallLinearBlock3D(num_imgs).to(cuda_device)
+    model = SmallLinearBlock3DNew(num_imgs).to(cuda_device)
     model1 = SmallLinearBlock3D(num_imgs).to(cuda_device)
-    print(model1.weight.mean(dim=0), model1.bias.mean(dim=0))
-    exit()
+    # print(model1.weight.mean(dim=0), model1.bias.mean(dim=0))
+
     # model = SmallSMModelDnPY(6, num_imgs).to(cuda_device)
     # model1 = SmallSMModelDn(6, num_imgs).to(cuda_device)
 
-    img_shape = (num_imgs, N, N)
-    rhs_shape = (1, 1, N, N)
+    img_shape = (num_imgs, N, N, N)
+    rhs_shape = (1, 1, N, N, N)
     image = flags.reshape(img_shape).to(cuda_device)
 
-
+    image = torch.rand(img_shape).to(cuda_device)
+    print(image.mean(), image.var())
+    z = model(image)
+    print(z)
+    exit()
     # x = torch.zeros(np.prod(rhs_shape))
     # x[fluid_cells] = rhs
     x = rhs
