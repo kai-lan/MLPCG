@@ -224,15 +224,11 @@ class SmallLinearBlock3D(BaseModel):
 class SmallLinearBlock3DNew(BaseModel):
     def __init__(self, num_imgs):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(1, num_imgs, 3, 3, 3))
-        self.bias = nn.Parameter(torch.ones(1))
+        self.weight = torch.ones(27, num_imgs, 3, 3, 3)
+        self.bias = torch.ones(27)
         self.reset_parameters(self.weight, self.bias)
-
-        # self.weight = torch.ones(27, num_imgs, 3, 3, 3)
-        # self.bias = torch.ones(27)
-        # self.reset_parameters(self.weight, self.bias)
-        # self.weight = nn.Parameter(self.weight.mean(dim=0, keepdim=True))
-        # self.bias = nn.Parameter(self.bias.mean(dim=0, keepdim=True))
+        self.weight = nn.Parameter(self.weight.mean(dim=0, keepdim=True))
+        self.bias = nn.Parameter(self.bias.mean(dim=0, keepdim=True))
     def forward(self, image):
         return SMLinearFunction3D.apply(image, self.weight, self.bias)
     def eval_forward(self, image, timer=None):

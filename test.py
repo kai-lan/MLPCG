@@ -33,7 +33,7 @@ class Tests:
         self.max_cg_iters = 2000
         self.max_amg_iters = 100
         self.max_ic_iters = 500
-        self.max_mlpcg_iters = 200
+        self.max_mlpcg_iters = 100
         self.rel_tol = rel_tol
 
     def model_predict(self, model, image, fluid_cells):
@@ -307,14 +307,14 @@ DIM = 3
 N = 128
 N2 = 256
 device = torch.device('cuda')
-frames = range(200, 201)
-# frames = [200]
-# scene = f'dambreak_bunny_N{N//2}_N{N}_200_{DIM}D'
-# scene = f'dambreak_pillars_N{N}_N{2*N}_200_{DIM}D'
-scene = f'waterflow_ball_N{N2}_200_3D'
-# scene = f'standing_scooping_N{N}_200_3D'
+frames = range(1, 201)
+# scene = f'dambreak_bunny_N{N}_N{N2}_200_{DIM}D'
+# scene = f'dambreak_pillars_N{N}_N{N2}_200_{DIM}D'
+scene = f'smoke_solid_N{N2}_200_3D'
+# scene = f'waterflow_ball_N{N2}_200_3D'
+# scene = f'standing_pool_scooping_N{N2}_200_3D'
 
-shape = (N2,) * DIM
+shape = (N2,) + (N2,) * (DIM-1)
 
 NN = 128
 num_mat = 10
@@ -322,40 +322,43 @@ num_ritz = 1600
 num_rhs = 800
 num_imgs = 3
 num_levels = 4
-model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_30.tar")
+
+model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_init_55.tar")
+# model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_30.tar")
 model = SmallSMModelDn3D(num_levels, num_imgs)
 model.move_to(device)
 state_dict = torch.load(model_file, map_location=device)['model_state_dict']
 
-for i in range(num_levels):
-    state_dict[f'c0.{i}.bias'] = state_dict[f'c0.{i}.bias'].mean(dim=0, keepdim=True)
-    state_dict[f'c1.{i}.bias'] = state_dict[f'c1.{i}.bias'].mean(dim=0, keepdim=True)
-    state_dict[f'c0.{i}.weight'] = state_dict[f'c0.{i}.weight'].mean(dim=0, keepdim=True)
-    state_dict[f'c1.{i}.weight'] = state_dict[f'c1.{i}.weight'].mean(dim=0, keepdim=True)
+# for i in range(num_levels):
+#     state_dict[f'c0.{i}.bias'] = state_dict[f'c0.{i}.bias'].mean(dim=0, keepdim=True)
+#     state_dict[f'c1.{i}.bias'] = state_dict[f'c1.{i}.bias'].mean(dim=0, keepdim=True)
+#     state_dict[f'c0.{i}.weight'] = state_dict[f'c0.{i}.weight'].mean(dim=0, keepdim=True)
+#     state_dict[f'c1.{i}.weight'] = state_dict[f'c1.{i}.weight'].mean(dim=0, keepdim=True)
 
 model.load_state_dict(state_dict)
 model.eval()
 
-output_file1 = model_file.replace("checkpt", f"test_{scene}").replace(".tar", ".txt")
-# output_file = model_file.replace("checkpt", f"res_iters_{bc}").replace(".tar", ".txt")
-# with open(output_file, 'w') as f:
-    # f.write('')
-with open(output_file1, 'w') as f:
+# output_file1 = model_file.replace("checkpt", f"test_{scene}").replace(".tar", ".txt")
+os.makedirs("tests", exist_ok=True)
+output_file = f"tests/{scene}.txt"
+with open(output_file, 'w') as f:
     f.write('')
+# with open(output_file1, 'w') as f:
+#     f.write('')
 tests = Tests(model, solvers, 1e-6)
-results = tests.run_frames(scene, shape, frames, output=output_file1)
+results = tests.run_frames(scene, shape, frames, output=output_file)
 
 
-    ################
-    # Summary
-    ################
-    # print('\nOn average\n')
-    # if solvers['AMGCL']:
-    #     print('AMGCL took', np.mean(results['amgcl_iters']), 'iters', np.mean(results['amgcl_time']), 's')
-    # if solvers['IC']:
-    #     print('IC took', np.mean(results['ic_iters']), 'iters', np.mean(results['ic_time']), 's')
-    # if solvers['CG']:
-    #     print('CG took', np.mean(results['cg_iters']), 'iters', np.mean(results['cg_time']), 's')
-    # if solvers['MLPCG']:
-    #     print('MLPCG took', np.mean(results['mlpcg_iters']), 'iters', np.mean(results['mlpcg_time']), 's')
+################
+# Summary
+################
+# print('\nOn average\n')
+# if solvers['AMGCL']:
+#     print('AMGCL took', np.mean(results['amgcl_iters']), 'iters', np.mean(results['amgcl_time']), 's')
+# if solvers['IC']:
+#     print('IC took', np.mean(results['ic_iters']), 'iters', np.mean(results['ic_time']), 's')
+# if solvers['CG']:
+#     print('CG took', np.mean(results['cg_iters']), 'iters', np.mean(results['cg_time']), 's')
+# if solvers['MLPCG']:
+#     print('MLPCG took', np.mean(results['mlpcg_iters']), 'iters', np.mean(results['mlpcg_time']), 's')
 
