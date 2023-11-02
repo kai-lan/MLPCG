@@ -434,7 +434,18 @@ class SmallSMModelDn3D(BaseModel):
         self.c0 = nn.ModuleList([SmallLinearBlock3DNew(num_imgs) for _ in range(n)])
         self.c1 = nn.ModuleList([SmallLinearBlock3DNew(num_imgs) for _ in range(n)])
 
-    def eval_forward(self, image, b, timer):
+    def eval_forward(self, image, b, timer, c0=[], c1=[]):
+        if c0:
+            c0_cached = True
+        else:
+            c0_cached = False
+            c0.extend([None for _ in range(self.n)])
+        if c1:
+            c1_cached = True
+        else:
+            c1_cached = False
+            c1.extend([None for _ in range(self.n)])
+
         timer.start('SM block')
         x = [self.pre[0].eval_forward(image, b, timer)]
         imgs = [image]
@@ -476,13 +487,15 @@ class SmallSMModelDn3D(BaseModel):
             timer.stop('SM block')
 
             timer.start('SM linear')
-            c0 = self.c0[i-1].eval_forward(imgs[i-1], timer)
-            c1 = self.c1[i-1].eval_forward(imgs[i-1], timer)
+            if not c0_cached:
+                c0[i-1] = self.c0[i-1].eval_forward(imgs[i-1], timer)
+            if not c1_cached:
+                c1[i-1] = self.c1[i-1].eval_forward(imgs[i-1], timer)
             torch.cuda.synchronize()
             timer.stop('SM linear')
 
             timer.start('Linear combination')
-            x[i-1] = c0 * x[i-1] + c1 * x[i]
+            x[i-1] = c0[i-1] * x[i-1] + c1[i-1] * x[i]
             torch.cuda.synchronize()
             timer.stop('Linear combination')
 

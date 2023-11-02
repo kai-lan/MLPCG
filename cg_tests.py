@@ -212,13 +212,15 @@ def npsd(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-10, verbose=Fal
 
     x_sol = torch.clone(x_init)
 
+    c0, c1 = [], []
+
     torch.cuda.synchronize()
     timer.stop('Init')
 
     for i in range(1, max_it+1):
 
         timer.start('NN')
-        q = model_predict(r, timer)
+        q = model_predict(r, timer, c0, c1)
 
         torch.cuda.synchronize()
         timer.stop('NN')

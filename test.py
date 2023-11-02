@@ -38,12 +38,12 @@ class Tests:
 
     def model_predict(self, model, image, fluid_cells):
         shape = image.shape[1:]
-        def predict(r, timer):
+        def predict(r, timer, c0=[], c1=[]):
             with torch.no_grad():
                 r = normalize(r.to(pcg_dtype), dim=0)
                 b = torch.zeros(np.prod(shape), device=device, dtype=pcg_dtype)
                 b[fluid_cells] = r
-                x = model.eval_forward(image, b.view((1, 1)+shape), timer).flatten().double()
+                x = model.eval_forward(image, b.view((1, 1)+shape), timer, c0, c1).flatten().double()
             return x[fluid_cells]
         return predict
     def benchmark_cuda_cg_func(self, rhs_cp, A_cp, x0):
@@ -307,12 +307,12 @@ DIM = 3
 N = 128
 N2 = 256
 device = torch.device('cuda')
-frames = range(1, 201)
-# scene = f'dambreak_bunny_N{N}_N{N2}_200_{DIM}D'
+frames = range(200, 201)
 # scene = f'dambreak_pillars_N{N}_N{N2}_200_{DIM}D'
-scene = f'smoke_solid_N{N2}_200_3D'
-# scene = f'waterflow_ball_N{N2}_200_3D'
-# scene = f'standing_pool_scooping_N{N2}_200_3D'
+# scene = f'dambreak_bunny_N{N}_N{N2}_200_{DIM}D'
+# scene = f'smoke_solid_N{N}_200_3D'
+scene = f'waterflow_ball_N{N2}_200_3D'
+# scene = f'standing_pool_scooping_N{N}_200_3D'
 
 shape = (N2,) + (N2,) * (DIM-1)
 
@@ -323,7 +323,8 @@ num_rhs = 800
 num_imgs = 3
 num_levels = 4
 
-model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_init_55.tar")
+
+model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l4_29.tar")
 # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_30.tar")
 model = SmallSMModelDn3D(num_levels, num_imgs)
 model.move_to(device)
