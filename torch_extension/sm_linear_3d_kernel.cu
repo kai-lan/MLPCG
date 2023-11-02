@@ -11,7 +11,7 @@
 #define KERNEL_SIZE 27
 #define WEIGHT_SIZE NUM_IMAGES*KERNEL_SIZE*KERNEL_SIZE
 
-#define LOCATIONSPERBLOCK 8
+#define LOCATIONS_PER_BLOCK 8
 #define NUM_THREADS_INFERENCE 256
 #define NUM_THREADS_FORWARD 256
 #define NUM_THREADS_BACKWARD 256
@@ -23,23 +23,24 @@ __global__ void sm_linear_3d_cuda_inference_kernel(
     const torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> image, // 3, N, N, N
     torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> y,
     const int nBlocksPerCopy, const int n1, const int n2, const int n3,
-    const int y_numel) {
+    const int y_numel,
+    const int locationsperblock) {
 
-  __shared__ scalar_t I[NUM_IMAGES][LOCATIONSPERBLOCK+2][LOCATIONSPERBLOCK+2][LOCATIONSPERBLOCK+2];
+  __shared__ scalar_t I[NUM_IMAGES][LOCATIONS_PER_BLOCK+2][LOCATIONS_PER_BLOCK+2][LOCATIONS_PER_BLOCK+2];
 
   const int location = blockIdx.x / nBlocksPerCopy;
   const int innerBlock = blockIdx.x % nBlocksPerCopy;
 
-  const int N1 = n1 * LOCATIONSPERBLOCK;
-  const int N2 = n2 * LOCATIONSPERBLOCK;
-  const int N3 = n3 * LOCATIONSPERBLOCK;
+  const int N1 = n1 * locationsperblock;
+  const int N2 = n2 * locationsperblock;
+  const int N3 = n3 * locationsperblock;
 
-  const int ij = (location % n3) * LOCATIONSPERBLOCK;
-  const int j = ((location/n3) % n2) * LOCATIONSPERBLOCK;
-  const int i = ((location/n3) / n2) * LOCATIONSPERBLOCK;
+  const int ij = (location % n3) * locationsperblock;
+  const int j = ((location/n3) % n2) * locationsperblock;
+  const int i = ((location/n3) / n2) * locationsperblock;
 
   int tid = threadIdx.x;
-  const int width = LOCATIONSPERBLOCK+2;
+  const int width = locationsperblock+2;
   const int totalSize = NUM_IMAGES * width*width*width;
   while (tid < totalSize) {
     int ttid = tid;
@@ -50,6 +51,7 @@ __global__ void sm_linear_3d_cuda_inference_kernel(
     int ix = tid % width;
     int m = tid / width;
     const int a = i+ix-1, b = j+iy-1, c = ij+iz-1;
+
     if (a >= 0 && a < N1 && b >= 0 && b < N2 && c >= 0 && c < N3)
       I[m][ix][iy][iz] = image[m][a][b][c];
     else
@@ -70,9 +72,9 @@ __global__ void sm_linear_3d_cuda_inference_kernel(
 
   scalar_t _y = 0.0;
   #pragma unroll(1)
-  for (int _i = 0; _i < LOCATIONSPERBLOCK; ++_i) {
-    for (int _j = 0; _j < LOCATIONSPERBLOCK; ++_j) {
-      for (int _ij = 0; _ij < LOCATIONSPERBLOCK; ++_ij) {
+  for (int _i = 0; _i < locationsperblock; ++_i) {
+    for (int _j = 0; _j < locationsperblock; ++_j) {
+      for (int _ij = 0; _ij < locationsperblock; ++_ij) {
         _y += I[m][_i+k][_j+l][_ij+kl];
       }
     }
@@ -86,23 +88,24 @@ __global__ void sm_linear_3d_cuda_forward_kernel(
     const torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> image, // 3, N, N, N
     torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> y,
     const int nBlocksPerCopy, const int n1, const int n2, const int n3,
-    const int y_numel) {
+    const int y_numel,
+    const int locationsperblock) {
 
-  __shared__ scalar_t I[NUM_IMAGES][LOCATIONSPERBLOCK+2][LOCATIONSPERBLOCK+2][LOCATIONSPERBLOCK+2];
+  __shared__ scalar_t I[NUM_IMAGES][LOCATIONS_PER_BLOCK+2][LOCATIONS_PER_BLOCK+2][LOCATIONS_PER_BLOCK+2];
 
   const int location = blockIdx.x / nBlocksPerCopy;
   const int innerBlock = blockIdx.x % nBlocksPerCopy;
 
-  const int N1 = n1 * LOCATIONSPERBLOCK;
-  const int N2 = n2 * LOCATIONSPERBLOCK;
-  const int N3 = n3 * LOCATIONSPERBLOCK;
+  const int N1 = n1 * locationsperblock;
+  const int N2 = n2 * locationsperblock;
+  const int N3 = n3 * locationsperblock;
 
-  const int ij = (location % n3) * LOCATIONSPERBLOCK;
-  const int j = ((location/n3) % n2) * LOCATIONSPERBLOCK;
-  const int i = ((location/n3) / n2) * LOCATIONSPERBLOCK;
+  const int ij = (location % n3) * locationsperblock;
+  const int j = ((location/n3) % n2) * locationsperblock;
+  const int i = ((location/n3) / n2) * locationsperblock;
 
   int tid = threadIdx.x;
-  const int width = LOCATIONSPERBLOCK+2;
+  const int width = locationsperblock+2;
   const int totalSize = NUM_IMAGES * width*width*width;
   while (tid < totalSize) {
     int ttid = tid;
@@ -133,9 +136,9 @@ __global__ void sm_linear_3d_cuda_forward_kernel(
 
   scalar_t _y = 0.0;
   #pragma unroll(1)
-  for (int _i = 0; _i < LOCATIONSPERBLOCK; ++_i) {
-    for (int _j = 0; _j < LOCATIONSPERBLOCK; ++_j) {
-      for (int _ij = 0; _ij < LOCATIONSPERBLOCK; ++_ij) {
+  for (int _i = 0; _i < locationsperblock; ++_i) {
+    for (int _j = 0; _j < locationsperblock; ++_j) {
+      for (int _ij = 0; _ij < locationsperblock; ++_ij) {
         _y += I[m][_i+k][_j+l][_ij+kl];
       }
     }
@@ -159,7 +162,7 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_inference(
 
   const int nThreads = NUM_THREADS_INFERENCE;
   const int nBlocksPerCopy = (NUM_IMAGES*KERNEL_SIZE + nThreads - 1) / nThreads;
-  const int locationsPerBlock = LOCATIONSPERBLOCK;
+  const int locationsPerBlock = std::min({LOCATIONS_PER_BLOCK, N1, N2, N3});
 
   assert((N1 % locationsPerBlock == 0) && (N2 % locationsPerBlock == 0) && (N3 % locationsPerBlock == 0)); // Data must be divisible by divisions
 
@@ -176,7 +179,8 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_inference(
         image.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
         y.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
         nBlocksPerCopy, n1, n2, n3,
-        image.numel());
+        image.numel(),
+        locationsPerBlock);
   }));
   y /= N1*N2*N3;
   auto y_sum = weights.ravel().dot(y.ravel()) + bias;
@@ -197,7 +201,7 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_forward(
 
   const int nThreads = NUM_THREADS_FORWARD;
   const int nBlocksPerCopy = (NUM_IMAGES*KERNEL_SIZE + nThreads - 1) / nThreads;
-  const int locationsPerBlock = LOCATIONSPERBLOCK;
+  const int locationsPerBlock = std::min({LOCATIONS_PER_BLOCK, N1, N2, N3});
 
   assert((N1 % locationsPerBlock == 0) && (N2 % locationsPerBlock == 0) && (N3 % locationsPerBlock == 0)); // Data must be divisible by divisions
 
@@ -214,7 +218,8 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_forward(
         image.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
         y.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
         nBlocksPerCopy, n1, n2, n3,
-        image.numel());
+        image.numel(),
+        locationsPerBlock);
   }));
   y /= N1*N2*N3;
   auto y_sum = weights.ravel().dot(y.ravel()) + bias;
