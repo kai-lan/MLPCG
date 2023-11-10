@@ -423,9 +423,10 @@ class SmallSMModelDnPY(BaseModel):
 
 # 3D: General SmallSM model for any number of coarsening levels
 class SmallSMModelDn3D(BaseModel):
-    def __init__(self, n, num_imgs):
+    def __init__(self, n, num_imgs, interpolation_mode):
         super().__init__()
         self.n = n
+        self.mode = interpolation_mode
         self.pre = nn.ModuleList([SmallSMBlock3D(num_imgs) for _ in range(n)])
         self.post = nn.ModuleList([SmallSMBlock3D(num_imgs) for _ in range(n)])
 
@@ -477,7 +478,7 @@ class SmallSMModelDn3D(BaseModel):
 
         for i in range(self.n, 0, -1):
             timer.start('Upsamping')
-            x[i] = F.interpolate(x[i], scale_factor=2)
+            x[i] = F.interpolate(x[i], scale_factor=2, mode=self.mode)
             torch.cuda.synchronize()
             timer.stop('Upsamping')
 
@@ -515,7 +516,7 @@ class SmallSMModelDn3D(BaseModel):
         x[-1] = self.l(imgs[-1], x[-1])
 
         for i in range(self.n, 0, -1):
-            x[i] = F.interpolate(x[i], scale_factor=2)
+            x[i] = F.interpolate(x[i], scale_factor=2, mode=self.mode)
             x[i] = self.post[i-1](imgs[i-1], x[i])
             c0 = self.c0[i-1](imgs[i-1])
             c1 = self.c1[i-1](imgs[i-1])

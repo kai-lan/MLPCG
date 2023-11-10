@@ -114,8 +114,8 @@ def loadData(outdir, suffix):
     return epoch, model_params, optim_params, list(training_loss), list(validation_loss), list(time_history), list(grad_history), list(update_history)
 
 if __name__ == '__main__':
-    np.random.seed(0)
-    torch.manual_seed(0)
+    # np.random.seed(0)
+    # torch.manual_seed(0)
     # torch.backends.cudnn.deterministic = True
     # torch.backends.cudnn.benchmark = False
 
@@ -129,18 +129,17 @@ if __name__ == '__main__':
     bcs = [
         (f'dambreak_N{N}',                  (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
         (f'dambreak_hill_N{N}_N{N*2}',     (N*2,)+(N,)*(DIM-1),   np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
-        # (f'two_balls_N{N}',                  (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
         (f'dambreak_dragons_N{N}_N{N*2}',  (N*2,)+(N,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
-        (f'ball_cube_N{N}',                 (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
-        (f'ball_bowl_N{N}',                 (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
-        (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
+        (f'ball_cube_N{N}',                 (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int)[1:], np.linspace(12, 188, 9, dtype=int)])),
+        (f'ball_bowl_N{N}',                 (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int)[1:], np.linspace(12, 188, 9, dtype=int)])),
+        (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int)[1:], np.linspace(12, 188, 9, dtype=int)])),
         (f'standing_rotating_blade_N{N}',   (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
         (f'waterflow_pool_N{N}',            (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
-        (f'waterflow_panels_N{N}',          (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
-        (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)]))
+        (f'waterflow_panels_N{N}',          (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int)[1:], np.linspace(12, 188, 9, dtype=int)])),
+        (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int)[1:], np.linspace(12, 188, 9, dtype=int)]))
     ]
     bc = 'mixedBCs10'
-    b_size = 32
+    b_size = 128
     # total_matrices = np.sum([len(bc[-1]) for bc in bcs]) # number of matrices chosen for training
     total_matrices = len(bcs)
     num_ritz = 1600
@@ -149,16 +148,17 @@ if __name__ == '__main__':
     num_imgs = 3
 
     if DIM == 2: num_levels = 6
-    else: num_levels = 4
+    else: num_levels = 3
 
     cuda = torch.device("cuda") # Use CUDA for training
 
     resume = False
-    randomize = False
+    randomize = True
 
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
-    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}'
+    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_l3_trilinear'
     # ep, model_params, optim_params, train_loss, valid_loss, time_history, grad_history, update_history = loadData(outdir, suffix)
+    # suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_l7'
 
 
     os.makedirs(outdir, exist_ok=True)
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     if DIM == 2:
         model = SmallSMModelDn(num_levels, num_imgs)
     else:
-        model = SmallSMModelDn3D(num_levels, num_imgs)
+        model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear")
 
     model.move_to(cuda)
     loss_fn = residual_loss
@@ -246,8 +246,8 @@ if __name__ == '__main__':
         time_history.append(time.time() - start_time)
 
         saveData(model, optimizer, i, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
-        if i % 5 == 0:
-            saveData(model, optimizer, i, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
+        # if i % 5 == 0:
+        saveData(model, optimizer, i, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
 
     end_time = time.time()
     print("Took", end_time-start_time, 's')
