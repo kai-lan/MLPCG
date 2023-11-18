@@ -30,11 +30,11 @@ def validation(train_loader, validation_loader, model, loss_fn, image, A, fluid_
         for data in train_loader:
             # data = data.to(A.device)
             x_pred = model(image, data) # input: (bs, 1, dim, dim)
-            tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1)[:, fluid_cells], data[:, 0].flatten(1)[:, fluid_cells], A)
+            tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1)[:, fluid_cells], data[:, 0].flatten(1)[:, fluid_cells], A, False)
         for data in validation_loader:
             # data = data.to(A.device)
             x_pred = model(image, data) # input: (bs, 1, dim, dim)
-            tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1)[:, fluid_cells], data[:, 0].flatten(1)[:, fluid_cells], A)
+            tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1)[:, fluid_cells], data[:, 0].flatten(1)[:, fluid_cells], A, False)
     return tot_loss_train.item(), tot_loss_val.item()
 
 
@@ -126,22 +126,21 @@ if __name__ == '__main__':
     epochs_per_save = 5
     shape = (1,)+(N,)*DIM
     bcs = [
-        (f'dambreak_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        (f'dambreak_hill_N{N}_N{N*2}',     (N*2,)+(N,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
-        # (f'two_balls_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        (f'dambreak_N{N}',                  (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
+        (f'dambreak_hill_N{N}_N{N*2}',     (N*2,)+(N,)*(DIM-1),   np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
         (f'dambreak_dragons_N{N}_N{N*2}',  (N*2,)+(N,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
-        (f'ball_cube_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'ball_bowl_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'standing_rotating_blade_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        (f'waterflow_pool_N{N}',            (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        (f'waterflow_panels_N{N}',          (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:])
+        (f'ball_cube_N{N}',                 (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int)[1:], np.linspace(12, 188, 9, dtype=int)])),
+        (f'ball_bowl_N{N}',                 (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int)[1:], np.linspace(12, 188, 9, dtype=int)])),
+        (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int)[1:], np.linspace(12, 188, 9, dtype=int)])),
+        (f'standing_rotating_blade_N{N}',   (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
+        (f'waterflow_pool_N{N}',            (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int), np.linspace(12, 188, 9, dtype=int)])),
+        (f'waterflow_panels_N{N}',          (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int)[1:], np.linspace(12, 188, 9, dtype=int)])),
+        (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.concatenate([np.linspace(1, 200, 10, dtype=int)[1:], np.linspace(12, 188, 9, dtype=int)]))
     ]
     bc = 'mixedBCs10'
-    b_size = 32
+    b_size = 128
     # total_matrices = np.sum([len(bc[-1]) for bc in bcs]) # number of matrices chosen for training
-    total_matrices = 10
+    total_matrices = len(bcs)
     num_ritz = 1600
     num_rhs = 800 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
@@ -152,11 +151,15 @@ if __name__ == '__main__':
 
     cuda = torch.device("cuda") # Use CUDA for training
 
-    resume = True
+    resume = False
     randomize = True
 
-    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_res_imgs{num_imgs}_lr0.0001'
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
+    suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_l3_trilinear'
+    # ep, model_params, optim_params, train_loss, valid_loss, time_history, grad_history, update_history = loadData(outdir, suffix)
+    # suffix =  f'mixedBCs_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_l7'
+
+
     os.makedirs(outdir, exist_ok=True)
 
     log = LoggingWriter()
@@ -164,11 +167,20 @@ if __name__ == '__main__':
     if DIM == 2:
         model = SmallSMModelDn(num_levels, num_imgs)
     else:
-        model = SmallSMModelDn3D(num_levels, num_imgs)
+        model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear")
 
     model.move_to(cuda)
     loss_fn = residual_loss
 
+    # state_dict = model_params
+    # own_state = model.state_dict()
+    # for name, param in state_dict.items():
+    #     if name not in own_state:
+    #             continue
+    #     if isinstance(param, nn.parameter.Parameter):
+    #         # backwards compatibility for serialized parameters
+    #         param = param.data
+    #     own_state[name].copy_(param)
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
     # optimizer = optim.SGD(model.parameters(), lr=lr)
@@ -218,8 +230,8 @@ if __name__ == '__main__':
                 train_set.data_folder = os.path.join(f"{inpdir}/{j}")
                 valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
 
-                A = torch.load(f"{train_set.data_folder}/A.pt")
-                image = torch.load(f"{train_set.data_folder}/flags_binary_{num_imgs}.pt").view((num_imgs,)+sha)
+                A = torch.load(f"{train_set.data_folder}/A.pt", map_location='cuda')
+                image = torch.load(f"{train_set.data_folder}/flags_binary_{num_imgs}.pt", map_location='cuda').view((num_imgs,)+sha)
 
                 fluid_cells = torch.load(f"{train_set.data_folder}/fluid_cells.pt", map_location='cuda')
                 training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, fluid_cells, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
@@ -233,8 +245,8 @@ if __name__ == '__main__':
         time_history.append(time.time() - start_time)
 
         saveData(model, optimizer, i, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
-        if i % 5 == 0:
-            saveData(model, optimizer, i, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
+        # if i % 5 == 0:
+        saveData(model, optimizer, i, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
 
     end_time = time.time()
     print("Took", end_time-start_time, 's')

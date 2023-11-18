@@ -75,7 +75,8 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
     const torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> x, // bs, 1, N, N, N
     torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grad_w,
     torch::PackedTensorAccessor32<scalar_t,1,torch::RestrictPtrTraits> grad_b,
-    const int nBlocksPerCopy, const int B, const int n1, const int n2, const int n3) {
+    const int nBlocksPerCopy, const int B, const int n1, const int n2, const int n3,
+    const int locations_per_block) {
 
   __shared__ scalar_t OUT[LOCATIONS_PER_BLOCK][LOCATIONS_PER_BLOCK][LOCATIONS_PER_BLOCK]; // 4^3 = 64
   __shared__ scalar_t I[NUM_IMAGES][LOCATIONS_PER_BLOCK+2][LOCATIONS_PER_BLOCK+2][LOCATIONS_PER_BLOCK+2]; // 3 * 6^3 = 648
@@ -84,15 +85,15 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
   int location = blockIdx.x / nBlocksPerCopy;
   const int innerBlock = blockIdx.x % nBlocksPerCopy;
 
-  const int ij = (location % n3) * LOCATIONS_PER_BLOCK;
+  const int ij = (location % n3) * locations_per_block;
   location /= n3;
-  const int j = (location % n2) * LOCATIONS_PER_BLOCK;
+  const int j = (location % n2) * locations_per_block;
   location /= n2;
-  const int i = (location % n1) * LOCATIONS_PER_BLOCK;
+  const int i = (location % n1) * locations_per_block;
   const int c = location / n1;
 
-  const int width = LOCATIONS_PER_BLOCK+2;
-  const int OUT_Size = LOCATIONS_PER_BLOCK*LOCATIONS_PER_BLOCK*LOCATIONS_PER_BLOCK; // 64
+  const int width = locations_per_block+2;
+  const int OUT_Size = locations_per_block*locations_per_block*locations_per_block; // 64
   const int X_Size = width*width*width; // 216
   const int I_Size = NUM_IMAGES*width*width*width; // 648
 
@@ -118,10 +119,10 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
     }
     else {
       tid -= I_Size + X_Size;
-      int iz = tid % LOCATIONS_PER_BLOCK;
-      tid /= LOCATIONS_PER_BLOCK;
-      int iy = tid % LOCATIONS_PER_BLOCK;
-      int ix = tid / LOCATIONS_PER_BLOCK;
+      int iz = tid % locations_per_block;
+      tid /= locations_per_block;
+      int iy = tid % locations_per_block;
+      int ix = tid / locations_per_block;
       OUT[ix][iy][iz] = grad_output[c][0][i+ix][j+iy][ij+iz];
     }
 
@@ -147,9 +148,9 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
   scalar_t d_w = 0.0, d_b = 0.0;
   if (idx_smn == NUM_IMAGES * KERNEL_SIZE) {
     #pragma unroll
-    for (int _i = 0; _i < LOCATIONS_PER_BLOCK; ++_i) {
-      for (int _j = 0; _j < LOCATIONS_PER_BLOCK; ++_j) {
-        for (int _ij = 0; _ij < LOCATIONS_PER_BLOCK; ++_ij) {
+    for (int _i = 0; _i < locations_per_block; ++_i) {
+      for (int _j = 0; _j < locations_per_block; ++_j) {
+        for (int _ij = 0; _ij < locations_per_block; ++_ij) {
           d_b += OUT[_i][_j][_ij] * X[_i+k][_j+l][_ij+kl];
         }
       }
@@ -162,9 +163,9 @@ __global__ void sm_block_3d_cuda_dwdb_fast_kernel(
     idx = KERNEL_SIZE*NUM_IMAGES*idx_kl + idx_smn;
 
     #pragma unroll
-    for (int _i = 0; _i < LOCATIONS_PER_BLOCK; ++_i) {
-      for (int _j = 0; _j < LOCATIONS_PER_BLOCK; ++_j) {
-        for (int _ij = 0; _ij < LOCATIONS_PER_BLOCK; ++_ij) {
+    for (int _i = 0; _i < locations_per_block; ++_i) {
+      for (int _j = 0; _j < locations_per_block; ++_j) {
+        for (int _ij = 0; _ij < locations_per_block; ++_ij) {
           d_w += OUT[_i][_j][_ij] * I[s][_i+m][_j+n][_ij+mn] * X[_i+k][_j+l][_ij+kl];
         }
       }
@@ -352,7 +353,7 @@ std::vector<torch::Tensor> sm_block_3d_cuda_backward(
 
   const int nThreads = NUM_THREADS_BACKWARD;
   const int nBlocksPerCopy = (WEIGHT_SIZE + KERNEL_SIZE + nThreads - 1) / nThreads;
-  const int locationsPerBlock = LOCATIONS_PER_BLOCK;
+  const int locationsPerBlock = std::min({LOCATIONS_PER_BLOCK, N1, N2, N3});
 
   assert((N1 % locationsPerBlock == 0) && (N2 % locationsPerBlock == 0) && (N3 % locationsPerBlock == 0)); // Data must be divisible by divisions
 
@@ -373,7 +374,8 @@ std::vector<torch::Tensor> sm_block_3d_cuda_backward(
         x.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
         grad_w.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
         grad_b.packed_accessor32<scalar_t,1,torch::RestrictPtrTraits>(),
-        nBlocksPerCopy, B, n1, n2, n3);
+        nBlocksPerCopy, B, n1, n2, n3,
+        locationsPerBlock);
   }));
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(grad_output.type(), "sm_block_3d_cuda_dx", ([&] {
     sm_block_3d_cuda_dx_kernel<scalar_t><<<dx_blocks, threads>>>(

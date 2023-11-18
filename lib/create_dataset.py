@@ -92,7 +92,7 @@ N = 128
 DIM = 3
 scenes = [
     # f'dambreak_N{N}',
-    # f'dambreak_hill_N{N}_N{2*N}',
+    f'dambreak_hill_N{N}_N{2*N}',
     # f'dambreak_dragons_N{N}_N{2*N}',
     # f'two_balls_N{N}',
     # f'ball_cube_N{N}',
@@ -100,7 +100,7 @@ scenes = [
     # f'standing_dipping_block_N{N}',
     # f'standing_rotating_blade_N{N}',
     # f'waterflow_pool_N{N}',
-    f'waterflow_panels_N{N}',
+    # f'waterflow_panels_N{N}',
     # f'waterflow_rotating_cube_N{N}'
 ]
 

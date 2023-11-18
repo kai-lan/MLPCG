@@ -40,9 +40,7 @@ class GlobalClock:
 
     def stop(self, name):
         if len(self.scope) == 0:
-            if name in self.top_level_clocks.keys():
-                self.top_level_clocks[name].stop_timer()
-            else: raise Exception(f"Clock '{name}' was not initialized.")
+            raise Exception(f"Clock '{name}' was not initialized.")
         else:
             if name == self.scope[-1].name:
                 self.scope.pop().stop_timer()

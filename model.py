@@ -13,7 +13,6 @@ class BaseModel(nn.Module):
         self.to(device)
     def eval_forward(self, *args, **kargs):
         return self.forward(*args, **kargs)
-        # Residual loss
     def reset_parameters(self, weight, bias):
         torch.manual_seed(0)
         nn.init.kaiming_uniform_(weight, a=math.sqrt(5))

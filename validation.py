@@ -11,7 +11,7 @@ torch.set_grad_enabled(False) # disable autograd globally
 
 def recover_training_and_validation_loss(outdir, model_name, epoches, train_bcs, valid_bcs, loss_fn):
     train_losses, valid_losses = [], []
-    model = SmallSMModelDn3D(n=3, num_imgs=3)
+    model = SmallSMModelDn3D(n=4, num_imgs=3)
     model = model.to(cuda)
     shape = None
     fluid_cells = None
@@ -22,11 +22,28 @@ def recover_training_and_validation_loss(outdir, model_name, epoches, train_bcs,
         b = b.reshape(shape)
         return b
     train_set = MyDataset(None, range(num_rhs), transform)
-    train_loader = DataLoader(train_set, batch_size=32, shuffle=False, num_workers=0)
+    train_loader = DataLoader(train_set, batch_size=64, shuffle=False, num_workers=0)
     for epo in epoches:
-        checkpt = torch.load(os.path.join(outdir, f"{model_name}_{epo}.tar"))
+        if epo == '':
+            checkpt = torch.load(os.path.join(outdir, f"{model_name}.tar"))
+        elif epo == 0:
+            checkpt = torch.load(f"{outdir}/checkpt_mixedBCs_M10_ritz1600_rhs800_res_imgs3_lr0.0001.tar")
+        else:
+            checkpt = torch.load(os.path.join(outdir, f"{model_name}_{epo}.tar"))
+
         model_params = checkpt['model_state_dict']
-        model.load_state_dict(model_params)
+        if epo == 0:
+            state_dict = model_params
+            own_state = model.state_dict()
+            for name, param in state_dict.items():
+                if name not in own_state:
+                        continue
+                if isinstance(param, nn.parameter.Parameter):
+                    # backwards compatibility for serialized parameters
+                    param = param.data
+                own_state[name].copy_(param)
+        else:
+            model.load_state_dict(model_params)
 
         train_tot_loss = 0.0
         train_num_mat = 0
@@ -42,14 +59,14 @@ def recover_training_and_validation_loss(outdir, model_name, epoches, train_bcs,
 
                 train_set.data_folder = os.path.join(f"{inpdir}/{j}")
 
-                A = torch.load(f"{train_set.data_folder}/A.pt")
-                image = torch.load(f"{train_set.data_folder}/flags_binary_3.pt").view((3,)+sha)
+                A = torch.load(f"{train_set.data_folder}/A.pt", map_location='cuda')
+                image = torch.load(f"{train_set.data_folder}/flags_binary_3.pt", map_location='cuda').view((3,)+sha)
 
                 fluid_cells = torch.load(f"{train_set.data_folder}/fluid_cells.pt", map_location='cuda')
                 for data in train_loader:
                     x_pred = model(image, data) # input: (bs, 1, dim, dim)
                     train_tot_loss += loss_fn(x_pred.squeeze(dim=1).flatten(1)[:, fluid_cells], data[:, 0].flatten(1)[:, fluid_cells], A)
-        train_losses.append(train_tot_loss.item() / train_num_mat)
+        train_losses.append(train_tot_loss.item())
 
         valid_tot_loss = 0.0
         valid_num_mat = 0
@@ -92,34 +109,39 @@ def recover_training_and_validation_loss(outdir, model_name, epoches, train_bcs,
 if __name__ == '__main__':
 
     DIM = 3
-    N = 256
+    N = 128
     training_bcs = [
         (f'dambreak_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        # (f'dambreak_hill_N{N//2}_N{N}',     (N,)+(N//2,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
-        # (f'dambreak_dragons_N{N//2}_N{N}',  (N,)+(N//2,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
-        # (f'ball_cube_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        # (f'ball_bowl_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        # (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        # (f'standing_rotating_blade_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        # (f'waterflow_pool_N{N}',            (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        # (f'waterflow_panels_N{N}',          (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        # (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:])
+        (f'dambreak_hill_N{N}_N{N*2}',     (N*2,)+(N,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
+        (f'dambreak_dragons_N{N}_N{N*2}',  (N*2,)+(N,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
+        (f'ball_cube_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        (f'ball_bowl_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        (f'standing_rotating_blade_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+        (f'waterflow_pool_N{N}',            (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+        (f'waterflow_panels_N{N}',          (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:])
     ]
     validation_bcs = [
-        (f'dambreak_pillars_N{N//2}_N{N}',  (N,)+(N//2,)*(DIM-1),       np.linspace(1, 200, 5, dtype=int)),
-        (f'dambreak_bunny_N{N//2}_N{N}',    (N,)+(N//2,)*(DIM-1),       np.linspace(1, 200, 5, dtype=int)),
-        (f'waterflow_ball_N{N}',            (N,)*DIM,               np.linspace(1, 200, 5, dtype=int))
+        (f'dambreak_pillars_N{N}_N{N*2}',  (N*2,)+(N,)*(DIM-1),       np.linspace(1, 200, 30, dtype=int)),
+        (f'dambreak_bunny_N{N}_N{N*2}',    (N*2,)+(N,)*(DIM-1),       np.linspace(1, 200, 30, dtype=int)),
+        (f'waterflow_ball_N{N*2}',            (N*2,)*DIM,               np.linspace(1, 200, 30, dtype=int))
     ]
 
     cuda = torch.device('cuda:0')
-    outdir = f"output/output_{DIM}D_{N}"
-    epoches = [30, 35]
-    num_rhs = 32
+    outdir = f"output/output_{DIM}D_128"
+    epoches = [0]
+    # epoches = [5, 10, 15, 20, 25, 30, 35]
+    num_rhs = 800
     loss_fn = residual_loss
     training_loss, validation_loss = recover_training_and_validation_loss(outdir,
-                                          'checkpt_mixedBCs_M97_ritz1600_rhs800_imgs3_lr0.0001_from128',
+                                          'checkpt_mixedBCs_M10_ritz1600_rhs800_imgs3_lr0.0001',
                                           epoches,
                                           training_bcs,
                                           validation_bcs,
                                           residual_loss)
     print(training_loss, validation_loss)
+
+    with open(f"{outdir}/validation.txt", 'a') as f:
+        for i in range(len(training_loss)):
+            f.write(f"{epoches[i]:^3}, {training_loss[i]:>6.4f}, {validation_loss[i]:>6.4f}\n")

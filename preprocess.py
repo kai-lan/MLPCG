@@ -10,27 +10,27 @@ warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in
 torch.set_grad_enabled(False)
 
 DIM = 3
-N = 256
+N = 128
 num_imgs = 3
 device = torch.device("cpu")
 
-# matrices = np.linspace(1, 200, 10, dtype=int)
-matrices = np.linspace(12, 188, 9, dtype=int)[5:]
-# matrices = [12, 56, 166]
+matrices = np.linspace(1, 200, 10, dtype=int)
+# matrices = np.linspace(12, 188, 9, dtype=int)
+# matrices = [122, 144]
 scenes = [
-    # f'dambreak_N{N}',
+    f'dambreak_N{N}',
     # f'dambreak_hill_N{N}',
     # f'dambreak_hill_N{N//2}_N{N}',
     # f'dambreak_dragons_N{N//2}_N{N}',
     # f'two_balls_N{N}',
-    # f'ball_cube_N{N}',
-    # f'ball_bowl_N{N}',
-    # f'standing_dipping_block_N{N}',
-    # f'standing_rotating_blade_N{N}',
+    f'ball_cube_N{N}',
+    f'ball_bowl_N{N}',
+    f'standing_dipping_block_N{N}',
+    f'standing_rotating_blade_N{N}',
     # f'standing_scooping_N{N}',
     f'waterflow_pool_N{N}',
-    # f'waterflow_panels_N{N}',
-    # f'waterflow_rotating_cube_N{N}'
+    f'waterflow_panels_N{N}',
+    f'waterflow_rotating_cube_N{N}'
 ]
 
 
@@ -82,7 +82,7 @@ def worker(indices):
 
             A_sp = readA_sparse(os.path.join(data_folder, f"A_{index}.bin"), sparse_type='csc')
 
-            # A_sp = compressedMat(A_sp, flags_sp)
+            A_sp = compressedMat(A_sp, flags_sp)
 
             A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float32, device=device).to_sparse_csc()
             torch.save(A, os.path.join(out_folder, f"A.pt"))
@@ -91,14 +91,14 @@ def worker(indices):
             flags_binary = torch.tensor(flags_binary_sp, dtype=torch.float32, device=device)
             torch.save(flags_binary, os.path.join(out_folder, f"flags_binary_{num_imgs}.pt"))
 
-            # rhs_np = compressedVec(rhs_np, flags_sp)
+            rhs_np = compressedVec(rhs_np, flags_sp)
 
             rhs = torch.tensor(rhs_np, dtype=torch.float32, device=device)
             torch.save(rhs, os.path.join(out_folder, f"rhs.pt"))
 
-            ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}.npy")
+            # ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}.npy")
 
-            createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder)
+            # createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder)
 
 
 if __name__ == '__main__':

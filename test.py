@@ -33,17 +33,17 @@ class Tests:
         self.max_cg_iters = 2000
         self.max_amg_iters = 100
         self.max_ic_iters = 500
-        self.max_mlpcg_iters = 200
+        self.max_mlpcg_iters = 100
         self.rel_tol = rel_tol
 
     def model_predict(self, model, image, fluid_cells):
         shape = image.shape[1:]
-        def predict(r, timer):
+        def predict(r, timer, c0=[], c1=[]):
             with torch.no_grad():
                 r = normalize(r.to(pcg_dtype), dim=0)
                 b = torch.zeros(np.prod(shape), device=device, dtype=pcg_dtype)
                 b[fluid_cells] = r
-                x = model.eval_forward(image, b.view((1, 1)+shape), timer).flatten().double()
+                x = model.eval_forward(image, b.view((1, 1)+shape), timer, c0, c1).flatten().double()
             return x[fluid_cells]
         return predict
     def benchmark_cuda_cg_func(self, rhs_cp, A_cp, x0):
@@ -58,6 +58,8 @@ class Tests:
                     'mlpcg_time': [], 'mlpcg_iters': []}
         scene_path = os.path.join(DATA_PATH, f"{scene}")
         running_bunny = 'smoke_bunny' in scene
+
+
         for i, frame in enumerate(frames):
             print("Testing frame", frame, "scene", scene)
             if running_bunny:
@@ -184,8 +186,8 @@ num_ritz = 1600
 num_rhs = 800
 num_imgs = 3
 num_levels = 4
-model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_30.tar")
-model = SmallSMModelDn3D(num_levels, num_imgs)
+model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l4_29.tar")
+model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear")
 model.move_to(device)
 state_dict = torch.load(model_file, map_location=device)['model_state_dict']
 model.load_state_dict(state_dict)
