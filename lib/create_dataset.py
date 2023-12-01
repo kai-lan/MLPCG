@@ -86,15 +86,9 @@ def worker(frames):
             rhs = hf.load_vector(f"{dir}/div_v_star_{i}.bin")
             # sol = hf.load_vector(f"{dir}/pressure_{i}.bin")
 
-            # print('Compressing A')
-            # start = time.time()
-            # A = hf.compressedMat(A, flags)
-            # print('Compressing A took', time.time()-start, 's')
-
-            # print('Compressing rhs')
-            # start = time.time()
-            # rhs = hf.compressedVec(rhs, flags)
-            # print('Compressing rhs took', time.time()-start, 's')
+            if len(rhs) == np.prod(N**DIM):
+                A = hf.compressedMat(A, flags)
+                rhs = hf.compressedVec(rhs, flags)
 
             ritz_vals, ritz_vec = createRitzVec(A, rhs, num_ritz_vectors, ortho=ortho)
             print(ritz_vals)
@@ -109,7 +103,7 @@ N = 128
 DIM = 3
 scenes = [
     # f'dambreak_N{N}',
-    f'dambreak_hill_N{N}_N{2*N}',
+    # f'dambreak_hill_N{N}_N{2*N}',
     # f'dambreak_dragons_N{N}_N{2*N}',
     # f'two_balls_N{N}',
     # f'ball_cube_N{N}',
@@ -118,7 +112,8 @@ scenes = [
     # f'standing_rotating_blade_N{N}',
     # f'waterflow_pool_N{N}',
     # f'waterflow_panels_N{N}',
-    # f'waterflow_rotating_cube_N{N}'
+    # f'waterflow_rotating_cube_N{N}',
+    f"smoke_moving_donuts_N{N}"
 ]
 
 ortho = True
@@ -130,7 +125,8 @@ if __name__ == '__main__':
     t0 = time.time()
     # total_work = np.linspace(1, 200, 10, dtype=int)
     # total_work = np.linspace(12, 188, 9, dtype=int)[4:7]
-    total_work = [144]
+    total_work = np.linspace(10, 200, 10, dtype=int)[5:]
+    # total_work = [136, 178, 94]
 
     num_threads = len(total_work)
 

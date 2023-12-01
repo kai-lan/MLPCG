@@ -106,16 +106,21 @@ class SmallSMBlockPY(BaseModel):
         return y
 
 class SmallSMBlock3D(BaseModel):
-    def __init__(self, num_imgs):
+    def __init__(self, num_imgs, mask=False):
         super().__init__()
+        self.mask = mask
         self.weight = nn.Parameter(torch.ones(27, num_imgs, 3, 3, 3))
         self.bias = nn.Parameter(torch.ones(27))
         self.reset_parameters(self.weight, self.bias)
     def forward(self, image, x):
         y = SMBlockFunction3D.apply(image, x, self.weight, self.bias)
+        if self.mask:
+            y = torch.where(image[1] == 0, 0.0, y) # mask out non-fluid
         return y
     def eval_forward(self, image, x, timer):
         y = SMBlockFunction3D.inference(image, x, self.weight, self.bias, timer)
+        if self.mask:
+            y = torch.where(image[1] == 0, 0.0, y)
         return y
 
 class SmallSMBlock3DPY(BaseModel):
@@ -423,12 +428,15 @@ class SmallSMModelDnPY(BaseModel):
 
 # 3D: General SmallSM model for any number of coarsening levels
 class SmallSMModelDn3D(BaseModel):
-    def __init__(self, n, num_imgs, interpolation_mode):
+    def __init__(self, n, num_imgs, interpolation_mode='trilinear', mask=False, swap_sm_order=False):
         super().__init__()
         self.n = n
         self.mode = interpolation_mode
-        self.pre = nn.ModuleList([SmallSMBlock3D(num_imgs) for _ in range(n)])
-        self.post = nn.ModuleList([SmallSMBlock3D(num_imgs) for _ in range(n)])
+        self.swap_ord = swap_sm_order
+        self.pre = nn.ModuleList([SmallSMBlock3D(num_imgs) for _ in range(n-1)])
+        self.pre.insert(0, SmallSMBlock3D(num_imgs, mask))
+        self.post = nn.ModuleList([SmallSMBlock3D(num_imgs) for _ in range(n-1)])
+        self.post.insert(0, SmallSMBlock3D(num_imgs, mask))
 
         self.l = SmallSMBlock3D(num_imgs)
 
@@ -482,11 +490,6 @@ class SmallSMModelDn3D(BaseModel):
             torch.cuda.synchronize()
             timer.stop('Upsamping')
 
-            timer.start('SM block')
-            x[i] = self.post[i-1].eval_forward(imgs[i-1], x[i], timer)
-            torch.cuda.synchronize()
-            timer.stop('SM block')
-
             timer.start('SM linear')
             if not c0_cached:
                 c0[i-1] = self.c0[i-1].eval_forward(imgs[i-1], timer)
@@ -495,10 +498,24 @@ class SmallSMModelDn3D(BaseModel):
             torch.cuda.synchronize()
             timer.stop('SM linear')
 
-            timer.start('Linear combination')
-            x[i-1] = c0[i-1] * x[i-1] + c1[i-1] * x[i]
-            torch.cuda.synchronize()
-            timer.stop('Linear combination')
+            if self.swap_ord:
+                timer.start('Linear combination')
+                x[i-1] = c0[i-1] * x[i-1] + c1[i-1] * x[i]
+                torch.cuda.synchronize()
+                timer.stop('Linear combination')
+                timer.start('SM block')
+                x[i-1] = self.post[i-1].eval_forward(imgs[i-1], x[i-1], timer)
+                torch.cuda.synchronize()
+                timer.stop('SM block')
+            else:
+                timer.start('SM block')
+                x[i] = self.post[i-1].eval_forward(imgs[i-1], x[i], timer)
+                torch.cuda.synchronize()
+                timer.stop('SM block')
+                timer.start('Linear combination')
+                x[i-1] = c0[i-1] * x[i-1] + c1[i-1] * x[i]
+                torch.cuda.synchronize()
+                timer.stop('Linear combination')
 
         return x[0]
 
@@ -517,11 +534,14 @@ class SmallSMModelDn3D(BaseModel):
 
         for i in range(self.n, 0, -1):
             x[i] = F.interpolate(x[i], scale_factor=2, mode=self.mode)
-            x[i] = self.post[i-1](imgs[i-1], x[i])
             c0 = self.c0[i-1](imgs[i-1])
             c1 = self.c1[i-1](imgs[i-1])
-            x[i-1] = c0 * x[i-1] + c1 * x[i]
-
+            if self.swap_ord:
+                x[i-1] = c0 * x[i-1] + c1 * x[i]
+                x[i-1] = self.post[i-1](imgs[i-1], x[i-1])
+            else:
+                x[i] = self.post[i-1](imgs[i-1], x[i])
+                x[i-1] = c0 * x[i-1] + c1 * x[i]
         return x[0]
 
 class SmallSMModelDn3DPY(BaseModel):
@@ -582,6 +602,21 @@ if __name__ == '__main__':
     fluid_cells = np.argwhere(image == FLUID).ravel()
     flags = torch.tensor(convert_to_binary_images(image, num_imgs), dtype=torch.get_default_dtype())
 
+    model_file = os.path.join(OUT_PATH, f"output_3D_{N}", f"checkpt_mixedBCs_M10_ritz1600_rhs800_l4_29.tar")
+    state_dict = torch.load(model_file, map_location=cuda_device)['model_state_dict']
+    model = SmallSMModelDn3D(4, 3, "trilinear", True, swap_sm_order=True)
+    model.move_to(cuda_device)
+    model.load_state_dict(state_dict)
+    model.eval()
+
+    img_shape = (num_imgs, N, N, N)
+    rhs_shape = (1, 1, N, N, N)
+    image = flags.reshape(img_shape).to(cuda_device)
+    rhs = rhs.reshape(rhs_shape).to(cuda_device)
+
+    z = model.eval_forward(image, rhs, GlobalClock())
+    print(z.norm())
+    exit()
     # file_A = f"{DATA_PATH}/dambreak_N{N}_200_3D/A_{frame}.bin"
     # A = readA_sparse(file_A)
     # A = torch.sparse_csr_tensor(A.indptr, A.indices, A.data, A.shape, dtype=torch.float32, device=cuda_device)
@@ -605,9 +640,7 @@ if __name__ == '__main__':
     # model = SmallSMModelDnPY(6, num_imgs).to(cuda_device)
     # model1 = SmallSMModelDn(6, num_imgs).to(cuda_device)
 
-    img_shape = (num_imgs, N, N, N)
-    rhs_shape = (1, 1, N, N, N)
-    image = flags.reshape(img_shape).to(cuda_device)
+
 
     image = torch.rand(img_shape).to(cuda_device)
     print(image.mean(), image.var())

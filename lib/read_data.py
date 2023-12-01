@@ -174,28 +174,25 @@ def expandVec(b, flags):
     return v
 
 if __name__ == '__main__':
-    frame = 3
+    frame = 1
     N = 128
     DIM = 3
-    prefix = ''
     bc = 'smoke_solid'
-    if DIM == 2:
-        suffix = ''
-    else:
-        suffix = '_3D'
 
+    scene = "waterflow_ball_N256_200_3D"
+    # scene = "standing_rotating_blade_N128_200_3D"
     # DATA_PATH = "../tgsl/tgsl_projects/projects/incompressible_flow/build_3d"
-    file_A = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"A_{frame}.bin")
-    file_rhs = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"div_v_star_{frame}.bin")
-    file_sol = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"pressure_{frame}.bin")
-    file_flags = os.path.join(DATA_PATH, f"{prefix}{bc}_N{N}_200{suffix}", f"flags_{frame}.bin")
+    file_A = os.path.join(DATA_PATH, scene, f"A_{frame}.bin")
+    file_rhs = os.path.join(DATA_PATH, scene, f"div_v_star_{frame}.bin")
+    file_sol = os.path.join(DATA_PATH, scene, f"pressure_{frame}.bin")
+    file_flags = os.path.join(DATA_PATH, scene, f"flags_{frame}.bin")
     A = readA_sparse(file_A)
     rhs = load_vector(file_rhs)
     sol = load_vector(file_sol)
 
-    # print(A.shape, rhs.shape, sol.shape)
+    print(A.shape, rhs.shape, sol.shape)
     flags = read_flags(file_flags)
-    print(flags.min(), flags.max())
+    print(flags.min(), flags.max(), flags.shape)
     # flags_binray = convert_to_binary_images(flags)
     # print(flags_binray.shape)
     # air = np.where(flags == 3)[0]

@@ -21,6 +21,14 @@ def residual_loss(x, y, A, mean=True):
     r = y - x.matmul(A)
     if not mean: return r.norm(dim=1).sum()
     return r.norm(dim=1).mean()
+
+def residual_symmetry_loss(x, y, A, mean=True):
+    r1 = y - x.matmul(A)
+    x_dot_y = torch.bmm(x.unsqueeze(1), y.unsqueeze(-1)).ravel()
+    r2 = (y @ x.T - x @ y.T) / x_dot_y.outer(x_dot_y)
+    if not mean: return r1.norm(dim=1).sum() + r2.square().sum()
+    return r1.norm(dim=1).mean() + r2.square().mean()
+
 def squared_loss(x, y, A):
     bs = x.shape[0]
     r = torch.zeros(1, device=x.device)

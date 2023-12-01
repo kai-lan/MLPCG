@@ -15,23 +15,24 @@ N = 128
 num_imgs = 3
 device = torch.device("cpu")
 
-matrices = np.linspace(1, 200, 10, dtype=int)
+matrices = np.linspace(10, 200, 10, dtype=int)[5:]
 # matrices = np.linspace(12, 188, 9, dtype=int)
 # matrices = [122, 144]
 scenes = [
-    f'dambreak_N{N}',
+    # f'dambreak_N{N}',
     # f'dambreak_hill_N{N}',
     # f'dambreak_hill_N{N//2}_N{N}',
     # f'dambreak_dragons_N{N//2}_N{N}',
     # f'two_balls_N{N}',
-    f'ball_cube_N{N}',
-    f'ball_bowl_N{N}',
-    f'standing_dipping_block_N{N}',
-    f'standing_rotating_blade_N{N}',
+    # f'ball_cube_N{N}',
+    # f'ball_bowl_N{N}',
+    # f'standing_dipping_block_N{N}',
+    # f'standing_rotating_blade_N{N}',
     # f'standing_scooping_N{N}',
-    f'waterflow_pool_N{N}',
-    f'waterflow_panels_N{N}',
-    f'waterflow_rotating_cube_N{N}'
+    # f'waterflow_pool_N{N}',
+    # f'waterflow_panels_N{N}',
+    # f'waterflow_rotating_cube_N{N}',
+    f"smoke_moving_donuts_N{N}"
 ]
 
 
@@ -81,7 +82,7 @@ def worker(indices):
             np.save(f"{out_folder}/fluid_cells.npy", fluid_cells)
             torch.save(torch.from_numpy(fluid_cells).to(device), os.path.join(out_folder, f"fluid_cells.pt"))
 
-            A_sp = readA_sparse(os.path.join(data_folder, f"A_{index}.bin"), sparse_type='csc')
+            A_sp = readA_sparse(os.path.join(data_folder, f"A_{index}.bin"), sparse_type='csr')
 
             A_sp = compressedMat(A_sp, flags_sp)
 
@@ -97,9 +98,9 @@ def worker(indices):
             rhs = torch.tensor(rhs_np, dtype=torch.float32, device=device)
             torch.save(rhs, os.path.join(out_folder, f"rhs.pt"))
 
-            # ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}.npy")
+            ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}.npy")
 
-            # createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder)
+            createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder)
 
 
 if __name__ == '__main__':
@@ -114,4 +115,4 @@ if __name__ == '__main__':
         thread_list[thr].start()
     for thread in thread_list:
         thread.join()
-    print('Total time', time.time() - t0)
+    print('Total time', time.time() - t0, 's')

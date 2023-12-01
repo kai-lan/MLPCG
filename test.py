@@ -233,11 +233,11 @@ class Tests:
                 fluid_cells = torch.from_numpy(fluid_cells).to(device)
                 predict = self.model_predict(model, flags, fluid_cells)
 
-                for _ in range(2): # warm up
+                for _ in range(0): # warm up
                     npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
 
                 total_time = 0.0
-                steps = 3
+                steps = 1
                 for _ in range(steps):
                     start_time = time.perf_counter()
                     npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
@@ -251,7 +251,7 @@ class Tests:
                 results['mlpcg_time'].append(total_time)
                 results['mlpcg_iters'].append(iters)
                 print(f"MLPCG took", total_time, 's after', iters, f"iterations to {res}")
-                timer.report()
+                # timer.report()
                 out += f", {iters:^4}, {total_time:>6.4f}"
                 if i == 0: title += f", {'ML':>4}, {'':>6}"
             if output is not None:
@@ -338,9 +338,9 @@ class Tests:
                 fluid_cells = torch.from_numpy(fluid_cells).to(device)
                 predict = self.model_predict(model, flags, fluid_cells)
 
-                for _ in range(2): # warm up
-                    npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
-                x_mlpcg, iters, timer, res = npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol, callback=callback)
+                # for _ in range(2): # warm up
+                #     npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                x_mlpcg, iters, timer, res = npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol, atol=1e-20, callback=callback)
                 print(f"MLPCG took", timer.top_level_clocks['Total'].tot_time, 's after', iters, f"iterations to {res}")
 
             for i in reversed(range(len(time_profile))):
@@ -357,8 +357,8 @@ class Tests:
                 with open(output, 'a') as f:
                     f.write(line1)
                     f.write(line2)
-            res_profile, time_profile = [], []
-
+            # res_profile, time_profile = [], []
+            return res_profile, time_profile
 if len(sys.argv) > 1:
     solver = sys.argv[1]
 
@@ -374,26 +374,27 @@ DIM = 3
 N = 128
 N2 = 256
 device = torch.device('cuda')
-frames = range(1, 201)
+frames = [12,  34,  56,  78, 100, 122, 144, 166, 188]
 # scene = f'dambreak_pillars_N{N}_N{N2}_200_{DIM}D'
-# scene = f'dambreak_bunny_N{N}_N{N2}_200_{DIM}D'
-# scene = f'smoke_solid_N{N}_200_3D'
-scene = f'waterflow_ball_N{N2}_200_3D'
-# scene = f'standing_pool_scooping_N{N}_200_3D'
+scene = f'dambreak_hill_N{N}_N{N2}_200_{DIM}D'
+# scene = f'smoke_solid_N{N2}_200_3D'
+# scene = f'waterflow_ball_N{N2}_200_3D'
+# scene = f'standing_pool_scooping_N{N2}_200_3D'
+# scene = "dambreak_pillars_N128_N384_200_3D"
 
-shape = (N2,) + (N2,) * (DIM-1)
+shape = (N2,) + (N,) * (DIM-1)
 
 NN = 128
-num_mat = 10
+num_mat = 1
 num_ritz = 1600
 num_rhs = 800
 num_imgs = 3
 num_levels = 4
 
-for i in range(29, 30):
-    model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l4_{i}.tar")
+for i in range(0, 1):
+    model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_dambreak_hills_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l4_trilinear_mask_swap.tar")
     # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_30.tar")
-    model = SmallSMModelDn3D(num_levels, num_imgs)
+    model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear", mask=True, swap_sm_order=True)
     model.move_to(device)
     state_dict = torch.load(model_file, map_location=device)['model_state_dict']
 
@@ -414,8 +415,13 @@ for i in range(29, 30):
     # with open(output_file1, 'w') as f:
     #     f.write('')
     tests = Tests(model, solvers, 1e-6)
-    results = tests.run_frames_mlpcg(scene, shape, frames, output=output_file)
+    print('i', i)
+    results = tests.run_frames(scene, shape, frames, output=output_file)
 
+    # import matplotlib.pyplot as plt
+    # plt.plot(results[0])
+    # plt.yscale('log')
+    # plt.savefig("residual.png")
 
 ################
 # Summary
