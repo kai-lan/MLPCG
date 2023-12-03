@@ -155,13 +155,13 @@ if __name__ == '__main__':
 
     resume = False
     randomize = True
-    mask = False
-    swap_sm_ord = False
-    # loss_fn = residual_loss
-    loss_fn = residual_symmetry_loss
+    mask = True
+    swap_sm_ord = True
+    loss_fn = residual_loss
+    # loss_fn = residual_symmetry_loss
 
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
-    suffix =  f'smoke_moving_donuts_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_l4_trilinear_symmetry'
+    suffix =  f'smoke_moving_donuts_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_l4_trilinear_mask_swap'
     # ep, model_params, optim_params, train_loss, valid_loss, time_history, grad_history, update_history = loadData(outdir, suffix)
     # suffix =  f'dambreak_hills_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_l4_trilinear'
 
