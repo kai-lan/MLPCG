@@ -246,7 +246,7 @@ if __name__ == '__main__':
             shuffled_matrices = np.random.permutation(range(num_matrices[-1]))
         for j, mat in enumerate(shuffled_matrices):
             bc_id = np.searchsorted(num_matrices, mat)
-            frame_id = mat - num_matrices[bc_id-1]
+            frame_id = (mat - num_matrices[bc_id-1])%len(shuffled_matrices)
             bc = bcs[bc_id][0]
             shape = (1,)+bcs[bc_id][1]
             frame = bcs[bc_id][2][frame_id]
