@@ -269,7 +269,7 @@ std::vector<torch::Tensor> sm_block_3d_cuda_inference(
   const dim3 threads(nThreads);
   const dim3 blocks(nBlocks);
 
-  AT_DISPATCH_FLOATING_TYPES_AND_HALF(x.type(), "sm_block_3d_forward_cuda", ([&] {
+  AT_DISPATCH_FLOATING_TYPES_AND_HALF(x.type(), "sm_block_3d_inference_cuda", ([&] {
     sm_block_3d_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
         image.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
         x.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
