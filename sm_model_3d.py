@@ -57,11 +57,23 @@ class SMBlockTransFunction3D(torch.autograd.Function):
             torch.cuda.synchronize()
             timer.stop('Padding')
         if timer: timer.start('Forward')
-        y, = smblock3d.inference(image, x, weights, bias)
+        y, = smblocktrans3d.inference(image, x, weights, bias)
         if timer:
             torch.cuda.synchronize()
             timer.stop('Forward')
         return y
+    @staticmethod
+    def forward(ctx, image, x, weights, bias):
+        image = F.pad(image, (1,)*6)
+        x = F.pad(x, (1,)*6)
+        y, = smblocktrans3d.forward(image, x, weights, bias)
+        ctx.save_for_backward(image, x, weights, bias)
+        return y
+    @staticmethod
+    def backward(ctx, grad_output): # return the same number of outputs as forward function arguments
+        image, x, weights, bias = ctx.saved_tensors
+        grad_x, grad_w, grad_b, = smblocktrans3d.backward(grad_output.contiguous(), image, x, weights, bias)
+        return None, grad_x, grad_w, grad_b
 
 class SmallSMBlock3D(BaseModel):
     def __init__(self, num_imgs, mask=False):
@@ -87,6 +99,8 @@ class SmallSMBlockTrans3D(BaseModel):
         self.weight = nn.Parameter(torch.ones(27, num_imgs, 3, 3, 3))
         self.bias = nn.Parameter(torch.ones(27))
         self.reset_parameters(self.weight, self.bias)
+    def forward(self, image, x):
+        return SMBlockTransFunction3D.apply(image, x, self.weight, self.bias)
     def eval_forward(self, image, x, timer=None):
         return SMBlockTransFunction3D.inference(image, x, self.weight, self.bias, timer)
 
@@ -340,16 +354,67 @@ if __name__ == '__main__':
     cuda_device = torch.device("cuda")
 
 
-    x = torch.rand(1, 1, 64, 64, 64, device=cuda_device)
-    y = torch.rand(1, 1, 64, 64, 64, device=cuda_device)
-    img = torch.rand(3, 64, 64, 64, device=cuda_device)
-    model = SmallSMBlock3D(num_imgs).to(cuda_device)
-    model1 = SmallSMBlock3DPY(num_imgs).to(cuda_device)
+    x = torch.rand(16, 1, 128, 128, 128, device=cuda_device)
+    y = torch.rand(16, 1, 128, 128, 128, device=cuda_device)
+    img = torch.rand(3, 128, 128, 128, device=cuda_device)
+    model = SmallSMBlockTrans3D(num_imgs).to(cuda_device)
+    model1 = SmallSMBlock3D(num_imgs).to(cuda_device)
+    model.weight = model1.weight
+    model.bias = model1.bias
 
+    print(model.bias)
 
-    z = model.forward(img, x)
-    z1 = model1.forward(img, x)
+    optimizer = torch.optim.Adam(model1.parameters())
+    z1 = model1(img, x)
+    z1 = model(img, z1)
+    z1.sum().backward()
+    optimizer.step()
 
-    # # print((torch.bmm(x.flatten(2), z1.flatten(1).unsqueeze(-1)) - torch.bmm(y.flatten(2), z.flatten(1).unsqueeze(-1))).norm())
-    print((z - z1).norm())
+    print(model.bias)
+    print(model1.bias)
+    exit()
+    # z = model.eval_forward(img, x)
+
+    # print((torch.bmm(x.flatten(2), z1.flatten(1).unsqueeze(-1)) - torch.bmm(y.flatten(2), z.flatten(1).unsqueeze(-1))).norm())
+    # print((z - z1).norm())
     # print(model.weight.norm(), model1.weight.norm())
+
+    for _ in range(10):
+        y = model(img, x)
+        y1 = model1(img,  x)
+        y.sum().backward()
+        y1.sum().backward()
+    torch.cuda.synchronize()
+
+    # timer = GlobalClock()
+
+    iters = 10
+    forward = 0.0
+    backward = 0.0
+    for _ in range(iters):
+        start = time.perf_counter()
+        y = model(img, x)
+        torch.cuda.synchronize()
+        forward += time.perf_counter() - start
+
+        start = time.perf_counter()
+        y.sum().backward()
+        torch.cuda.synchronize()
+        backward += time.perf_counter() - start
+
+    print('PyTorch\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))
+
+    forward = 0.0
+    backward = 0.0
+    for _ in range(iters):
+        start = time.perf_counter()
+        y1 = model1(img, x)
+        torch.cuda.synchronize()
+        forward += time.perf_counter() - start
+
+        start = time.perf_counter()
+        y1.sum().backward()
+        torch.cuda.synchronize()
+        backward += time.perf_counter() - start
+
+    print('CUDA kernel\nForward: {:.3f} us | Backward {:.3f} us'.format(forward * 1e6/iters, backward * 1e6/iters))

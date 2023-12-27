@@ -4,7 +4,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 import sys
 sys.path.append("..")
+sys.path.append(".")
 from sm_model import *
+from sm_model_3d import *
 
 if __name__ == '__main__':
     import time
@@ -23,14 +25,14 @@ if __name__ == '__main__':
     x1 = x.detach().clone()
     x1.requires_grad = True
 
-    # model = SmallSMBlock3DPY(3).to(cuda_device)
-    model1 = SmallLinearBlock3DNew(3).to(cuda_device)
+    model = SmallSMBlockTrans3D(3).to(cuda_device)
+    # model1 = SmallLinearBlock3DNew(3).to(cuda_device)
 
     # model.KL.weight.requires_grad = True
     # model.KL.bias.requires_grad = True
     # model1.weight.requires_grad = True
     # model1.bias.requires_grad = True
-    yy = model1(image)
+    # yy = model(image, x)
     # y = model(image, x)
     # print((y - yy).abs().max())
     # print((y - yy).norm())
@@ -43,7 +45,7 @@ if __name__ == '__main__':
 
     # print((x.grad - x1.grad).abs().max())
     # torch.use_deterministic_algorithms(True)
-    torch.autograd.gradcheck(SMLinearFunction3D.apply, (image, model1.weight, model1.bias), nondet_tol=1e-12, fast_mode=False)
+    torch.autograd.gradcheck(SMBlockTransFunction3D.apply, (image, x, model.weight, model.bias), nondet_tol=1e-12, fast_mode=True)
 
     # forward = 0
     # backward = 0

@@ -130,7 +130,7 @@ def create_param_groups_from_old_model(old_levels, new_model):
     return param_groups
 def create_param_groups(model):
     param_groups = [{'params': model.l.parameters(), 'name':'l'}]
-    for i in range(old_model.n):
+    for i in range(model.n):
         param_groups.append({'params': model.pre[i].parameters(), 'name':f'pre.{i}'})
         param_groups.append({'params': model.post[i].parameters(), 'name':f'pos.{i}'})
         param_groups.append({'params': model.c0[i].parameters(), 'name':f'c0.{i}'})
@@ -208,7 +208,8 @@ if __name__ == '__main__':
 
     transfer_weights_from_old_model(outdir, f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l3_trilinear', model)
 
-    optimizer = optim.Adam(create_param_groups_from_old_model(num_levels-1, model), lr=lr)
+    # optimizer = optim.Adam(create_param_groups_from_old_model(num_levels-1, model), lr=lr)
+    optimizer = optim.Adam(create_param_groups(model), lr=lr)
 
 
     if resume:
@@ -245,7 +246,7 @@ if __name__ == '__main__':
         if randomize:
             shuffled_matrices = np.random.permutation(range(num_matrices[-1]))
         for j, mat in enumerate(shuffled_matrices):
-            bc_id = np.searchsorted(num_matrices, mat)
+            bc_id = np.searchsorted(num_matrices, mat, side='right')
             frame_id = (mat - num_matrices[bc_id-1])%len(shuffled_matrices)
             bc = bcs[bc_id][0]
             shape = (1,)+bcs[bc_id][1]

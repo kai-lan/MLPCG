@@ -8,6 +8,12 @@ std::vector<torch::Tensor> sm_block_trans_cuda_forward(
     torch::Tensor x,
     torch::Tensor weights,
     torch::Tensor bias);
+std::vector<torch::Tensor> sm_block_trans_cuda_backward(
+    torch::Tensor grad_output,
+    torch::Tensor image,
+    torch::Tensor x,
+    torch::Tensor weights,
+    torch::Tensor bias);
 
 // C++ interface
 #define CHECK_CUDA(x) TORCH_CHECK(x.device().is_cuda(), #x " must be a CUDA tensor")
@@ -27,7 +33,23 @@ std::vector<torch::Tensor> sm_block_trans_forward(
   return sm_block_trans_cuda_forward(image, x, weights, bias);
 }
 
+std::vector<torch::Tensor> sm_block_trans_backward(
+    torch::Tensor grad_output,
+    torch::Tensor image,
+    torch::Tensor x,
+    torch::Tensor weights,
+    torch::Tensor bias) {
+  CHECK_INPUT(grad_output);
+  CHECK_INPUT(image);
+  CHECK_INPUT(x);
+  CHECK_INPUT(weights);
+  CHECK_INPUT(bias);
+
+  return sm_block_trans_cuda_backward(grad_output, image, x, weights, bias);
+}
+
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &sm_block_trans_forward, "SM block transpose forward");
+  m.def("backward", &sm_block_trans_backward, "SM block transpose backward");
 }

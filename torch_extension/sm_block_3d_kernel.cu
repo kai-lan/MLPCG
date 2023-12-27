@@ -13,7 +13,7 @@ __constant__ unsigned char WEIGHT_BYTES[WEIGHT_SIZE*sizeof(double)];
 __constant__ unsigned char BIAS_BYTES[KERNEL_SIZE*sizeof(double)];
 
 #define LOCATIONS_PER_BLOCK 8
-#define NUM_THREADS_INFERENCE 512 // 1024 produced wrong results, don't know why
+#define NUM_THREADS_INFERENCE 256 // 1024/512 produced wrong results, don't know why
 #define NUM_THREADS_FORWARD 256
 #define NUM_THREADS_BACKWARD 256
 
@@ -205,14 +205,13 @@ __global__ void sm_block_3d_cuda_dx_kernel(
     #pragma unroll
     for (int k = 0; k <= 2; ++k) {
       int ii = i + 1 - k;
-      // if (ii < 0 || ii >= N1) continue;
+      if (ii < 0 || ii >= N1) continue;
       for (int l = 0; l <= 2; ++l) {
         int jj = j + 1 - l;
-        // if (jj < 0 || jj >= N2) continue;
+        if (jj < 0 || jj >= N2) continue;
         for (int kl = 0; kl <= 2; ++kl) {
           int iijj = ij + 1 - kl;
-          // int ii = i + 1 - k, jj = j + 1 - l, iijj = ij + 1 - kl;
-          if (ii < 0 || ii >= N1 || jj < 0 || jj >= N2 || iijj < 0 || iijj >= N3) continue;
+          if (iijj < 0 || iijj >= N3) continue;
 
           int idx_kl = 3 * (3 * k + l) + kl;
 
