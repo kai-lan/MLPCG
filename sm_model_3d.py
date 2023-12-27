@@ -76,7 +76,7 @@ class SMBlockTransFunction3D(torch.autograd.Function):
         return None, grad_x, grad_w, grad_b
 
 class SmallSMBlock3D(BaseModel):
-    def __init__(self, num_imgs, mask=False):
+    def __init__(self, num_imgs=3, mask=False):
         super().__init__()
         self.mask = mask
         self.weight = nn.Parameter(torch.ones(27, num_imgs, 3, 3, 3))
@@ -94,18 +94,25 @@ class SmallSMBlock3D(BaseModel):
         return y
 
 class SmallSMBlockTrans3D(BaseModel):
-    def __init__(self, num_imgs):
+    def __init__(self, num_imgs=3, weight=None, bias=None):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(27, num_imgs, 3, 3, 3))
-        self.bias = nn.Parameter(torch.ones(27))
-        self.reset_parameters(self.weight, self.bias)
+        if weight is None:
+            self.weight = nn.Parameter(torch.ones(27, num_imgs, 3, 3, 3))
+        else:
+            self.weight = weight
+        if bias is None:
+            self.bias = nn.Parameter(torch.ones(27))
+        else:
+            self.bias = bias
+        if weight is None and bias is None:
+            self.reset_parameters(self.weight, self.bias)
     def forward(self, image, x):
         return SMBlockTransFunction3D.apply(image, x, self.weight, self.bias)
     def eval_forward(self, image, x, timer=None):
         return SMBlockTransFunction3D.inference(image, x, self.weight, self.bias, timer)
 
 class SmallSMBlock3DPY(BaseModel):
-    def __init__(self, num_imgs):
+    def __init__(self, num_imgs=3):
         super().__init__()
         self.KL = nn.Conv3d(num_imgs, 27, kernel_size=3, padding='same', bias=True)
         self.reset_parameters(self.KL.weight, self.KL.bias)
@@ -150,19 +157,19 @@ class SMLinearFunction3D(torch.autograd.Function):
         grad_w, grad_b, = smlinear3d.backward(grad_output, y)
         return None, grad_w, grad_b
 
-class SmallLinearBlock3D(BaseModel):
-    def __init__(self, num_imgs):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(27, num_imgs, 3, 3, 3))
-        self.bias = nn.Parameter(torch.ones(27))
-        self.reset_parameters(self.weight, self.bias)
-    def forward(self, image):
-        return SMLinearFunction3D.apply(image, self.weight, self.bias)
-    def eval_forward(self, image, timer=None):
-        return SMLinearFunction3D.inference(image, self.weight, self.bias, timer)
+# class SmallLinearBlock3D(BaseModel):
+#     def __init__(self, num_imgs=3):
+#         super().__init__()
+#         self.weight = nn.Parameter(torch.ones(27, num_imgs, 3, 3, 3))
+#         self.bias = nn.Parameter(torch.ones(27))
+#         self.reset_parameters(self.weight, self.bias)
+#     def forward(self, image):
+#         return SMLinearFunction3D.apply(image, self.weight, self.bias)
+#     def eval_forward(self, image, timer=None):
+#         return SMLinearFunction3D.inference(image, self.weight, self.bias, timer)
 
 class SmallLinearBlock3DNew(BaseModel):
-    def __init__(self, num_imgs):
+    def __init__(self, num_imgs=3):
         super().__init__()
         self.weight = torch.ones(27, num_imgs, 3, 3, 3)
         self.bias = torch.ones(27)
@@ -175,7 +182,7 @@ class SmallLinearBlock3DNew(BaseModel):
         return SMLinearFunction3D.inference(image, self.weight, self.bias, timer)
 
 class SmallLinearBlock3DPY(BaseModel):
-    def __init__(self, num_imgs):
+    def __init__(self, num_imgs=3):
         super().__init__()
         self.KL = nn.Conv3d(num_imgs, 27, kernel_size=3, padding='same')
         self.reset_parameters(self.KL.weight, self.KL.bias)
@@ -188,7 +195,7 @@ class SmallLinearBlock3DPY(BaseModel):
 # Full SM Model
 ######################
 class SmallSMModelDn3D(BaseModel):
-    def __init__(self, n, num_imgs, interpolation_mode='trilinear', mask=False, swap_sm_order=False):
+    def __init__(self, n, num_imgs=3, interpolation_mode='trilinear', mask=False, swap_sm_order=False):
         super().__init__()
         self.n = n
         self.mode = interpolation_mode
@@ -305,7 +312,7 @@ class SmallSMModelDn3D(BaseModel):
         return x[0]
 
 class SmallSMModelDn3DPY(BaseModel):
-    def __init__(self, n, num_imgs):
+    def __init__(self, n, num_imgs=3):
         super().__init__()
         self.n = n
         self.pre = nn.ModuleList([SmallSMBlock3DPY(num_imgs) for _ in range(n)])
@@ -336,6 +343,65 @@ class SmallSMModelDn3DPY(BaseModel):
 
         return x[0]
 
+######################
+# SPD SM Model
+######################
+class SPDSMModelDn3D(BaseModel):
+    def __init__(self, n, num_imgs=3):
+        super().__init__()
+        self.n = n
+        self.l0 = nn.ModuleList()
+        self.l1 = nn.ModuleList()
+        self.l0_t = nn.ModuleList()
+        self.l1_t = nn.ModuleList()
+        for _ in range(n):
+            self.l0.append(SmallSMBlock3D())
+            self.l1.append(SmallSMBlock3D())
+            self.l0_t.append(SmallSMBlockTrans3D(weight=self.l0[-1].weight, bias=self.l0[-1].bias))
+            self.l1_t.append(SmallSMBlockTrans3D(weight=self.l1[-1].weight, bias=self.l1[-1].bias))
+
+        self.l = SmallSMBlock3D()
+        self.l_t = SmallSMBlockTrans3D(weight=self.l.weight, bias=self.l.bias)
+
+        self.c0 = nn.ModuleList([SmallLinearBlock3DNew() for _ in range(n)])
+        self.c1 = nn.ModuleList([SmallLinearBlock3DNew() for _ in range(n)])
+
+    def forward(self, image, b):
+        x = self.l0[0](image, b)
+        x = [self.l0[0](image, b)]
+        imgs = [image]
+        c0, c1 = [], []
+        for i in range(1, self.n):
+            x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
+            imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+            x[-1] = self.l0[i](imgs[-1], x[-1])
+
+        x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
+        imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+        x[-1] = self.l(imgs[-1], x[-1])
+
+        for i in range(self.n, 0, -1):
+            x[i] = F.interpolate(x[i], scale_factor=2) / 8 # transpose of avg pooling 3d
+            c0.insert(0, self.c0[i-1](imgs[i-1]))
+            c1.insert(0, self.c1[i-1](imgs[i-1]))
+            x[i] = self.l1[i-1](imgs[i-1], x[i])
+            x[i-1] = c0[0] * x[i-1] + c1[0] * x[i]
+
+        b = x[0]
+        x = [b]
+        for i in range(self.n):
+            x.append(self.l1_t[i](imgs[i], x[i]))
+            x[-1] = F.avg_pool3d(x[-1], (2, 2, 2))
+
+        x[-1] = self.l_t(imgs[-1], x[-1])
+        x[-1] = F.interpolate(x[-1], scale_factor=2) / 8
+
+        for i in range(self.n-1, -1, -1):
+            x[i] = c0[i] * x[i] + c1[i] * x[i+1]
+            x[i] = self.l0_t[i](imgs[i], x[i])
+
+        return x[0]
+
 if __name__ == '__main__':
     import os, sys, time
     path = os.path.dirname(os.path.realpath(__file__))
@@ -357,25 +423,26 @@ if __name__ == '__main__':
     x = torch.rand(16, 1, 128, 128, 128, device=cuda_device)
     y = torch.rand(16, 1, 128, 128, 128, device=cuda_device)
     img = torch.rand(3, 128, 128, 128, device=cuda_device)
-    model = SmallSMBlockTrans3D(num_imgs).to(cuda_device)
-    model1 = SmallSMBlock3D(num_imgs).to(cuda_device)
-    model.weight = model1.weight
-    model.bias = model1.bias
+    model = SPDSMModelDn3D(1).to(cuda_device)
+    # model1 = SmallSMBlock3D(num_imgs).to(cuda_device)
+    # model.weight = model1.weight
+    # model.bias = model1.bias
 
-    print(model.bias)
+    # print(model.bias)
+    z = model(img, x)
+    z1 = model(img, y)
+    # optimizer = torch.optim.Adam(model1.parameters())
 
-    optimizer = torch.optim.Adam(model1.parameters())
-    z1 = model1(img, x)
-    z1 = model(img, z1)
-    z1.sum().backward()
-    optimizer.step()
+    # z.sum().backward()
+    # optimizer.step()
 
-    print(model.bias)
-    print(model1.bias)
+    # print(model.bias)
+    # print(model1.bias)
+
+    print((torch.bmm(x.flatten(2), z1.flatten(1).unsqueeze(-1)) - torch.bmm(y.flatten(2), z.flatten(1).unsqueeze(-1))).norm())
     exit()
     # z = model.eval_forward(img, x)
 
-    # print((torch.bmm(x.flatten(2), z1.flatten(1).unsqueeze(-1)) - torch.bmm(y.flatten(2), z.flatten(1).unsqueeze(-1))).norm())
     # print((z - z1).norm())
     # print(model.weight.norm(), model1.weight.norm())
 
