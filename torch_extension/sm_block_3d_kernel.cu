@@ -14,10 +14,61 @@ __constant__ unsigned char BIAS_BYTES[KERNEL_SIZE*sizeof(double)];
 
 #define LOCATIONS_PER_BLOCK 8
 #define NUM_THREADS_INFERENCE 256 // 1024/512 produced wrong results, don't know why
+
+#define BATCH_SIZE 128
 #define NUM_THREADS_FORWARD 256
+#define INCREMENT NUM_THREADS_FORWARD/BATCH_SIZE
+
 #define NUM_THREADS_BACKWARD 256
 
 namespace {
+
+template <typename scalar_t>
+__global__ void sm_block_3d_cuda_inference_kernel(
+    const torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> image, // num_imgs, N, N, N
+    const torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> x, // bs, 1, N, N, N
+    torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> y,
+    const int B, const int N1, const int N2, const int N3) { // bs, 1, N, N, N
+
+  const scalar_t *WEIGHT = (const scalar_t *)(WEIGHT_BYTES);
+  const scalar_t *BIAS = (const scalar_t *)(BIAS_BYTES);
+
+  int threadId = blockIdx.x * blockDim.x + threadIdx.x;
+  if (threadId >= B*N1*N2*N3) return;
+  const int ij = threadId % N3;
+  threadId /= N3;
+  const int j = threadId % N2;
+  threadId /= N2;
+  const int i = threadId % N1;
+  const int c = threadId / N1;
+
+  scalar_t zz = 0.0;
+  for (int k = 0; k <= 2; ++k) {
+    int alpha = i+k;
+    for (int l = 0; l <= 2; ++l) {
+      int beta = j+l;
+      for (int kl = 0; kl <= 2; ++kl) {
+        int gamma = ij+kl;
+        int p = 3 * (3 * k + l) + kl;
+        scalar_t z = BIAS[p];
+        for (int s = 0; s < NUM_IMAGES; ++s) {
+          for (int m = 0; m <= 2; ++m) {
+            int aa = i+m;
+            for (int n = 0; n <= 2; ++n) {
+              int bb = j+n;
+              for (int mn = 0; mn <= 2; ++mn) {
+                int cc = ij+mn;
+                z += (WEIGHT[3*(3*(3*(NUM_IMAGES*p+s)+m)+n)+mn] * image[s][aa][bb][cc]);
+              }
+            }
+          }
+        }
+        zz += z * x[c][0][alpha][beta][gamma];
+      }
+    }
+  }
+  y[c][0][i][j][ij] = zz;
+} // inference kernel
 
 template <typename scalar_t>
 __global__ void sm_block_3d_cuda_forward_kernel(
@@ -59,8 +110,7 @@ __global__ void sm_block_3d_cuda_forward_kernel(
             }
           }
         }
-        z *= x[c][0][alpha][beta][gamma];
-        zz += z;
+        zz += z * x[c][0][alpha][beta][gamma];
       }
     }
   }
@@ -190,49 +240,90 @@ __global__ void sm_block_3d_cuda_dx_kernel(
   const scalar_t *WEIGHT = (const scalar_t *)(WEIGHT_BYTES);
   const scalar_t *BIAS = (const scalar_t *)(BIAS_BYTES);
 
+  __shared__ scalar_t I[NUM_IMAGES][5][5][INCREMENT+4];
+  __shared__ scalar_t X[BATCH_SIZE][3][3][INCREMENT+2];
+  const int i0 = NUM_IMAGES, i1 = 5, i2 = 5, i3 = INCREMENT+4;
+  const int x0 = BATCH_SIZE, x1 = 3, x2 = 3, x3 = INCREMENT+2;
+
+  int baseID = blockIdx.x * blockDim.x;
+  const int glob_c = baseID % B;
+  baseID /= B;
+  const int glob_ij = baseID % N3;
+  baseID /= N3;
+  const int glob_j = baseID % N2;
+  const int glob_i = baseID / N2;
+
+  const int I_SIZE = i0 * i1 * i2 * i3;
+  const int X_SIZE = x0 * x1 * x2 * x3;
+  int td = threadIdx.x;
+  while (td < I_SIZE+X_SIZE) {
+    int ttd = td;
+    if (ttd < I_SIZE) {
+      int iz = td % i3;
+      td /= i3;
+      int iy = td % i2;
+      td /= i2;
+      int ix = td % i1;
+      int s = td / i1;
+      int aa = glob_i-1+ix, bb = glob_j-1+iy, cc = glob_ij-1+iz;
+      if (aa < 0 || aa > N1+1 || bb < 0 || bb > N2+1 || cc < 0 || cc > N3+1)
+        I[s][ix][iy][iz] = 0.0;
+      else
+        I[s][ix][iy][iz] = image[s][aa][bb][cc];
+    } else {
+      td -= I_SIZE;
+      int iz = td % x3;
+      td /= x3;
+      int iy = td % x2;
+      td /= x2;
+      int ix = td % x1;
+      int ic = td / x1;
+      int aa = glob_i-1+ix, bb = glob_j-1+iy, cc = glob_ij-1+iz;
+      if (aa < 0 || aa >= N1 || bb < 0 || bb >= N2 || cc < 0 || cc >= N3)
+        X[ic][ix][iy][iz] = 0.0;
+      else
+        X[ic][ix][iy][iz] = grad_output[glob_c+ic][0][aa][bb][cc];
+    }
+    td = ttd + blockDim.x;
+  }
+  __syncthreads();
+
   int threadId = blockIdx.x * blockDim.x + threadIdx.x;
 
-  if (threadId < B * N1 * N2 * N3) {
-    const int ij = threadId % N3;
-    threadId /= N3;
-    const int j = threadId % N2;
-    threadId /= N2;
-    const int i = threadId % N1;
-    threadId /= N1;
-    const int c = threadId % B;
+  if (threadId >= B * N1 * N2 * N3) return;
 
-    scalar_t zz = 0.0;
-    #pragma unroll
-    for (int k = 0; k <= 2; ++k) {
-      int ii = i + 1 - k;
-      if (ii < 0 || ii >= N1) continue;
-      for (int l = 0; l <= 2; ++l) {
-        int jj = j + 1 - l;
-        if (jj < 0 || jj >= N2) continue;
-        for (int kl = 0; kl <= 2; ++kl) {
-          int iijj = ij + 1 - kl;
-          if (iijj < 0 || iijj >= N3) continue;
+  const int c = threadId % B;
+  threadId /= B;
+  const int ij = threadId % N3;
+  threadId /= N3;
+  const int j = threadId % N2;
+  const int i = threadId / N2;
 
-          int idx_kl = 3 * (3 * k + l) + kl;
+  scalar_t zz = 0.0;
+  // #pragma unroll
+  for (int k = 0; k <= 2; ++k) {
+    for (int l = 0; l <= 2; ++l) {
+      for (int kl = 0; kl <= 2; ++kl) {
+        int idx_kl = 3 * (3 * k + l) + kl;
 
-          scalar_t z = BIAS[idx_kl];
-          #pragma unroll
-          for (int s = 0; s < NUM_IMAGES; ++s) {
-            for (int m = 0; m <= 2; ++m) {
-              for (int n = 0; n <= 2; ++n) {
-                for (int mn = 0; mn <= 2; ++mn) {
-                  z += WEIGHT[3*(3*(3*(NUM_IMAGES*idx_kl+s)+m)+n)+mn] * image[s][ii+m][jj+n][iijj+mn];
-                }
+        scalar_t z = BIAS[idx_kl];
+        for (int s = 0; s < NUM_IMAGES; ++s) {
+          for (int m = 0; m <= 2; ++m) {
+            for (int n = 0; n <= 2; ++n) {
+              for (int mn = 0; mn <= 2; ++mn) {
+                z += WEIGHT[3*(3*(3*(NUM_IMAGES*idx_kl+s)+m)+n)+mn] * I[s][2-k+m][2-l+n][ij-glob_ij+2-kl+mn];
+                // z += WEIGHT[3*(3*(3*(NUM_IMAGES*idx_kl+s)+m)+n)+mn] * image[s][ii+m][jj+n][iijj+mn];
               }
             }
           }
-          z *= grad_output[c][0][ii][jj][iijj];
-          zz += z;
         }
+        zz += z * X[c-glob_c][2-k][2-l][ij-glob_ij+2-kl];
+        // zz += z * grad_output[c][0][ii][jj][iijj];
       }
     }
-    grad_x[c][0][i][j][ij] = zz;
   }
+  grad_x[c][0][i][j][ij] = zz;
+
 } // backward dx
 } // namespace
 
@@ -241,6 +332,7 @@ std::vector<torch::Tensor> sm_block_3d_cuda_inference(
     torch::Tensor x,
     torch::Tensor weights,
     torch::Tensor bias) {
+
   assert(image.size(0) == NUM_IMAGES);
 
   if (x.dtype() == torch::ScalarType::Double) {
@@ -269,7 +361,7 @@ std::vector<torch::Tensor> sm_block_3d_cuda_inference(
   const dim3 blocks(nBlocks);
 
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(x.type(), "sm_block_3d_inference_cuda", ([&] {
-    sm_block_3d_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
+    sm_block_3d_cuda_inference_kernel<scalar_t><<<blocks, threads>>>(
         image.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
         x.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
         y.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
@@ -303,6 +395,10 @@ std::vector<torch::Tensor> sm_block_3d_cuda_forward(
   const int N1 = image.size(1)-2;
   const int N2 = image.size(2)-2;
   const int N3 = image.size(3)-2;
+
+  const int increment = INCREMENT;
+  assert(N3>=INCREMENT && N3%increment == 0); // current optimization only considers this case
+
   auto y = torch::zeros({B, x.size(1), N1, N2, N3}, torch::dtype(x.dtype()).device(x.device()));
 
   const int nThreads = NUM_THREADS_FORWARD;

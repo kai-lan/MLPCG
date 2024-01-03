@@ -5,7 +5,7 @@ import cupyx.scipy.sparse as cpsp
 from cupyx.profiler import benchmark as cuda_benchmark
 import torch.utils.benchmark as torch_benchmark
 from model import *
-from sm_model import *
+from sm_model_3d import *
 from lib.read_data import *
 from lib.discrete_laplacian import *
 from torch.nn.functional import normalize
@@ -234,19 +234,19 @@ class Tests:
                 predict = self.model_predict(model, flags, fluid_cells)
 
                 for _ in range(0): # warm up
-                    npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                    npcg(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
 
                 total_time = 0.0
                 steps = 1
                 for _ in range(steps):
                     start_time = time.perf_counter()
-                    npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                    npcg(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
 
                     torch.cuda.synchronize()
                     end_time = time.perf_counter()
                     total_time += end_time - start_time
                 total_time /= steps
-                x_mlpcg, iters, timer, res = npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                x_mlpcg, iters, timer, res = npcg(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
 
                 results['mlpcg_time'].append(total_time)
                 results['mlpcg_iters'].append(iters)
@@ -374,27 +374,30 @@ DIM = 3
 N = 128
 N2 = 256
 device = torch.device('cuda')
-frames = [12,  34,  56,  78, 100, 122, 144, 166, 188]
+# frames = [12,  34,  56,  78, 100, 122, 144, 166, 188]
+frames = range(180, 181)
 # scene = f'dambreak_pillars_N{N}_N{N2}_200_{DIM}D'
-scene = f'dambreak_hill_N{N}_N{N2}_200_{DIM}D'
+# scene = f'dambreak_bunny_N{N}_N{N2}_200_{DIM}D'
 # scene = f'smoke_solid_N{N2}_200_3D'
-# scene = f'waterflow_ball_N{N2}_200_3D'
+scene = f'waterflow_ball_N{N2}_200_3D'
 # scene = f'standing_pool_scooping_N{N2}_200_3D'
 # scene = "dambreak_pillars_N128_N384_200_3D"
 
-shape = (N2,) + (N,) * (DIM-1)
+shape = (N2,) + (N2,) * (DIM-1)
 
 NN = 128
-num_mat = 1
+num_mat = 11
 num_ritz = 1600
-num_rhs = 800
+num_rhs = 768
 num_imgs = 3
 num_levels = 4
 
-for i in range(0, 1):
-    model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_dambreak_hills_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l4_trilinear_mask_swap.tar")
+for i in range(1, 34):
+    model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l4_spd_{i}.tar")
+    # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l4_trilinear_{i}.tar")
     # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_30.tar")
-    model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear", mask=True, swap_sm_order=True)
+    model = SPDSMModelDn3D(num_levels)
+    # model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear", mask=False, swap_sm_order=False)
     model.move_to(device)
     state_dict = torch.load(model_file, map_location=device)['model_state_dict']
 

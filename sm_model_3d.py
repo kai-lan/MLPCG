@@ -366,8 +366,43 @@ class SPDSMModelDn3D(BaseModel):
         self.c0 = nn.ModuleList([SmallLinearBlock3DNew() for _ in range(n)])
         self.c1 = nn.ModuleList([SmallLinearBlock3DNew() for _ in range(n)])
 
+    def eval_forward(self, image, b, timer=None, c0=[], c1=[]):
+        x = [self.l0[0].eval_forward(image, b)]
+        imgs = [image]
+        c0, c1 = [], []
+        for i in range(1, self.n):
+            x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
+            imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+            x[-1] = self.l0[i].eval_forward(imgs[-1], x[-1])
+
+        x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
+        imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+        x[-1] = self.l.eval_forward(imgs[-1], x[-1])
+
+        for i in range(self.n, 0, -1):
+            x[i] = F.interpolate(x[i], scale_factor=2) / 8 # transpose of avg pooling 3d
+            c0.insert(0, self.c0[i-1].eval_forward(imgs[i-1]))
+            c1.insert(0, self.c1[i-1].eval_forward(imgs[i-1]))
+            x[i] = self.l1[i-1].eval_forward(imgs[i-1], x[i])
+            x[i-1] = c0[0] * x[i-1] + c1[0] * x[i]
+
+
+        b = x[0]
+        x = [b]
+        for i in range(self.n):
+            x.append(self.l1_t[i].eval_forward(imgs[i], x[i]))
+            x[-1] = F.avg_pool3d(x[-1], (2, 2, 2))
+
+        x[-1] = self.l_t.eval_forward(imgs[-1], x[-1])
+
+        for i in range(self.n-1, -1, -1):
+            x[i+1] = F.interpolate(x[i+1], scale_factor=2) / 8
+            x[i] = c0[i] * x[i] + c1[i] * x[i+1]
+            x[i] = self.l0_t[i].eval_forward(imgs[i], x[i])
+
+        return x[0]
+
     def forward(self, image, b):
-        x = self.l0[0](image, b)
         x = [self.l0[0](image, b)]
         imgs = [image]
         c0, c1 = [], []
@@ -387,6 +422,7 @@ class SPDSMModelDn3D(BaseModel):
             x[i] = self.l1[i-1](imgs[i-1], x[i])
             x[i-1] = c0[0] * x[i-1] + c1[0] * x[i]
 
+
         b = x[0]
         x = [b]
         for i in range(self.n):
@@ -394,9 +430,9 @@ class SPDSMModelDn3D(BaseModel):
             x[-1] = F.avg_pool3d(x[-1], (2, 2, 2))
 
         x[-1] = self.l_t(imgs[-1], x[-1])
-        x[-1] = F.interpolate(x[-1], scale_factor=2) / 8
 
         for i in range(self.n-1, -1, -1):
+            x[i+1] = F.interpolate(x[i+1], scale_factor=2) / 8
             x[i] = c0[i] * x[i] + c1[i] * x[i+1]
             x[i] = self.l0_t[i](imgs[i], x[i])
 
@@ -408,7 +444,7 @@ if __name__ == '__main__':
     sys.path.append(path + "/lib")
     from lib.read_data import *
     import matplotlib.pyplot as plt
-    torch.set_default_dtype(torch.float64)
+    torch.set_default_dtype(torch.float32)
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
@@ -419,18 +455,32 @@ if __name__ == '__main__':
     num_imgs = 3
     cuda_device = torch.device("cuda")
 
-
-    x = torch.rand(16, 1, 128, 128, 128, device=cuda_device)
-    y = torch.rand(16, 1, 128, 128, 128, device=cuda_device)
+    # model = SPDSMModelDn3D(1).to(cuda_device)
+    # for _ in range(100):
+    x = torch.rand(128, 1, 128, 128, 128, device=cuda_device)
+    y = torch.rand(128, 1, 128, 128, 128, device=cuda_device)
     img = torch.rand(3, 128, 128, 128, device=cuda_device)
-    model = SPDSMModelDn3D(1).to(cuda_device)
-    # model1 = SmallSMBlock3D(num_imgs).to(cuda_device)
+
+    # model1 = SmallSMBlock3D().to(cuda_device)
+    # model = SmallSMBlockTrans3D(weight=model1.weight, bias=model1.bias).to(cuda_device)
     # model.weight = model1.weight
     # model.bias = model1.bias
+    model = SPDSMModelDn3D(4).to(cuda_device)
+
+    z = model(img, x)
+    z.sum().backward()
+    exit()
+    # z1 = model(img, y)
+    # a = torch.bmm(x.flatten(2), z1.flatten(1).unsqueeze(-1))
+    # b = torch.bmm(y.flatten(2), z.flatten(1).unsqueeze(-1))
+    # c = ((a - b).norm() / torch.sqrt(a.abs() * b.abs()).norm()).item()
+    # print(c)
+    # assert c < 1e-12
 
     # print(model.bias)
-    z = model(img, x)
-    z1 = model(img, y)
+    # z = model1(img, model(img, x))
+    # z1 = model1(img, model(img, y))
+
     # optimizer = torch.optim.Adam(model1.parameters())
 
     # z.sum().backward()
@@ -439,16 +489,15 @@ if __name__ == '__main__':
     # print(model.bias)
     # print(model1.bias)
 
-    print((torch.bmm(x.flatten(2), z1.flatten(1).unsqueeze(-1)) - torch.bmm(y.flatten(2), z.flatten(1).unsqueeze(-1))).norm())
-    exit()
+
     # z = model.eval_forward(img, x)
 
     # print((z - z1).norm())
     # print(model.weight.norm(), model1.weight.norm())
 
-    for _ in range(10):
+    for _ in range(2):
         y = model(img, x)
-        y1 = model1(img,  x)
+        y1 = model1(img, x)
         y.sum().backward()
         y1.sum().backward()
     torch.cuda.synchronize()

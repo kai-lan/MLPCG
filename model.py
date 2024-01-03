@@ -21,7 +21,7 @@ class BaseModel(nn.Module):
     def eval_forward(self, *args, **kargs):
         return self.forward(*args, **kargs)
     def reset_parameters(self, weight, bias):
-        torch.manual_seed(0)
+        # torch.manual_seed(0)
         nn.init.kaiming_uniform_(weight, a=math.sqrt(5))
         if bias is not None:
             fan_in, _ = nn.init._calculate_fan_in_and_fan_out(weight)

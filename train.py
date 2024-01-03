@@ -14,7 +14,8 @@ from lib.dataset import *
 from lib.GLOBAL_VARS import *
 from lib.global_clock import GlobalClock
 from model import *
-from sm_model import *
+# from sm_model import *
+from sm_model_3d import *
 from loss_functions import residual_loss
 import matplotlib.pyplot as plt
 
@@ -31,11 +32,13 @@ def validation(train_loader, validation_loader, model, loss_fn, image, A, fluid_
         for data in train_loader:
             # data = data.to(A.device)
             x_pred = model(image, data) # input: (bs, 1, dim, dim)
+
             tot_loss_train += loss_fn(x_pred.squeeze(dim=1).flatten(1)[:, fluid_cells], data[:, 0].flatten(1)[:, fluid_cells], A, False)
         for data in validation_loader:
             # data = data.to(A.device)
             x_pred = model(image, data) # input: (bs, 1, dim, dim)
             tot_loss_val += loss_fn(x_pred.squeeze(dim=1).flatten(1)[:, fluid_cells], data[:, 0].flatten(1)[:, fluid_cells], A, False)
+
     return tot_loss_train.item(), tot_loss_val.item()
 
 
@@ -118,21 +121,21 @@ def create_param_groups_from_old_model(old_levels, new_model):
     slow_lr = lr*0.1
     param_groups = [{'params': new_model.l.parameters(), 'name':'l'}]
     for i in range(old_levels):
-        param_groups.append({'params': new_model.pre[i].parameters(), 'name':f'pre.{i}', 'lr':slow_lr})
-        param_groups.append({'params': new_model.post[i].parameters(), 'name':f'pos.{i}', 'lr':slow_lr})
+        param_groups.append({'params': new_model.l0[i].parameters(), 'name':f'l0.{i}', 'lr':slow_lr})
+        param_groups.append({'params': new_model.l1[i].parameters(), 'name':f'l1.{i}', 'lr':slow_lr})
         param_groups.append({'params': new_model.c0[i].parameters(), 'name':f'c0.{i}', 'lr':slow_lr})
         param_groups.append({'params': new_model.c1[i].parameters(), 'name':f'c1.{i}', 'lr':slow_lr})
     for i in range(old_levels, new_model.n):
-        param_groups.append({'params': new_model.pre[i].parameters(), 'name':f'pre.{i}'})
-        param_groups.append({'params': new_model.post[i].parameters(), 'name':f'pos.{i}'})
+        param_groups.append({'params': new_model.l0[i].parameters(), 'name':f'l0.{i}'})
+        param_groups.append({'params': new_model.l1[i].parameters(), 'name':f'l1.{i}'})
         param_groups.append({'params': new_model.c0[i].parameters(), 'name':f'c0.{i}'})
         param_groups.append({'params': new_model.c1[i].parameters(), 'name':f'c1.{i}'})
     return param_groups
 def create_param_groups(model):
     param_groups = [{'params': model.l.parameters(), 'name':'l'}]
     for i in range(model.n):
-        param_groups.append({'params': model.pre[i].parameters(), 'name':f'pre.{i}'})
-        param_groups.append({'params': model.post[i].parameters(), 'name':f'pos.{i}'})
+        param_groups.append({'params': model.l0[i].parameters(), 'name':f'l0.{i}'})
+        param_groups.append({'params': model.l1[i].parameters(), 'name':f'l1.{i}'})
         param_groups.append({'params': model.c0[i].parameters(), 'name':f'c0.{i}'})
         param_groups.append({'params': model.c1[i].parameters(), 'name':f'c1.{i}'})
     return param_groups
@@ -178,7 +181,7 @@ if __name__ == '__main__':
         num_matrices[i:] += len(bcs[i][-1])
 
     num_ritz = 1600
-    num_rhs = 800 # number of ritz vectors for training for each matrix
+    num_rhs = 640+128 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
     num_imgs = 3
 
@@ -192,7 +195,7 @@ if __name__ == '__main__':
 
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
 
-    suffix =  f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l4_trilinear'
+    suffix =  f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l4_spd'
 
     os.makedirs(outdir, exist_ok=True)
 
@@ -201,12 +204,13 @@ if __name__ == '__main__':
     if DIM == 2:
         model = SmallSMModelDn(num_levels, num_imgs)
     else:
-        model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear")
+        model = SPDSMModelDn3D(num_levels)
+        # model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear")
 
     model.move_to(cuda)
     loss_fn = residual_loss
 
-    transfer_weights_from_old_model(outdir, f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l3_trilinear', model)
+    # transfer_weights_from_old_model(outdir, f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l3_trilinear', model)
 
     # optimizer = optim.Adam(create_param_groups_from_old_model(num_levels-1, model), lr=lr)
     optimizer = optim.Adam(create_param_groups(model), lr=lr)
@@ -222,7 +226,7 @@ if __name__ == '__main__':
         start_epoch = 0
 
 
-    train_size = round(0.8 * num_rhs)
+    train_size = 640
     perm = np.random.permutation(num_rhs)
 
     fluid_cells = None

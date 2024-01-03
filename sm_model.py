@@ -434,13 +434,13 @@ if __name__ == '__main__':
     model1 = SmallSMBlock(num_imgs).to(cuda_device)
 
 
-    z = model.eval_forward(img, x)
-    z1 = model1.eval_forward(img, y)
+    # z = model.eval_forward(img, x)
+    # z1 = model1.eval_forward(img, y)
 
-    print((torch.bmm(x.flatten(2), z1.flatten(1).unsqueeze(-1)) - torch.bmm(y.flatten(2), z.flatten(1).unsqueeze(-1))).norm())
+    # print((torch.bmm(x.flatten(2), z1.flatten(1).unsqueeze(-1)) - torch.bmm(y.flatten(2), z.flatten(1).unsqueeze(-1))).norm())
     # print((z - z1).norm())
 
-    exit()
+    # exit()
     for _ in range(10):
         y = model(img, x)
         y1 = model1(img,  x)
