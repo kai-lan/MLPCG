@@ -347,7 +347,7 @@ class SmallSMModelDn3DPY(BaseModel):
 # SPD SM Model
 ######################
 class SPDSMModelDn3D(BaseModel):
-    def __init__(self, n, num_imgs=3):
+    def __init__(self, n):
         super().__init__()
         self.n = n
         self.l0 = nn.ModuleList()
@@ -380,7 +380,7 @@ class SPDSMModelDn3D(BaseModel):
         x[-1] = self.l.eval_forward(imgs[-1], x[-1])
 
         for i in range(self.n, 0, -1):
-            x[i] = F.interpolate(x[i], scale_factor=2) / 8 # transpose of avg pooling 3d
+            x[i] = F.interpolate(x[i], scale_factor=2) / 8
             c0.insert(0, self.c0[i-1].eval_forward(imgs[i-1]))
             c1.insert(0, self.c1[i-1].eval_forward(imgs[i-1]))
             x[i] = self.l1[i-1].eval_forward(imgs[i-1], x[i])
@@ -416,7 +416,7 @@ class SPDSMModelDn3D(BaseModel):
         x[-1] = self.l(imgs[-1], x[-1])
 
         for i in range(self.n, 0, -1):
-            x[i] = F.interpolate(x[i], scale_factor=2) / 8 # transpose of avg pooling 3d
+            x[i] = F.interpolate(x[i], scale_factor=2) / 8
             c0.insert(0, self.c0[i-1](imgs[i-1]))
             c1.insert(0, self.c1[i-1](imgs[i-1]))
             x[i] = self.l1[i-1](imgs[i-1], x[i])
@@ -438,13 +438,77 @@ class SPDSMModelDn3D(BaseModel):
 
         return x[0]
 
+####################
+# Reduced SPD model
+####################
+class SmallSPDSMModelDn3D(BaseModel):
+    def __init__(self, n):
+        super().__init__()
+        self.n = n
+        self.l0 = nn.ModuleList()
+        self.l0_t = nn.ModuleList()
+        for _ in range(n):
+            self.l0.append(SmallSMBlock3D())
+            self.l0_t.append(SmallSMBlockTrans3D(weight=self.l0[-1].weight, bias=self.l0[-1].bias))
+
+        self.l = SmallSMBlock3D()
+        self.l_t = SmallSMBlockTrans3D(weight=self.l.weight, bias=self.l.bias)
+
+        self.c0 = nn.ModuleList([SmallLinearBlock3DNew() for _ in range(n)])
+        self.c1 = nn.ModuleList([SmallLinearBlock3DNew() for _ in range(n)])
+
+    def forward(self, image, b):
+        x = [self.l0[0](image, b)]
+        imgs = [image]
+        c0, c1 = [], []
+        for i in range(1, self.n):
+            x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
+            imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+            x[-1] = self.l0[i](imgs[-1], x[-1])
+        x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
+        imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+        x[-1] = self.l(imgs[-1], x[-1])
+        x[-1] = self.l_t(imgs[-1], x[-1])
+
+        for i in range(self.n, 0, -1):
+            x[i] = F.interpolate(x[i], scale_factor=2) / 8
+            c0.insert(0, self.c0[i-1](imgs[i-1]))
+            c1.insert(0, self.c1[i-1](imgs[i-1]))
+            # x[i-1] = c0[0]**2 * x[i-1] + c1[0]**2 * x[i]
+            x[i-1] = x[i-1] + x[i]
+            x[i-1] = self.l0_t[i-1](imgs[i-1], x[i-1])
+        return x[0]
+
+    def eval_forward(self, image, b, timer=None, c0=[], c1=[]):
+        x = [self.l0[0].eval_forward(image, b)]
+        imgs = [image]
+        c0, c1 = [], []
+        for i in range(1, self.n):
+            x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
+            imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+            x[-1] = self.l0[i].eval_forward(imgs[-1], x[-1])
+        x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
+        imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+        x[-1] = self.l.eval_forward(imgs[-1], x[-1])
+        x[-1] = self.l_t.eval_forward(imgs[-1], x[-1])
+
+        for i in range(self.n, 0, -1):
+            x[i] = F.interpolate(x[i], scale_factor=2) / 8
+            c0.insert(0, self.c0[i-1].eval_forward(imgs[i-1]))
+            c1.insert(0, self.c1[i-1].eval_forward(imgs[i-1]))
+            # x[i-1] = c0[0]**2 * x[i-1] + c1[0]**2 * x[i]
+
+            x[i-1] = x[i-1] + x[i]
+            x[i-1] = self.l0_t[i-1].eval_forward(imgs[i-1], x[i-1])
+        return x[0]
+
 if __name__ == '__main__':
     import os, sys, time
     path = os.path.dirname(os.path.realpath(__file__))
     sys.path.append(path + "/lib")
     from lib.read_data import *
     import matplotlib.pyplot as plt
-    torch.set_default_dtype(torch.float32)
+    torch.set_default_dtype(torch.float64)
     torch.manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
@@ -465,18 +529,20 @@ if __name__ == '__main__':
     # model = SmallSMBlockTrans3D(weight=model1.weight, bias=model1.bias).to(cuda_device)
     # model.weight = model1.weight
     # model.bias = model1.bias
-    model = SPDSMModelDn3D(4).to(cuda_device)
+    model = SmallSPDSMModelDn3D(4).to(cuda_device)
 
     z = model(img, x)
-    z.sum().backward()
-    exit()
-    # z1 = model(img, y)
-    # a = torch.bmm(x.flatten(2), z1.flatten(1).unsqueeze(-1))
-    # b = torch.bmm(y.flatten(2), z.flatten(1).unsqueeze(-1))
-    # c = ((a - b).norm() / torch.sqrt(a.abs() * b.abs()).norm()).item()
-    # print(c)
-    # assert c < 1e-12
+    # z.sum().backward()
 
+    z1 = model(img, y)
+    a = torch.bmm(x.flatten(2), z1.flatten(1).unsqueeze(-1))
+    b = torch.bmm(y.flatten(2), z.flatten(1).unsqueeze(-1))
+    abs_diff = (a - b).norm().item()
+    rel_diff = abs_diff / torch.sqrt(a.abs() * b.abs()).norm().item()
+
+    print(abs_diff, rel_diff)
+    # assert c < 1e-12
+    exit()
     # print(model.bias)
     # z = model1(img, model(img, x))
     # z1 = model1(img, model(img, y))

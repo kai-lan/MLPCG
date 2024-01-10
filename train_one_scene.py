@@ -14,7 +14,7 @@ from lib.dataset import *
 from lib.GLOBAL_VARS import *
 from lib.global_clock import GlobalClock
 from model import *
-from sm_model import *
+from sm_model_3d import *
 from loss_functions import *
 import matplotlib.pyplot as plt
 
@@ -87,7 +87,7 @@ def saveData(model, optimizer, epoch, log, outdir, suffix, train_loss, valid_los
                     "Epoches per matrix": epoch_num_per_matrix,
                     "Epoches": epoch,
                     "batch size": b_size,
-                    "Num matrices": total_matrices,
+                    "Num matrices": len(bcs),
                     "Num RHS": num_rhs})
         log.write(os.path.join(outdir, f"settings_{suffix}.log"), overwrite=overwrite)
     torch.save({
@@ -119,15 +119,15 @@ if __name__ == '__main__':
     # torch.backends.cudnn.deterministic = True
     # torch.backends.cudnn.benchmark = False
 
-    N = 128
+    N = 64
     DIM = 3
     lr = 0.0001
-    epoch_num_per_matrix = 5
-    epoch_num = 50
+    epoch_num_per_matrix = 10
+    epoch_num = 100
     epochs_per_save = 5
     shape = (1,)+(N,)*DIM
     bcs = [
-        # (f'dambreak_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+        (f'dambreak_N{N}',                  (N,)*DIM,               [1]),
         # (f'dambreak_hill_N{N}_N{N*2}',     (N*2,)+(N,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
         # (f'dambreak_dragons_N{N}_N{N*2}',  (N*2,)+(N,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
         # (f'ball_cube_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
@@ -137,14 +137,17 @@ if __name__ == '__main__':
         # (f'waterflow_pool_N{N}',            (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
         # (f'waterflow_panels_N{N}',          (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
         # (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'smoke_moving_donuts_N{N}',       (N,)*DIM,               np.linspace(10, 200, 10, dtype=int))
+        # (f'smoke_moving_donuts_N{N}',       (N,)*DIM,               np.linspace(10, 200, 10, dtype=int)[0:1])
     ]
     bc = 'mixedBCs11'
-    b_size = 32
-    # total_matrices = np.sum([len(bc[-1]) for bc in bcs]) # number of matrices chosen for training
-    total_matrices = len(bcs)
+    b_size = 128
+
+    num_matrices = np.zeros(len(bcs), dtype=int)
+    for i, bc in enumerate(bcs):
+        num_matrices[i:] += len(bcs[i][-1])
+
     num_ritz = 1600
-    num_rhs = 800 # number of ritz vectors for training for each matrix
+    num_rhs = 640+128 # number of ritz vectors for training for each matrix
     kernel_size = 3 # kernel size
     num_imgs = 3
 
@@ -153,18 +156,15 @@ if __name__ == '__main__':
 
     cuda = torch.device("cuda") # Use CUDA for training
 
-    resume = False
+    resume = True
     randomize = True
-    mask = True
-    swap_sm_ord = True
     loss_fn = residual_loss
-    # loss_fn = residual_symmetry_loss
+
 
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
-    suffix =  f'smoke_moving_donuts_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_l4_trilinear_mask_swap'
+    # suffix =  f'smoke_dambreak_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l3_spd_avg'
     # ep, model_params, optim_params, train_loss, valid_loss, time_history, grad_history, update_history = loadData(outdir, suffix)
-    # suffix =  f'dambreak_hills_M{total_matrices}_ritz{num_ritz}_rhs{num_rhs}_l4_trilinear'
-
+    suffix =  f'smoke_dambreak_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l4_spd_avg_new'
 
     os.makedirs(outdir, exist_ok=True)
 
@@ -173,10 +173,10 @@ if __name__ == '__main__':
     if DIM == 2:
         model = SmallSMModelDn(num_levels, num_imgs)
     else:
-        model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear", mask, swap_sm_ord)
+        model = SPDSMModelDn3D(num_levels)
+        # model = SmallSMModelDn3D(num_levels, num_imgs, "nearest")
 
     model.move_to(cuda)
-
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
@@ -201,7 +201,7 @@ if __name__ == '__main__':
         start_epoch = 0
 
 
-    train_size = round(0.8 * num_rhs)
+    train_size = 640
     perm = np.random.permutation(num_rhs)
 
     fluid_cells = None
@@ -219,33 +219,35 @@ if __name__ == '__main__':
 
     start_time = time.time()
 
-    for i in range(start_epoch+1, epoch_num+1):
+    shuffled_matrices = range(num_matrices[-1])
+    for i in range(start_epoch+1, start_epoch+epoch_num+1):
         tl, vl = 0.0, 0.0
-        if randomize: np.random.shuffle(bcs)
-        for count, (bc, sha, matrices) in enumerate(bcs, 1):
-            shape = (1,)+sha
+        if randomize:
+            shuffled_matrices = np.random.permutation(range(num_matrices[-1]))
+        for j, mat in enumerate(shuffled_matrices):
+            bc_id = np.searchsorted(num_matrices, mat, side='right')
+            frame_id = (mat - num_matrices[bc_id-1])%len(shuffled_matrices)
+            bc = bcs[bc_id][0]
+            shape = (1,)+bcs[bc_id][1]
+            frame = bcs[bc_id][2][frame_id]
             if DIM == 2: inpdir = f"{DATA_PATH}/{bc}_200/preprocessed"
             else:        inpdir = f"{DATA_PATH}/{bc}_200_{DIM}D/preprocessed"
-            num_matrices = len(matrices)
-            if randomize: np.random.shuffle(matrices)
-            for j_mat, j in enumerate(matrices, 1):
-                print(f"Epoch: {i}/{epoch_num}")
-                print(bc, f'{count}/{len(bcs)}')
-                print('Matrix', j, f'{j_mat}/{num_matrices}')
+            print(f"Epoch: {i}/{epoch_num}")
+            print('BC:', bc, 'frame:', frame, f'progress: {j}/{len(shuffled_matrices)}')
 
-                train_set.data_folder = os.path.join(f"{inpdir}/{j}")
-                valid_set.data_folder = os.path.join(f"{inpdir}/{j}")
+            train_set.data_folder = os.path.join(f"{inpdir}/{frame}")
+            valid_set.data_folder = os.path.join(f"{inpdir}/{frame}")
 
-                A = torch.load(f"{train_set.data_folder}/A.pt", map_location='cuda')
-                image = torch.load(f"{train_set.data_folder}/flags_binary_{num_imgs}.pt", map_location='cuda').view((num_imgs,)+sha)
+            A = torch.load(f"{train_set.data_folder}/A.pt", map_location='cuda')
+            image = torch.load(f"{train_set.data_folder}/flags_binary_{num_imgs}.pt", map_location='cuda').view((num_imgs,)+shape[1:])
 
-                fluid_cells = torch.load(f"{train_set.data_folder}/fluid_cells.pt", map_location='cuda')
-                training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, fluid_cells, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
+            fluid_cells = torch.load(f"{train_set.data_folder}/fluid_cells.pt", map_location='cuda')
+            training_loss_, validation_loss_, time_history_, grad_history_, update_history_ = train_(image, A, fluid_cells, epoch_num_per_matrix, train_loader, valid_loader, model, optimizer, loss_fn)
 
-                tl += np.sum(training_loss_)
-                vl += np.sum(validation_loss_)
-                grad_history.extend(grad_history_)
-                update_history.extend(update_history_)
+            tl += np.sum(training_loss_)
+            vl += np.sum(validation_loss_)
+            grad_history.extend(grad_history_)
+            update_history.extend(update_history_)
         train_loss.append(tl)
         valid_loss.append(vl)
         time_history.append(time.time() - start_time)
