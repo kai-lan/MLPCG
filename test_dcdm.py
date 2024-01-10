@@ -137,13 +137,13 @@ N = 256
 N2 = N**3
 dim = N+2
 dim2 = dim**3
-frames = range(200, 201)
+frames = range(100, 101)
 max_it = 100
 tol = 1e-6
 
 
-scene = f"waterflow_ball_N{N}_200_3D"
-# scene = f"smoke_bunny_N{N}_200_3D"
+# scene = f"waterflow_ball_N{N}_200_3D"
+scene = f"smoke_solid_N{N}_200_3D"
 data_dir = f"data/{scene}"
 
 

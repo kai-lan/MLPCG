@@ -17,7 +17,6 @@ import scipy.sparse.linalg as slin
 import cupy as cp
 import cupyx.scipy.sparse as cpsp
 import cupyx.scipy.sparse.linalg as gslin # https://docs.cupy.dev/en/stable/reference/scipy_sparse_linalg.html#module-cupyx.scipy.sparse.linalg
-import pyamg # https://github.com/pyamg/pyamg
 from cxx_src.build import pyamgcl, pyamgcl_cuda, pyamgcl_vexcl
 from cxx_src.build import pyic, pyic_cuda, pyic_vexcl
 import time
@@ -25,7 +24,6 @@ from global_clock import GlobalClock
 
 def npcg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=False, callback=None):
     timer = GlobalClock()
-
     timer.start('Total')
     timer.start('Init')
 
@@ -50,7 +48,6 @@ def npcg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
     timer.stop('NN')
 
     timer.start('CG')
-    # z = r
     p = z
     w = A @ p
     rz = rz_old = r.dot(z)
@@ -212,7 +209,7 @@ def npsd(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-10, verbose=Fal
 
     x_sol = torch.clone(x_init)
 
-    c0, c1 = [], []
+    imgs, c0, c1 = [], [], []
 
     torch.cuda.synchronize()
     timer.stop('Init')
@@ -220,7 +217,7 @@ def npsd(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-10, verbose=Fal
     for i in range(1, max_it+1):
 
         timer.start('NN')
-        q = model_predict(r, timer, c0, c1)
+        q = model_predict(r, timer, imgs, c0, c1)
 
         torch.cuda.synchronize()
         timer.stop('NN')

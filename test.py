@@ -38,12 +38,12 @@ class Tests:
 
     def model_predict(self, model, image, fluid_cells):
         shape = image.shape[1:]
-        def predict(r, timer, c0=[], c1=[]):
+        def predict(r, timer, imgs=[], c0=[], c1=[]):
             with torch.no_grad():
                 r = normalize(r.to(pcg_dtype), dim=0)
                 b = torch.zeros(np.prod(shape), device=device, dtype=pcg_dtype)
                 b[fluid_cells] = r
-                x = model.eval_forward(image, b.view((1, 1)+shape), timer, c0, c1).flatten().double()
+                x = model.eval_forward(image, b.view((1, 1)+shape), timer, imgs, c0, c1).flatten().double()
             return x[fluid_cells]
         return predict
     def benchmark_cuda_cg_func(self, rhs_cp, A_cp, x0):
@@ -130,9 +130,9 @@ class Tests:
             flags_sp = convert_to_binary_images(flags_sp, num_imgs)
             A = torch.sparse_csr_tensor(A_comp.indptr, A_comp.indices, A_comp.data, A_comp.shape, dtype=torch.float64, device=device)
             rhs = torch.tensor(rhs_comp, dtype=torch.float64, device=device)
-            perturb = torch.rand_like(rhs)
-            fraction = 1.0
-            rhs = rhs + perturb * fraction * rhs.norm() / perturb.norm()
+            # perturb = torch.rand_like(rhs)
+            # fraction = 1.0
+            # rhs = rhs + perturb * fraction * rhs.norm() / perturb.norm()
             flags = torch.tensor(flags_sp, dtype=pcg_dtype, device=device).view(num_imgs, *shape)
             fluid_cells = torch.from_numpy(fluid_cells).to(device)
             predict = self.model_predict(model, flags, fluid_cells)
@@ -160,18 +160,14 @@ class Tests:
                 with open(output, 'a') as f:
                     if i == 0: f.write(title + '\n')
                     f.write(out + '\n')
-        if output is not None:
-            with open(output, 'a') as f:
-                f.write(avg)
 
-    def run_frames(self, scene, shape, frames, output=None):
+    def run_frames_avg_time(self, scene, shape, frames, output, avg_nn_time, avg_or_time, avg_others_time):
         results = {'amgcl_time': [], 'amgcl_iters': [],
                     'ic_time': [], 'ic_iters': [],
                     'cg_time': [], 'cg_iters': [],
                     'mlpcg_time': [], 'mlpcg_iters': []}
         scene_path = os.path.join(DATA_PATH, f"{scene}")
         running_bunny = 'smoke_bunny' in scene
-
 
         for i, frame in enumerate(frames):
             print("Testing frame", frame, "scene", scene)
@@ -233,8 +229,8 @@ class Tests:
                 fluid_cells = torch.from_numpy(fluid_cells).to(device)
                 predict = self.model_predict(model, flags, fluid_cells)
 
-                for _ in range(0): # warm up
-                    npcg(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                for _ in range(1): # warm up
+                    npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
 
                 total_time = 0.0
                 steps = 1
@@ -251,7 +247,14 @@ class Tests:
                 results['mlpcg_time'].append(total_time)
                 results['mlpcg_iters'].append(iters)
                 print(f"MLPCG took", total_time, 's after', iters, f"iterations to {res}")
-                # timer.report()
+                timer.report()
+                tot = timer.top_level_clocks['Total']
+                avg_nn_time.append(tot.children['NN'].tot_time / tot.tot_time)
+                print("NN / total", avg_nn_time[-1])
+                avg_or_time.append(tot.children['Ortho'].tot_time / tot.tot_time)
+                print("Ortho / total", avg_or_time[-1])
+                avg_others_time.append(1 - avg_nn_time[-1] - avg_or_time[-1])
+
                 out += f", {iters:^4}, {total_time:>6.4f}"
                 if i == 0: title += f", {'ML':>4}, {'':>6}"
             if output is not None:
@@ -270,12 +273,116 @@ class Tests:
         if output is not None:
             with open(output, 'a') as f:
                 f.write(avg)
-
         return results
 
-    def profile_scene(self, scene, shape, frames, output=None, output1=None):
-        res_profile = []
-        time_profile = []
+    def run_frames(self, scene, shape, frames, output):
+        results = {'amgcl_time': [], 'amgcl_iters': [],
+                    'ic_time': [], 'ic_iters': [],
+                    'cg_time': [], 'cg_iters': [],
+                    'mlpcg_time': [], 'mlpcg_iters': []}
+        scene_path = os.path.join(DATA_PATH, f"{scene}")
+        running_bunny = 'smoke_bunny' in scene
+
+        for i, frame in enumerate(frames):
+            print("Testing frame", frame, "scene", scene)
+            if running_bunny:
+                A_sp = readA_sparse(os.path.join(scene_path, f"A_1.bin")).astype(np.float64)
+            else:
+                A_sp = readA_sparse(os.path.join(scene_path, f"A_{frame}.bin")).astype(np.float64)
+            rhs_sp = load_vector(os.path.join(scene_path, f"div_v_star_{frame}.bin")).astype(np.float64)
+            if running_bunny:
+                flags_sp = read_flags(os.path.join(scene_path, f"flags_1.bin"))
+            else:
+                flags_sp = read_flags(os.path.join(scene_path, f"flags_{frame}.bin"))
+            fluid_cells = np.argwhere(flags_sp == FLUID).ravel()
+
+            # compressed A and rhs
+            if len(rhs_sp) == np.prod(shape):
+                A_comp = compressedMat(A_sp, flags_sp)
+                rhs_comp = compressedVec(rhs_sp, flags_sp)
+            else:
+                A_comp = A_sp
+                rhs_comp = rhs_sp
+
+
+            out = f"{frame:<4}"
+            title = f"{'Frames':<4}"
+
+            if self.solvers['AMGCL']:
+                x_amgcl, (iters_amgcl, tot_time, res_amgcl) = AMGCL_CUDA(rhs_comp, A_comp, np.zeros_like(rhs_comp), self.max_cg_iters, tol=self.rel_tol)
+                results['amgcl_time'].append(tot_time)
+                results['amgcl_iters'].append(iters_amgcl)
+                print("AMGCL took", tot_time, 's after', iters_amgcl, 'iterations', f'to {res_amgcl}')
+                out += f", {iters_amgcl:^4}, {tot_time:>6.4f}"
+                if i == 0: title += f", {'AMG':>4}, {'':>6}"
+
+            if self.solvers['IC']:
+                x_ic, (iters_ic, tot_time, res_ic) = IC_CUDA(rhs_comp, A_comp, np.zeros_like(rhs_comp), self.max_ic_iters, tol=self.rel_tol)
+                results['ic_time'].append(tot_time)
+                results['ic_iters'].append(iters_ic)
+                print("IC took", tot_time, 's after', iters_ic, 'iterations', f'to {res_ic}')
+                out += f", {iters_ic:^4}, {tot_time:>6.4f}"
+                if i == 0: title += f", {'IC':>4}, {'':>6}"
+
+            if self.solvers['CG']:
+                rhs_cp, A_cp = cp.array(rhs_comp, dtype=np.float64), cpsp.csr_matrix(A_comp, dtype=np.float64)
+                result = cuda_benchmark(self.benchmark_cuda_cg_func(rhs_cp, A_cp, cp.zeros_like(rhs_cp)), n_repeat=3, n_warmup=2)
+                x_cg, iters = CG_GPU(rhs_cp, A_cp, cp.zeros_like(rhs_cp), self.max_cg_iters, tol=self.rel_tol)
+                r_cg = cp.linalg.norm(rhs_cp - A_cp @ x_cg) / cp.linalg.norm(rhs_cp)
+                results['cg_time'].append(result.gpu_times[0][0])
+                results['cg_iters'].append(iters)
+                print("CUDA CG took", result.gpu_times[0][0], 's after', iters, 'iterations', f"to {r_cg.item()}")
+                out += f", {iters:^4}, {result.gpu_times[0][0]:>6.4f}"
+                if i == 0: title += f", {'CG':>4}, {'':>6}"
+
+            if self.solvers['MLPCG']:
+                flags_sp = convert_to_binary_images(flags_sp, num_imgs)
+                A = torch.sparse_csr_tensor(A_comp.indptr, A_comp.indices, A_comp.data, A_comp.shape, dtype=torch.float64, device=device)
+                rhs = torch.tensor(rhs_comp, dtype=torch.float64, device=device)
+                flags = torch.tensor(flags_sp, dtype=pcg_dtype, device=device).view(num_imgs, *shape)
+                fluid_cells = torch.from_numpy(fluid_cells).to(device)
+                predict = self.model_predict(model, flags, fluid_cells)
+
+                for _ in range(1):
+                    npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+
+                total_time = 0.0
+                steps = 3
+                for _ in range(steps):
+                    start_time = time.perf_counter()
+                    npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+
+                    torch.cuda.synchronize()
+                    end_time = time.perf_counter()
+                    total_time += end_time - start_time
+                total_time /= steps
+                x_mlpcg, iters, timer, res = npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                results['mlpcg_time'].append(total_time)
+                results['mlpcg_iters'].append(iters)
+                print(f"MLPCG took", total_time, 's after', iters, f"iterations to {res}")
+                # timer.report()
+
+                out += f", {iters:^4}, {total_time:>6.4f}"
+                if i == 0: title += f", {'ML':>4}, {'':>6}"
+            if output is not None:
+                with open(output, 'a') as f:
+                    if i == 0: f.write(title + '\n')
+                    f.write(out + '\n')
+        avg = f"{'Avg':<4}"
+        if solvers['AMGCL']:
+            avg += f", {np.mean(results['amgcl_iters']):^4.4f}, {np.mean(results['amgcl_time']):>6.4f}"
+        if solvers['IC']:
+            avg += f", {np.mean(results['ic_iters']):^4.4f}, {np.mean(results['ic_time']):>6.4f}"
+        if solvers['CG']:
+            avg += f", {np.mean(results['cg_iters']):^4.4f}, {np.mean(results['cg_time']):>6.4f}"
+        if solvers['MLPCG']:
+            avg += f", {np.mean(results['mlpcg_iters']):^4.4f}, {np.mean(results['mlpcg_time']):>6.4f}\n"
+        if output is not None:
+            with open(output, 'a') as f:
+                f.write(avg)
+        return results
+
+    def profile_scene(self, scene, shape, frames, output=None):
         def callback(res, time):
             nonlocal res_profile, time_profile
             res_profile.append(res)
@@ -283,7 +390,11 @@ class Tests:
 
         scene_path = os.path.join(DATA_PATH, f"{scene}")
         running_bunny = 'smoke_bunny' in scene
+        # all_res_profile = []
+        # key_map = {}
         for i, frame in enumerate(frames):
+            res_profile = []
+            time_profile = []
             print("Testing frame", frame, "scene", scene)
             if running_bunny:
                 A_sp = readA_sparse(os.path.join(scene_path, f"A_1.bin")).astype(np.float64)
@@ -338,27 +449,23 @@ class Tests:
                 fluid_cells = torch.from_numpy(fluid_cells).to(device)
                 predict = self.model_predict(model, flags, fluid_cells)
 
-                # for _ in range(2): # warm up
-                #     npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
+                for _ in range(2): # warm up
+                    npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
                 x_mlpcg, iters, timer, res = npsd(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol, atol=1e-20, callback=callback)
                 print(f"MLPCG took", timer.top_level_clocks['Total'].tot_time, 's after', iters, f"iterations to {res}")
 
             for i in reversed(range(len(time_profile))):
                 time_profile[i] -= time_profile[0]
-            line1 = f"{frame:<4}"
-            line2 = f"{frame:<4}"
-            for res, time in zip(res_profile, time_profile):
-                line1 += f", {res:>8.4}"
-                line2 += f", {time:>8.4}"
-            line1 += "\n"
-            line2 += "\n"
 
             if output:
                 with open(output, 'a') as f:
-                    f.write(line1)
-                    f.write(line2)
-            # res_profile, time_profile = [], []
-            return res_profile, time_profile
+                    for res, time in zip(res_profile, time_profile):
+                        f.write(f"{res:<8.4}, {time:>8.4}\n")
+
+            # all_res_profile.append(res_profile)
+            # key_map[str(frame)] = all_res_profile[i]
+        # np.savez(f"tests/residual_{scene}.npz", **key_map)
+
 if len(sys.argv) > 1:
     solver = sys.argv[1]
 
@@ -374,68 +481,65 @@ DIM = 3
 N = 128
 N2 = 256
 device = torch.device('cuda')
-# frames = [12,  34,  56,  78, 100, 122, 144, 166, 188]
-frames = range(180, 181)
-# scene = f'dambreak_pillars_N{N}_N{N2}_200_{DIM}D'
-# scene = f'dambreak_bunny_N{N}_N{N2}_200_{DIM}D'
-# scene = f'smoke_solid_N{N2}_200_3D'
-scene = f'waterflow_ball_N{N2}_200_3D'
-# scene = f'standing_pool_scooping_N{N2}_200_3D'
-# scene = "dambreak_pillars_N128_N384_200_3D"
+# frames = np.linspace(1, 200, 10, dtype=int)
+frames = range(200, 201)
 
-shape = (N2,) + (N2,) * (DIM-1)
+bcs = [
+    # (f'standing_pool_scooping_N{N}_200_3D', (N,)*DIM),
+    # (f'standing_pool_scooping_N{N2}_200_3D', (N2,)*DIM),
+    # (f'dambreak_pillars_N{N}_N{N2}_200_3D', (N2,)+(N,)*(DIM-1)),
+    # (f'dambreak_bunny_N{N}_N{N2}_200_3D', (N2,)+(N,)*(DIM-1)),
+    # (f'waterflow_spiky_torus_N{N}_200_3D', (N,)*DIM),
+    # (f'waterflow_spiky_torus_N{N2}_200_3D', (N2,)*DIM),
+    # (f'waterflow_ball_N{N}_200_3D', (N,)*DIM),
+    (f'waterflow_ball_N{N2}_200_3D', (N2,)*DIM),
+    # (f'smoke_solid_N{N}_200_3D', (N,)*DIM),
+    # (f'smoke_solid_N{N2}_200_3D', (N2,)*DIM),
+    # (f'smoke_bunny_N{N}_200_3D', (N,)*DIM),
+    # (f'smoke_bunny_N{N2}_200_3D', (N2,)*DIM)
+]
 
 NN = 128
 num_mat = 11
 num_ritz = 1600
-num_rhs = 768
+num_rhs = 800
 num_imgs = 3
 num_levels = 4
 
-for i in range(1, 34):
-    model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l4_spd_{i}.tar")
-    # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l4_trilinear_{i}.tar")
-    # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_30.tar")
-    model = SPDSMModelDn3D(num_levels)
-    # model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear", mask=False, swap_sm_order=False)
-    model.move_to(device)
-    state_dict = torch.load(model_file, map_location=device)['model_state_dict']
+for scene, shape in bcs:
+    for i in range(62, 63):
+        model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l4_trilinear_{i}.tar")
+        # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_30.tar")
+        model = SmallSMModelDn3D(num_levels, num_imgs, 'trilinear')
 
-    # for i in range(num_levels):
-    #     state_dict[f'c0.{i}.bias'] = state_dict[f'c0.{i}.bias'].mean(dim=0, keepdim=True)
-    #     state_dict[f'c1.{i}.bias'] = state_dict[f'c1.{i}.bias'].mean(dim=0, keepdim=True)
-    #     state_dict[f'c0.{i}.weight'] = state_dict[f'c0.{i}.weight'].mean(dim=0, keepdim=True)
-    #     state_dict[f'c1.{i}.weight'] = state_dict[f'c1.{i}.weight'].mean(dim=0, keepdim=True)
+        state_dict = torch.load(model_file, map_location=device)['model_state_dict']
 
-    model.load_state_dict(state_dict)
-    model.eval()
+        # for i in range(num_levels):
+        #     state_dict[f'c0.{i}.bias'] = state_dict[f'c0.{i}.bias'].mean(dim=0, keepdim=True)
+        #     state_dict[f'c1.{i}.bias'] = state_dict[f'c1.{i}.bias'].mean(dim=0, keepdim=True)
+        #     state_dict[f'c0.{i}.weight'] = state_dict[f'c0.{i}.weight'].mean(dim=0, keepdim=True)
+        #     state_dict[f'c1.{i}.weight'] = state_dict[f'c1.{i}.weight'].mean(dim=0, keepdim=True)
 
-    # output_file1 = model_file.replace("checkpt", f"test_{scene}").replace(".tar", ".txt")
-    os.makedirs("tests", exist_ok=True)
-    output_file = f"tests/{scene}.txt"
-    with open(output_file, 'w') as f:
-        f.write('')
-    # with open(output_file1, 'w') as f:
-    #     f.write('')
-    tests = Tests(model, solvers, 1e-6)
-    print('i', i)
-    results = tests.run_frames(scene, shape, frames, output=output_file)
+        model.load_state_dict(state_dict)
+        model = model.to(device)
+        model.eval()
 
-    # import matplotlib.pyplot as plt
-    # plt.plot(results[0])
-    # plt.yscale('log')
-    # plt.savefig("residual.png")
+        # output_file1 = model_file.replace("checkpt", f"test_{scene}").replace(".tar", ".txt")
+        os.makedirs("tests", exist_ok=True)
+        output_file = f"tests/{scene}.txt"
+        with open(output_file, 'w') as f:
+            f.write('')
+        # with open(output_file1, 'w') as f:
+        #     f.write('')
+        tests = Tests(model, solvers, 1e-6)
 
-################
-# Summary
-################
-# print('\nOn average\n')
-# if solvers['AMGCL']:
-#     print('AMGCL took', np.mean(results['amgcl_iters']), 'iters', np.mean(results['amgcl_time']), 's')
-# if solvers['IC']:
-#     print('IC took', np.mean(results['ic_iters']), 'iters', np.mean(results['ic_time']), 's')
-# if solvers['CG']:
-#     print('CG took', np.mean(results['cg_iters']), 'iters', np.mean(results['cg_time']), 's')
-# if solvers['MLPCG']:
-#     print('MLPCG took', np.mean(results['mlpcg_iters']), 'iters', np.mean(results['mlpcg_time']), 's')
-
+        #####
+        # avg_nn_time = []
+        # avg_or_time = []
+        # avg_others_time = []
+        #####
+        # results = tests.run_frames_avg_time(scene, shape, frames, output_file, avg_nn_time, avg_or_time, avg_others_time)
+        results = tests.run_frames_mlpcg(scene, shape, frames, output_file)
+    # print("Average time for NN", np.mean(avg_nn_time))
+    # print("Average time for OR", np.mean(avg_or_time))
+    # print("Average others", np.mean(avg_others_time))

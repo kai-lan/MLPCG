@@ -111,20 +111,6 @@ class SmallSMBlockTrans3D(BaseModel):
     def eval_forward(self, image, x, timer=None):
         return SMBlockTransFunction3D.inference(image, x, self.weight, self.bias, timer)
 
-class SmallSMBlock3DPY(BaseModel):
-    def __init__(self, num_imgs=3):
-        super().__init__()
-        self.KL = nn.Conv3d(num_imgs, 27, kernel_size=3, padding='same', bias=True)
-        self.reset_parameters(self.KL.weight, self.KL.bias)
-    def forward(self, image, x): # 1 x N x N x N, bs x 1 x N x N x N
-        K = self.KL(image) # 1 x N x N x N -> 27 x N x N x N
-        K = K.permute((1, 2, 3, 0)) # 27 x N x N x N -> N x N x N x 27
-        K = K.unflatten(3, (3, 3, 3)) # N x N x N x 27 -> N x N x N x 3 x 3 x 3
-        x = F.pad(x, (1, 1, 1, 1, 1, 1)) # bs x 1 x N x N x N -> bs x 1 x (N+2) x (N+2) x (N+2)
-        x = x.unfold(2, 3, 1).unfold(3, 3, 1).unfold(4, 3, 1) # bs x 1 x (N+2) x (N+2) x (N+2) -> bs x 1 x N x N x N x 3 x 3 x 3
-        y = (x * K).sum(dim=(-3, -2, -1)) # bs x 1 x N x N x N x 3 x 3 x 3, N x N x N x 3 x 3 x 3 -> bs x 1 x N x N x N
-        return y
-
 
 ######################
 # SM linear
@@ -181,14 +167,6 @@ class SmallLinearBlock3DNew(BaseModel):
     def eval_forward(self, image, timer=None):
         return SMLinearFunction3D.inference(image, self.weight, self.bias, timer)
 
-class SmallLinearBlock3DPY(BaseModel):
-    def __init__(self, num_imgs=3):
-        super().__init__()
-        self.KL = nn.Conv3d(num_imgs, 27, kernel_size=3, padding='same')
-        self.reset_parameters(self.KL.weight, self.KL.bias)
-    def forward(self, image):
-        K = self.KL(image) # num_imgs x N x N x N -> 27 x N x N x N
-        return K.mean()
 
 
 ######################
@@ -210,7 +188,14 @@ class SmallSMModelDn3D(BaseModel):
         self.c0 = nn.ModuleList([SmallLinearBlock3DNew(num_imgs) for _ in range(n)])
         self.c1 = nn.ModuleList([SmallLinearBlock3DNew(num_imgs) for _ in range(n)])
 
-    def eval_forward(self, image, b, timer, c0=[], c1=[]):
+    def eval_forward(self, image, b, timer, imgs=[], c0=[], c1=[]):
+        if imgs:
+            # imgs_cached = True
+            imgs_cached = False
+            imgs = [None for _ in range(self.n)]
+        else:
+            imgs_cached = False
+            imgs.extend([None for _ in range(self.n)])
         if c0:
             c0_cached = True
         else:
@@ -224,30 +209,32 @@ class SmallSMModelDn3D(BaseModel):
 
         timer.start('SM block')
         x = [self.pre[0].eval_forward(image, b, timer)]
-        imgs = [image]
+        if not imgs_cached:
+            imgs[0] = image
         torch.cuda.synchronize()
         timer.stop('SM block')
 
         for i in range(1, self.n):
             timer.start('Downsampling')
             x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
-            imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+            if not imgs_cached:
+                imgs[i] = F.avg_pool3d(imgs[i-1], (2, 2, 2))
             torch.cuda.synchronize()
             timer.stop('Downsampling')
 
             timer.start('SM block')
-            x[-1] = self.pre[i].eval_forward(imgs[-1], x[-1], timer)
+            x[-1] = self.pre[i].eval_forward(imgs[i], x[-1], timer)
             torch.cuda.synchronize()
             timer.stop('SM block')
 
         timer.start('Downsampling')
         x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
-        imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
+        fine_img = F.avg_pool3d(imgs[-1], (2, 2, 2))
         torch.cuda.synchronize()
         timer.stop('Downsampling')
 
         timer.start('SM block')
-        x[-1] = self.l.eval_forward(imgs[-1], x[-1], timer)
+        x[-1] = self.l.eval_forward(fine_img, x[-1], timer)
         torch.cuda.synchronize()
         timer.stop('SM block')
 
@@ -258,6 +245,7 @@ class SmallSMModelDn3D(BaseModel):
             timer.stop('Upsamping')
 
             timer.start('SM linear')
+
             if not c0_cached:
                 c0[i-1] = self.c0[i-1].eval_forward(imgs[i-1], timer)
             if not c1_cached:
@@ -311,37 +299,6 @@ class SmallSMModelDn3D(BaseModel):
                 x[i-1] = c0 * x[i-1] + c1 * x[i]
         return x[0]
 
-class SmallSMModelDn3DPY(BaseModel):
-    def __init__(self, n, num_imgs=3):
-        super().__init__()
-        self.n = n
-        self.pre = nn.ModuleList([SmallSMBlock3DPY(num_imgs) for _ in range(n)])
-        self.post = nn.ModuleList([SmallSMBlock3DPY(num_imgs) for _ in range(n)])
-
-        self.l = SmallSMBlock3DPY(num_imgs)
-
-        self.c0 = nn.ModuleList([SmallLinearBlock3DPY(num_imgs) for _ in range(n)])
-        self.c1 = nn.ModuleList([SmallLinearBlock3DPY(num_imgs) for _ in range(n)])
-
-    def forward(self, image, b):
-        x = [self.pre[0](image, b)]
-        imgs = [image]
-
-        for i in range(1, self.n):
-            x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
-            imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
-            x[-1] = self.pre[i](imgs[-1], x[-1])
-
-        x.append(F.avg_pool3d(x[-1], (2, 2, 2)))
-        imgs.append(F.avg_pool3d(imgs[-1], (2, 2, 2)))
-        x[-1] = self.l(imgs[-1], x[-1])
-
-        for i in range(self.n, 0, -1):
-            x[i] = F.interpolate(x[i], scale_factor=2)
-            x[i] = self.post[i-1](imgs[i-1], x[i])
-            x[i-1] = self.c0[i-1](imgs[i-1]) * x[i-1] + self.c1[i-1](imgs[i-1]) * x[i]
-
-        return x[0]
 
 ######################
 # SPD SM Model
@@ -501,6 +458,7 @@ class SmallSPDSMModelDn3D(BaseModel):
             x[i-1] = x[i-1] + x[i]
             x[i-1] = self.l0_t[i-1].eval_forward(imgs[i-1], x[i-1])
         return x[0]
+
 
 if __name__ == '__main__':
     import os, sys, time
