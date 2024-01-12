@@ -114,8 +114,8 @@ def loadData(outdir, suffix):
     return epoch, model_params, optim_params, list(training_loss), list(validation_loss), list(time_history), list(grad_history), list(update_history)
 
 if __name__ == '__main__':
-    # np.random.seed(0)
-    # torch.manual_seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
     # torch.backends.cudnn.deterministic = True
     # torch.backends.cudnn.benchmark = False
 
@@ -152,7 +152,7 @@ if __name__ == '__main__':
     num_imgs = 3
 
     if DIM == 2: num_levels = 6
-    else: num_levels = 4
+    else: num_levels = 3
 
     cuda = torch.device("cuda") # Use CUDA for training
 
@@ -164,7 +164,7 @@ if __name__ == '__main__':
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
     # suffix =  f'smoke_dambreak_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l3_spd_avg'
     # ep, model_params, optim_params, train_loss, valid_loss, time_history, grad_history, update_history = loadData(outdir, suffix)
-    suffix =  f'smoke_dambreak_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l4_spd_avg_new'
+    suffix =  f'smoke_dambreak_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l3_smallspd_avg'
 
     os.makedirs(outdir, exist_ok=True)
 
@@ -173,7 +173,7 @@ if __name__ == '__main__':
     if DIM == 2:
         model = SmallSMModelDn(num_levels, num_imgs)
     else:
-        model = SPDSMModelDn3D(num_levels)
+        model = SmallSPDSMModelDn3D(num_levels)
         # model = SmallSMModelDn3D(num_levels, num_imgs, "nearest")
 
     model.move_to(cuda)

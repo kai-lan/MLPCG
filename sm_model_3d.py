@@ -190,9 +190,7 @@ class SmallSMModelDn3D(BaseModel):
 
     def eval_forward(self, image, b, timer, imgs=[], c0=[], c1=[]):
         if imgs:
-            # imgs_cached = True
-            imgs_cached = False
-            imgs = [None for _ in range(self.n)]
+            imgs_cached = True
         else:
             imgs_cached = False
             imgs.extend([None for _ in range(self.n)])
@@ -288,7 +286,7 @@ class SmallSMModelDn3D(BaseModel):
         x[-1] = self.l(imgs[-1], x[-1])
 
         for i in range(self.n, 0, -1):
-            x[i] = F.interpolate(x[i], scale_factor=2, mode=self.mode)
+            x[i] = F.interpolate(x[i], scale_factor=2, mode=self.mode) / 8
             c0 = self.c0[i-1](imgs[i-1])
             c1 = self.c1[i-1](imgs[i-1])
             if self.swap_ord:
@@ -323,7 +321,7 @@ class SPDSMModelDn3D(BaseModel):
         self.c0 = nn.ModuleList([SmallLinearBlock3DNew() for _ in range(n)])
         self.c1 = nn.ModuleList([SmallLinearBlock3DNew() for _ in range(n)])
 
-    def eval_forward(self, image, b, timer=None, c0=[], c1=[]):
+    def eval_forward(self, image, b, timer=None, imgs=[], c0=[], c1=[]):
         x = [self.l0[0].eval_forward(image, b)]
         imgs = [image]
         c0, c1 = [], []
@@ -337,7 +335,7 @@ class SPDSMModelDn3D(BaseModel):
         x[-1] = self.l.eval_forward(imgs[-1], x[-1])
 
         for i in range(self.n, 0, -1):
-            x[i] = F.interpolate(x[i], scale_factor=2) / 8
+            x[i] = F.interpolate(x[i], scale_factor=2)
             c0.insert(0, self.c0[i-1].eval_forward(imgs[i-1]))
             c1.insert(0, self.c1[i-1].eval_forward(imgs[i-1]))
             x[i] = self.l1[i-1].eval_forward(imgs[i-1], x[i])
@@ -348,7 +346,7 @@ class SPDSMModelDn3D(BaseModel):
         x = [b]
         for i in range(self.n):
             x.append(self.l1_t[i].eval_forward(imgs[i], x[i]))
-            x[-1] = F.avg_pool3d(x[-1], (2, 2, 2))
+            x[-1] = F.avg_pool3d(x[-1], (2, 2, 2)) * 8
 
         x[-1] = self.l_t.eval_forward(imgs[-1], x[-1])
 
@@ -431,12 +429,12 @@ class SmallSPDSMModelDn3D(BaseModel):
             x[i] = F.interpolate(x[i], scale_factor=2) / 8
             c0.insert(0, self.c0[i-1](imgs[i-1]))
             c1.insert(0, self.c1[i-1](imgs[i-1]))
-            # x[i-1] = c0[0]**2 * x[i-1] + c1[0]**2 * x[i]
-            x[i-1] = x[i-1] + x[i]
+            x[i-1] = c0[0]**2 * x[i-1] + c1[0]**2 * x[i]
+            # x[i-1] = x[i-1] + x[i]
             x[i-1] = self.l0_t[i-1](imgs[i-1], x[i-1])
         return x[0]
 
-    def eval_forward(self, image, b, timer=None, c0=[], c1=[]):
+    def eval_forward(self, image, b, timer=None, imgs=[], c0=[], c1=[]):
         x = [self.l0[0].eval_forward(image, b)]
         imgs = [image]
         c0, c1 = [], []
@@ -453,9 +451,9 @@ class SmallSPDSMModelDn3D(BaseModel):
             x[i] = F.interpolate(x[i], scale_factor=2) / 8
             c0.insert(0, self.c0[i-1].eval_forward(imgs[i-1]))
             c1.insert(0, self.c1[i-1].eval_forward(imgs[i-1]))
-            # x[i-1] = c0[0]**2 * x[i-1] + c1[0]**2 * x[i]
+            x[i-1] = c0[0]**2 * x[i-1] + c1[0]**2 * x[i]
 
-            x[i-1] = x[i-1] + x[i]
+            # x[i-1] = x[i-1] + x[i]
             x[i-1] = self.l0_t[i-1].eval_forward(imgs[i-1], x[i-1])
         return x[0]
 
