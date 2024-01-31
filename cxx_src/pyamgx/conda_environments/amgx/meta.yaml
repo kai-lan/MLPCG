@@ -1,0 +1,21 @@
+package:
+  name: amgx
+  version: v2.1.0
+
+build:
+  script_env:
+    - CC
+    - CXX
+    - LD_LIBRARY_PATH
+
+source:
+  git_url: https://github.com/NVIDIA/AMGX
+  git_rev: v2.1.0
+
+requirements:
+  build:
+    - cmake
+  host:
+    - cudatoolkit
+  run:
+    - {{ pin_compatible('cudatoolkit', max_pin='x.x') }}
