@@ -286,7 +286,7 @@ class SmallSMModelDn3D(BaseModel):
         x[-1] = self.l(imgs[-1], x[-1])
 
         for i in range(self.n, 0, -1):
-            x[i] = F.interpolate(x[i], scale_factor=2, mode=self.mode) / 8
+            x[i] = F.interpolate(x[i], scale_factor=2, mode=self.mode)
             c0 = self.c0[i-1](imgs[i-1])
             c1 = self.c1[i-1](imgs[i-1])
             if self.swap_ord:
@@ -335,7 +335,7 @@ class SPDSMModelDn3D(BaseModel):
         x[-1] = self.l.eval_forward(imgs[-1], x[-1])
 
         for i in range(self.n, 0, -1):
-            x[i] = F.interpolate(x[i], scale_factor=2)
+            x[i] = F.interpolate(x[i], scale_factor=2) / 8
             c0.insert(0, self.c0[i-1].eval_forward(imgs[i-1]))
             c1.insert(0, self.c1[i-1].eval_forward(imgs[i-1]))
             x[i] = self.l1[i-1].eval_forward(imgs[i-1], x[i])
@@ -346,7 +346,7 @@ class SPDSMModelDn3D(BaseModel):
         x = [b]
         for i in range(self.n):
             x.append(self.l1_t[i].eval_forward(imgs[i], x[i]))
-            x[-1] = F.avg_pool3d(x[-1], (2, 2, 2)) * 8
+            x[-1] = F.avg_pool3d(x[-1], (2, 2, 2))
 
         x[-1] = self.l_t.eval_forward(imgs[-1], x[-1])
 

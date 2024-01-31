@@ -19,6 +19,8 @@ import cupyx.scipy.sparse as cpsp
 import cupyx.scipy.sparse.linalg as gslin # https://docs.cupy.dev/en/stable/reference/scipy_sparse_linalg.html#module-cupyx.scipy.sparse.linalg
 from cxx_src.build import pyamgcl, pyamgcl_cuda, pyamgcl_vexcl
 from cxx_src.build import pyic, pyic_cuda, pyic_vexcl
+sys.path.append("cxx_src/pyamgx")
+import pyamgx
 import time
 from global_clock import GlobalClock
 
@@ -73,7 +75,6 @@ def npcg(b, A, x_init, model_predict, max_it, tol=1e-10, atol=1e-12, verbose=Fal
         timer.stop('NN')
 
         timer.start('CG')
-        # z = r
         rz = r.dot(z)
         beta = rz / rz_old
         p = z + beta * p
@@ -331,6 +332,14 @@ def CG_GPU(b, A, x_init, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=
             callback(norm.item(), time.time() - tot_start)
     x, info = gslin.cg(A, b, x0=x_init, tol=tol, atol=atol, maxiter=max_it, callback=res_callback)
     return x, count
+
+def AMGX(b, A, x, sol, solver, max_it, tol=1e-10, atol=1e-10):
+    t0 = time.time()
+    solver.setup(A)
+    solver.solve(b, x)
+    t1 = time.time()
+    x.download(sol)
+    return sol, t1-t0
 
 def AMGCL(b_comp, A_comp, x_init, max_it, tol=1e-10, atol=1e-10, verbose=False, callback=None):
     x_comp, info = pyamgcl.solve(A_comp, b_comp, tol, atol, max_it, verbose)
