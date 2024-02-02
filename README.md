@@ -41,6 +41,15 @@ Inside the project folder, unzip it, and you should expect the following files:
 data/dambreak_pillars_N128_N256_200_3D/div_v_star_200.bin
 data/dambreak_pillars_N128_N256_200_3D/A_200.bin
 data/dambreak_pillars_N128_N256_200_3D/flags_200.bin
+data/smoke_bunny_N256_200_3D/div_v_star_200.bin
+data/smoke_bunny_N256_200_3D/A_200.bin
+data/smoke_bunny_N256_200_3D/flags_200.bin
+data/smoke_solid_N128_200_3D/div_v_star_200.bin
+data/smoke_solid_N128_200_3D/A_200.bin
+data/smoke_solid_N128_200_3D/flags_200.bin
+data/waterflow_ball_N256_200_3D/div_v_star_200.bin
+data/waterflow_ball_N256_200_3D/A_200.bin
+data/waterflow_ball_N256_200_3D/flags_200.bin
 output/output_3D_128/checkpt_mixedBCs_M11_ritz1600_rhs800_l5_trilinear_25.tar
 output/output_3D_128/checkpt_mixedBCs_M11_ritz1600_rhs800_l4_trilinear_62.tar
 ```

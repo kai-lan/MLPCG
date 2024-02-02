@@ -359,7 +359,7 @@ num_mat = 11
 num_ritz = 1600
 num_rhs = 800
 num_imgs = 3
-num_levels = 4 # depth of the network, l
+num_levels = 4 # depth of the network - 1
 
 for scene, shape in bcs:
 
