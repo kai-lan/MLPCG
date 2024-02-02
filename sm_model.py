@@ -30,7 +30,7 @@ class SMBlockFunction(torch.autograd.Function):
             torch.cuda.synchronize()
             timer.stop('Padding')
         if timer: timer.start('Forward')
-        y, = smblock.forward(image, x, weights, bias) # TODO implement inference
+        y, = smblock.forward(image, x, weights, bias)
         if timer:
             torch.cuda.synchronize()
             timer.stop('Forward')

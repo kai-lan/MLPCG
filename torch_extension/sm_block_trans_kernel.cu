@@ -36,11 +36,9 @@ __global__ void sm_block_trans_cuda_forward_kernel(
   #pragma unroll
   for (int k = 0; k <= 2; ++k) {
     int ii = i + 1 - k;
-    // int ii = i + k - 1;
     if (ii < 0 || ii >= N1) continue;
     for (int l = 0; l <= 2; ++l) {
       int jj = j + 1 - l;
-      // int jj = j + l - 1;
       if (jj < 0 || jj >= N2) continue;
       int p = 3 * k + l;
       scalar_t K_ij = BIAS[p];
@@ -49,13 +47,10 @@ __global__ void sm_block_trans_cuda_forward_kernel(
         for (int m = 0; m <= 2; ++m) {
           for (int n = 0; n <= 2; ++n) {
             K_ij += WEIGHT[3*(3*(NUM_IMAGES*p+s)+m)+n] * image[s][ii+m][jj+n];
-            // K_ij += WEIGHT[3*(3*(NUM_IMAGES*p+s)+m)+n] * image[s][i+m][j+n];
           }
         }
       }
       zz += K_ij * x[c][0][ii+1][jj+1];
-      // scalar_t val = K_ij * x[c][0][i+1][j+1];
-      // atomicAdd(&y[c][0][ii][jj], val);
     }
   }
   y[c][0][i][j] = zz;
@@ -104,7 +99,6 @@ __global__ void sm_block_trans_cuda_dwdb_fast_kernel(
       tid -= I_Size;
       int iy = tid % width;
       int ix = tid / width;
-      // i + k - 1 = 0, 1, ..., N-1
       int ii = i + ix - 1, jj = j + iy - 1;
       if (ii < 0 || ii >= N1 || jj < 0 || jj >= N2)
         OUT[ix][iy] = 0.0;

@@ -145,7 +145,7 @@ class Tests:
                 solver(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
 
             total_time = 0.0
-            steps = 3
+            steps = 5
             for _ in range(steps):
                 start_time = time.perf_counter()
                 solver(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
@@ -157,7 +157,7 @@ class Tests:
             x_mlpcg, iters, timer, res = solver(rhs, A, torch.zeros_like(rhs), predict, self.max_mlpcg_iters, tol=self.rel_tol)
 
             print(f"MLPCG took", total_time, 's after', iters, f"iterations to {res}")
-            # timer.report()
+            timer.report()
             out += f", {iters:^4}, {total_time:>6.4f}"
             if i == 0: title += f", {'ML':>4}, {'':>6}"
             if output is not None:
@@ -346,8 +346,7 @@ DIM = 3
 N = 128
 N2 = 256
 device = torch.device('cuda')
-# frames = np.linspace(1, 200, 10, dtype=int)
-frames = range(3, 201)
+frames = range(200, 201)
 
 bcs = [
     # (f'standing_pool_scooping_N{N}_200_3D', (N,)*DIM),
@@ -357,9 +356,9 @@ bcs = [
     # (f'waterflow_spiky_torus_N{N}_200_3D', (N,)*DIM),
     # (f'waterflow_spiky_torus_N{N2}_200_3D', (N2,)*DIM),
     # (f'waterflow_ball_N{N}_200_3D', (N,)*DIM),
-    # (f'waterflow_ball_N{N2}_200_3D', (N2,)*DIM),
+    (f'waterflow_ball_N{N2}_200_3D', (N2,)*DIM),
     # (f'smoke_solid_N{N}_200_3D', (N,)*DIM),
-    (f'smoke_solid_N{N2}_200_3D', (N2,)*DIM),
+    # (f'smoke_solid_N{N2}_200_3D', (N2,)*DIM),
     # (f'smoke_bunny_N{N}_200_3D', (N,)*DIM),
     # (f'smoke_bunny_N{N2}_200_3D', (N2,)*DIM)
 ]
@@ -372,7 +371,7 @@ num_imgs = 3
 num_levels = 5
 
 for scene, shape in bcs:
-    for i in range(21, 22):
+    for i in range(25, 26):
         # print('i', i)
         model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l5_trilinear_{i}.tar")
         # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_30.tar")

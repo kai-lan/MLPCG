@@ -61,7 +61,6 @@ __global__ void sm_block_trans_3d_cuda_inference_kernel(
               for (int mn = 0; mn <= 2; ++mn) {
                 int cc = iijj+mn;
                 if (cc < 0 || cc > N3+1) continue;
-                // z += (WEIGHT[3*(3*(3*(NUM_IMAGES*p+s)+m)+n)+mn] * I[s][i-glob_i+k+m][j-glob_j+l+n][ij-glob_ij+kl+mn]);
                 z += (WEIGHT[3*(3*(3*(NUM_IMAGES*p+s)+m)+n)+mn] * image[s][aa][bb][cc]);
               }
             }
@@ -169,74 +168,6 @@ __global__ void sm_block_trans_3d_cuda_forward_kernel(
   }
   y[c][0][i][j][ij] = zz;
 } // forward kernel
-
-
-
-// template <typename scalar_t>
-// __global__ void sm_block_trans_3d_cuda_forward_kernel(
-//     const torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> image, // num_imgs, N, N
-//     const torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> x, // bs, 1, N, N
-//     torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> y,
-//     const int B, const int N1, const int N2, const int N3) { // bs, 1, N, N, N
-
-//   const scalar_t *WEIGHT = (const scalar_t *)(WEIGHT_BYTES);
-//   const scalar_t *BIAS = (const scalar_t *)(BIAS_BYTES);
-
-//   int threadId = blockIdx.x * blockDim.x + threadIdx.x;
-//   if (threadId >= B*N1*N2*N3) return;
-//   const int ij = threadId % N3;
-//   threadId /= N3;
-//   const int j = threadId % N2;
-//   threadId /= N2;
-//   const int i = threadId % N1;
-//   const int c = threadId / N1;
-
-//   const scalar_t xx = x[c][0][i+1][j+1][ij+1];
-
-//   scalar_t zz = 0.0;
-//   for (int k = 0; k <= 2; ++k) {
-//     // int ii = i + 1 - k;
-//     int ii = i + k - 1;
-//     // int alpha = i+k;
-//     if (ii < 0 || ii >= N1) continue;
-//     for (int l = 0; l <= 2; ++l) {
-//       // int jj = j + 1 - l;
-//       int jj = j + l - 1;
-//       // int beta = j+l;
-//       if (jj < 0 || jj >= N2) continue;
-//       for (int kl = 0; kl <= 2; ++kl) {
-//         // int iijj = ij + 1 - kl;
-//         int iijj = ij + kl - 1;
-//         // int gamma = ij+kl;
-//         if (iijj < 0 || iijj >= N3) continue;
-//         // int p = 3 * (3 * (2-k) + (2-l)) + (2-kl);
-//         int p = 3 * (3 * k + l) + kl;
-//         scalar_t K_ij = BIAS[p];
-//         for (int s = 0; s < NUM_IMAGES; ++s) {
-//           for (int m = 0; m <= 2; ++m) {
-//             // int aa = ii+m;
-//             int aa = i+m;
-//             for (int n = 0; n <= 2; ++n) {
-//               // int bb = jj+n;
-//               int bb = j+n;
-//               for (int mn = 0; mn <=2; ++mn) {
-//                 // int cc = iijj+mn;
-//                 int cc = ij+mn;
-//                 K_ij += WEIGHT[3*(3*(3*(NUM_IMAGES*p+s)+m)+n)+mn] * image[s][aa][bb][cc];
-//               }
-//             }
-//           }
-//         }
-//         // zz += K_ij * x[c][0][alpha][beta][gamma];
-//         // zz += K_ij * x[c][0][ii+1][jj+1][iijj+1];
-//         scalar_t val = K_ij * xx;
-//         atomicAdd(&y[c][0][ii][jj][iijj], val);
-//       }
-//     }
-//   }
-//   // y[c][0][i][j][ij] = zz;
-
-// } // forward kernel
 
 template <typename scalar_t>
 __global__ void sm_block_trans_3d_cuda_dwdb_fast_kernel(
@@ -434,13 +365,11 @@ __global__ void sm_block_trans_3d_cuda_dx_kernel(
             for (int n = 0; n <= 2; ++n) {
               for (int mn = 0; mn <= 2; ++mn) {
                 z += WEIGHT[3*(3*(3*(NUM_IMAGES*idx_kl+s)+m)+n)+mn] * I[s][m][n][ij-glob_ij+mn];
-                // z += WEIGHT[3*(3*(3*(NUM_IMAGES*idx_kl+s)+m)+n)+mn] * image[s][i+m][j+n][ij+mn];
               }
             }
           }
         }
         zz += z * X[c-glob_c][k][l][ij-glob_ij+kl];
-        // zz += z * grad_output[c][0][ii][jj][iijj];
       }
     }
   }

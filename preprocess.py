@@ -16,8 +16,6 @@ num_imgs = 3
 device = torch.device("cpu")
 
 matrices = np.linspace(10, 200, 10, dtype=int)[5:]
-# matrices = np.linspace(12, 188, 9, dtype=int)
-# matrices = [122, 144]
 scenes = [
     # f'dambreak_N{N}',
     # f'dambreak_hill_N{N}',

@@ -12,3 +12,4 @@ __*
 */*.egg-info
 cxx_src/test_data
 tests*
+*.pdf

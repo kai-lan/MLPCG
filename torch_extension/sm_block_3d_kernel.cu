@@ -318,7 +318,6 @@ __global__ void sm_block_3d_cuda_dx_kernel(
           }
         }
         zz += z * X[c-glob_c][2-k][2-l][ij-glob_ij+2-kl];
-        // zz += z * grad_output[c][0][ii][jj][iijj];
       }
     }
   }

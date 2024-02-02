@@ -143,17 +143,6 @@ class SMLinearFunction3D(torch.autograd.Function):
         grad_w, grad_b, = smlinear3d.backward(grad_output, y)
         return None, grad_w, grad_b
 
-# class SmallLinearBlock3D(BaseModel):
-#     def __init__(self, num_imgs=3):
-#         super().__init__()
-#         self.weight = nn.Parameter(torch.ones(27, num_imgs, 3, 3, 3))
-#         self.bias = nn.Parameter(torch.ones(27))
-#         self.reset_parameters(self.weight, self.bias)
-#     def forward(self, image):
-#         return SMLinearFunction3D.apply(image, self.weight, self.bias)
-#     def eval_forward(self, image, timer=None):
-#         return SMLinearFunction3D.inference(image, self.weight, self.bias, timer)
-
 class SmallLinearBlock3DNew(BaseModel):
     def __init__(self, num_imgs=3):
         super().__init__()
@@ -298,9 +287,9 @@ class SmallSMModelDn3D(BaseModel):
         return x[0]
 
 
-######################
-# SPD SM Model
-######################
+####################################
+# SPD SM Model (Symmetric model 1)
+####################################
 class SPDSMModelDn3D(BaseModel):
     def __init__(self, n):
         super().__init__()
@@ -393,9 +382,9 @@ class SPDSMModelDn3D(BaseModel):
 
         return x[0]
 
-####################
-# Reduced SPD model
-####################
+##########################################
+# Reduced SPD model (Symmetric model 2)
+##########################################
 class SmallSPDSMModelDn3D(BaseModel):
     def __init__(self, n):
         super().__init__()
@@ -430,7 +419,6 @@ class SmallSPDSMModelDn3D(BaseModel):
             c0.insert(0, self.c0[i-1](imgs[i-1]))
             c1.insert(0, self.c1[i-1](imgs[i-1]))
             x[i-1] = c0[0]**2 * x[i-1] + c1[0]**2 * x[i]
-            # x[i-1] = x[i-1] + x[i]
             x[i-1] = self.l0_t[i-1](imgs[i-1], x[i-1])
         return x[0]
 
@@ -452,8 +440,6 @@ class SmallSPDSMModelDn3D(BaseModel):
             c0.insert(0, self.c0[i-1].eval_forward(imgs[i-1]))
             c1.insert(0, self.c1[i-1].eval_forward(imgs[i-1]))
             x[i-1] = c0[0]**2 * x[i-1] + c1[0]**2 * x[i]
-
-            # x[i-1] = x[i-1] + x[i]
             x[i-1] = self.l0_t[i-1].eval_forward(imgs[i-1], x[i-1])
         return x[0]
 

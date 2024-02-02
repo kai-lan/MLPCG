@@ -2,8 +2,6 @@
 File: datasetcreate.py
 File Created: Saturday, 25th February 2023 1:27:07 am
 
-Author: Kai Lan (kai.weixian.lan@gmail.com)
-
 Create Ritz vectors (approximated eigenvectors) for training.
 https://en.wikipedia.org/wiki/Lanczos_algorithm suggested the reduced number of vectors
 should be selected to be approximately 1.5 times the number of accurate eigenvalues desired.
@@ -123,10 +121,7 @@ num_ritz_vectors = 1600
 
 if __name__ == '__main__':
     t0 = time.time()
-    # total_work = np.linspace(1, 200, 10, dtype=int)
-    # total_work = np.linspace(12, 188, 9, dtype=int)[4:7]
     total_work = np.linspace(10, 200, 10, dtype=int)[5:]
-    # total_work = [136, 178, 94]
 
     num_threads = len(total_work)
 

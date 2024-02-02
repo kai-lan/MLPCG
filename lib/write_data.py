@@ -2,8 +2,6 @@
 File: write_data.py
 File Created: Thursday, 5th January 2023 1:11:21 am
 
-Author: Kai Lan (kai.weixian.lan@gmail.com)
-Last Modified: Thursday, 5th January 2023 1:13:18 am
 --------------
 '''
 import struct

@@ -2,8 +2,6 @@
 File: discrete_laplacian.py
 File Created: Wednesday, 4th January 2023 12:42:01 am
 
-Author: Kai Lan (kai.weixian.lan@gmail.com)
-Part of the code was modified from 2022 Fall MAT 228A HW.
 --------------
 '''
 import numpy as np

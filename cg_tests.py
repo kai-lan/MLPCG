@@ -2,7 +2,6 @@
 File: cg_tests.py
 File Created: Wednesday, 8th February 2023 10:14:25 pm
 
-Author: Kai Lan (kai.weixian.lan@gmail.com)
 --------------
 '''
 import sys, os

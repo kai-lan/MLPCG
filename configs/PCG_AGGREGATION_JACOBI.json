@@ -28,7 +28,7 @@
             "cycle": "V"
         },
         "solver": "PCG",
-        "print_solve_stats": 0,
+        "print_solve_stats": 1,
         "obtain_timings": 1,
         "max_iters": 1000,
         "monitor_residual": 1,
