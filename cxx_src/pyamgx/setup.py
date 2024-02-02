@@ -6,13 +6,9 @@ import subprocess
 import sys
 import numpy
 
-#AMGX_DIR = os.environ.get('AMGX_DIR')
-#AMGX_BUILD_DIR = os.environ.get('AMGX_BUILD_DIR')
-key = 'AMGX_DIR'
-AMGX_DIR = os.getenv(key)
-key2 = 'AMGX_BUILD_DIR'
-AMGX_BUILD_DIR = os.getenv(key2)
-
+CURRENT_PATH = os.path.dirname(os.path.realpath(__file__))
+AMGX_DIR = os.path.join(CURRENT_PATH, "..", "AMGX")
+AMGX_BUILD_DIR = os.path.join(CURRENT_PATH, "..", "AMGX", "build")
 
 if sys.platform == "win32":
     lib_name = 'amgxsh.dll'
@@ -36,8 +32,8 @@ else:
         if lib_name in files:
             lib_path = root
             break
-    else:
-        raise RuntimeError(f'Cannot locate {lib_name} under "{AMGX_BUILD_DIR}".')
+        else:
+            raise RuntimeError(f'Cannot locate {lib_name} under "{AMGX_BUILD_DIR}".')
 
     AMGX_lib_dirs = [lib_path]
     AMGX_include_dirs = [
