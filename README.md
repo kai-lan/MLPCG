@@ -1,3 +1,6 @@
+> [!NOTE]
+> For running tests for our paper, please direct to `icml2024` branch.
+
 # MLPCG
 
 Machine Learned Preconditioned Conjugate Gradient (MLPCG) methods invents a compact linear neural network that approximate an inverse of a discrete Poisson matrix, and is used as a preconditioner for solving the Poisson equations. The Poisson equations arise from fluid simulation, where both fluid and solid object are present in the domain.
