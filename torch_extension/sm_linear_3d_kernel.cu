@@ -183,7 +183,7 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_inference(
         locationsPerBlock);
   }));
   y /= N1*N2*N3;
-  auto y_sum = weights.ravel().dot(y.ravel()) + bias;
+  auto y_sum = weights.flatten().dot(y.flatten()) + bias;
   // auto y_sum = (weights.flatten(1).matmul(y.flatten())).mean() + bias.mean();
   return {y_sum, y};
 }
@@ -222,7 +222,7 @@ std::vector<torch::Tensor> sm_linear_3d_cuda_forward(
         locationsPerBlock);
   }));
   y /= N1*N2*N3;
-  auto y_sum = weights.ravel().dot(y.ravel()) + bias;
+  auto y_sum = weights.flatten().dot(y.flatten()) + bias;
   return {y_sum, y};
 }
 

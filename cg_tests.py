@@ -19,7 +19,7 @@ import cupyx.scipy.sparse.linalg as gslin # https://docs.cupy.dev/en/stable/refe
 from cxx_src.build import pyamgcl, pyamgcl_cuda, pyamgcl_vexcl
 from cxx_src.build import pyic, pyic_cuda, pyic_vexcl
 sys.path.append("cxx_src/pyamgx")
-import pyamgx
+# import pyamgx
 import time
 from global_clock import GlobalClock
 

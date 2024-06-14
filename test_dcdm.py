@@ -4,7 +4,7 @@ sys.path.append('lib')
 from lib.read_data import *
 import struct
 import numpy as np
-import scipy.sparse as sparse
+import scipy.sparse as spa
 from tensorflow import keras
 from tensorflow.keras import layers
 import tensorflow as tf
@@ -133,17 +133,18 @@ gpus = tf.config.list_physical_devices('GPU')
 
 print(gpus)
 
-N = 256
+N = 128
 N2 = N**3
 dim = N+2
 dim2 = dim**3
-frames = range(100, 101)
+frames = [45]
 max_it = 100
 tol = 1e-6
 
 
 # scene = f"waterflow_ball_N{N}_200_3D"
-scene = f"smoke_solid_N{N}_200_3D"
+# scene = f"smoke_solid_N{N}_200_3D"
+scene = "mantaflow"
 data_dir = f"data/{scene}"
 
 
@@ -173,13 +174,20 @@ def model_predict(r):
         x = tf.cast(x, tf.float64)
     return x
 
-output_file = f"output/output_3D_{N}/dcdm_{scene}.txt"
+output_file = f"tests/{scene}.txt"
 for frame in frames:
-    b = load_vector(f"{data_dir}/div_v_star_{frame}.bin")
-    A = readA_sparse(f"{data_dir}/A_{frame}.bin",'d', shape=None)
-    flags = read_flags(f"{data_dir}/flags_{frame}.bin")
-    fluid_cells = np.where(flags==FLUID)[0]
-    compressed = len(b) < N2
+    A = spa.load_npz(f"{data_dir}/A_{frame}.npz")
+    b = np.load(f"{data_dir}/div_v_star_{frame}.npy")
+    flags = np.load(f"{data_dir}/flags_{frame}.npy")
+    flags = np.where(flags==2, SOLID, FLUID)
+    fluid_cells = np.argwhere(flags == FLUID).ravel()
+
+    # b = load_vector(f"{data_dir}/div_v_star_{frame}.bin")
+    # A = readA_sparse(f"{data_dir}/A_{frame}.bin",'d', shape=None)
+    # flags = read_flags(f"{data_dir}/flags_{frame}.bin")
+    # fluid_cells = np.where(flags==FLUID)[0]
+    # compressed = len(b) < N2
+    compressed = False
 
     b = tf.convert_to_tensor(b, dtype=tf.float64)
     b /= tf.norm(b)
@@ -191,5 +199,6 @@ for frame in frames:
     x_sol, res_arr, time_arr = dcdm(A, b, tf.zeros_like(b), model_predict, 600,tol, True)
     time_dcdm = time.time() - t0
     print("DCDM took ",time_dcdm, " secs")
-    with open(output_file, 'a') as f:
-        f.write(f"{frame:>4}, {len(res_arr):>4}, {time_dcdm:>4.3f}\n")
+    with open(output_file, 'w') as f:
+        for res, time in zip(res_arr, time_arr):
+            f.write(f"{res:^8.4}, {time:>8.4}\n")

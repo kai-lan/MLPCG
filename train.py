@@ -14,6 +14,7 @@ from lib.dataset import *
 from lib.GLOBAL_VARS import *
 from lib.global_clock import GlobalClock
 from model import *
+from old_model import *
 # from sm_model import *
 from sm_model_3d import *
 from loss_functions import residual_loss
@@ -58,7 +59,7 @@ def train_(image, A, fluid_cells, epoch_num, train_loader, validation_loader, mo
 
 
     for i in range(1, epoch_num+1):
-        for ii, data in enumerate(train_loader, 1):
+        for ii, data in enumerate(tqdm(train_loader), 1):
             # data = data.to(A.device)
             x_pred = model(image, data)
             x_pred = x_pred.squeeze(dim=1).flatten(1)[:, fluid_cells] # (bs, 1, N, N) -> (bs, N, N) -> (bs, N*N) -> (bs, fluid_part)
@@ -156,22 +157,22 @@ if __name__ == '__main__':
     N = 128
     DIM = 3
     lr = 0.0001
-    epoch_num_per_matrix = 5
-    epoch_num = 100
+    epoch_num_per_matrix = 1
+    epoch_num = 1000
     epochs_per_save = 5
     shape = (1,)+(N,)*DIM
     bcs = [
-        (f'dambreak_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        (f'dambreak_hill_N{N}_N{N*2}',     (N*2,)+(N,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
-        (f'dambreak_dragons_N{N}_N{N*2}',  (N*2,)+(N,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
-        (f'ball_cube_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'ball_bowl_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'standing_rotating_blade_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        (f'waterflow_pool_N{N}',            (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        (f'waterflow_panels_N{N}',          (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        (f'smoke_moving_donuts_N{N}',       (N,)*DIM,               np.linspace(10, 200, 10, dtype=int))
+        # (f'dambreak_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+        # (f'dambreak_hill_N{N}_N{N*2}',     (N*2,)+(N,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
+        # (f'dambreak_dragons_N{N}_N{N*2}',  (N*2,)+(N,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
+        # (f'ball_cube_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        # (f'ball_bowl_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        # (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        # (f'standing_rotating_blade_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+        (f'waterflow_pool_N{N}',            (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[-1:]),
+        # (f'waterflow_panels_N{N}',          (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        # (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        # (f'smoke_moving_donuts_N{N}',       (N,)*DIM,               np.linspace(10, 200, 10, dtype=int))
     ]
     bc = 'mixedBCs11'
     b_size = 128
@@ -195,7 +196,7 @@ if __name__ == '__main__':
 
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
 
-    suffix =  f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l4_spd'
+    suffix =  f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l4_cnnmodel1_nearest'
 
     os.makedirs(outdir, exist_ok=True)
 
@@ -204,8 +205,9 @@ if __name__ == '__main__':
     if DIM == 2:
         model = SmallSMModelDn(num_levels, num_imgs)
     else:
-        model = SPDSMModelDn3D(num_levels)
+        # model = SPDSMModelDn3D(num_levels)
         # model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear")
+        model = CNNModel1(n=num_levels, N=N, interpolation_mode='nearest') # 64 dambreak used nearest neighbor
 
     model.move_to(cuda)
     loss_fn = residual_loss
@@ -213,7 +215,8 @@ if __name__ == '__main__':
     # transfer_weights_from_old_model(outdir, f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l3_trilinear', model)
 
     # optimizer = optim.Adam(create_param_groups_from_old_model(num_levels-1, model), lr=lr)
-    optimizer = optim.Adam(create_param_groups(model), lr=lr)
+    # optimizer = optim.Adam(create_param_groups(model), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
 
 
     if resume:
@@ -278,7 +281,7 @@ if __name__ == '__main__':
         time_history.append(time.time() - start_time)
 
         saveData(model, optimizer, i, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
-        # if i % 5 == 0:
+        # # if i % 5 == 0:
         saveData(model, optimizer, i, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
 
     end_time = time.time()

@@ -1,10 +1,12 @@
 import os
 import torch
+import scipy.sparse as spa
 from cg_tests import *
 import cupyx.scipy.sparse as cpsp
 from cupyx.profiler import benchmark as cuda_benchmark
 import torch.utils.benchmark as torch_benchmark
 from model import *
+from old_model import *
 from sm_model_3d import *
 from lib.read_data import *
 from lib.discrete_laplacian import *
@@ -33,7 +35,7 @@ class Tests:
         self.max_cg_iters = 2000
         self.max_amg_iters = 100
         self.max_ic_iters = 500
-        self.max_mlpcg_iters = 200
+        self.max_mlpcg_iters = 100
         self.rel_tol = rel_tol
 
     def model_predict(self, model, image, fluid_cells):
@@ -261,23 +263,36 @@ class Tests:
             res_profile = []
             time_profile = []
             print("Testing frame", frame, "scene", scene)
-            if running_bunny:
-                A_sp = readA_sparse(os.path.join(scene_path, f"A_1.bin")).astype(np.float64)
-            else:
-                A_sp = readA_sparse(os.path.join(scene_path, f"A_{frame}.bin")).astype(np.float64)
-            rhs_sp = load_vector(os.path.join(scene_path, f"div_v_star_{frame}.bin")).astype(np.float64)
-            if running_bunny:
-                flags_sp = read_flags(os.path.join(scene_path, f"flags_1.bin"))
-            else:
-                flags_sp = read_flags(os.path.join(scene_path, f"flags_{frame}.bin"))
+
+            ## TODO
+            # if running_bunny:
+            #     A_sp = readA_sparse(os.path.join(scene_path, f"A_1.bin")).astype(np.float64)
+            # else:
+            #     A_sp = readA_sparse(os.path.join(scene_path, f"A_{frame}.bin")).astype(np.float64)
+            # if running_bunny:
+            #     flags_sp = read_flags(os.path.join(scene_path, f"flags_1.bin"))
+            # else:
+            #     flags_sp = read_flags(os.path.join(scene_path, f"flags_{frame}.bin"))
+
+            # rhs_sp = load_vector(os.path.join(scene_path, f"div_v_star_{frame}.bin")).astype(np.float64)
+            # fluid_cells = np.argwhere(flags_sp == FLUID).ravel()
+            # # compressed A and rhs
+            # if len(rhs_sp) == np.prod(shape):
+            #     A_comp = compressedMat(A_sp, flags_sp)
+            #     rhs_comp = compressedVec(rhs_sp, flags_sp)
+            # else:
+            #     A_comp = A_sp
+            #     rhs_comp = rhs_sp
+
+            # TODO
+
+            A_sp = spa.load_npz(f"{scene_path}/A_{frame}.npz")
+            rhs_sp = np.load(f"{scene_path}/div_v_star_{frame}.npy")
+            flags_sp = np.load(f"{scene_path}/flags_{frame}.npy")
+            flags_sp = np.where(flags_sp==2, SOLID, FLUID)
             fluid_cells = np.argwhere(flags_sp == FLUID).ravel()
-            # compressed A and rhs
-            if len(rhs_sp) == np.prod(shape):
-                A_comp = compressedMat(A_sp, flags_sp)
-                rhs_comp = compressedVec(rhs_sp, flags_sp)
-            else:
-                A_comp = A_sp
-                rhs_comp = rhs_sp
+            A_comp = compressedMat(A_sp, flags_sp)
+            rhs_comp = compressedVec(rhs_sp, flags_sp)
 
             if self.solvers['AMGCL']:
                 x_amgcl, (iters_amgcl, tot_time, res_amgcl) = AMGCL_CUDA(rhs_comp, A_comp, np.zeros_like(rhs_comp), self.max_cg_iters, tol=self.rel_tol, verbose=True)
@@ -326,7 +341,8 @@ class Tests:
                 with open(output, 'a') as f:
                     for res, time in zip(res_profile, time_profile):
                         f.write(f"{res:<8.4}, {time:>8.4}\n")
-
+            # np.save("rebuttal_cg_res.npy", res_profile)
+            # np.save("rebuttal_cg_time.npy", time_profile)
             # all_res_profile.append(res_profile)
             # key_map[str(frame)] = all_res_profile[i]
         # np.savez(f"tests/residual_{scene}.npz", **key_map)
@@ -346,7 +362,7 @@ DIM = 3
 N = 128
 N2 = 256
 device = torch.device('cuda')
-frames = range(200, 201)
+frames = range(45, 46)
 
 bcs = [
     # (f'standing_pool_scooping_N{N}_200_3D', (N,)*DIM),
@@ -356,11 +372,14 @@ bcs = [
     # (f'waterflow_spiky_torus_N{N}_200_3D', (N,)*DIM),
     # (f'waterflow_spiky_torus_N{N2}_200_3D', (N2,)*DIM),
     # (f'waterflow_ball_N{N}_200_3D', (N,)*DIM),
-    (f'waterflow_ball_N{N2}_200_3D', (N2,)*DIM),
+    # (f'waterflow_ball_N{N2}_200_3D', (N2,)*DIM),
     # (f'smoke_solid_N{N}_200_3D', (N,)*DIM),
     # (f'smoke_solid_N{N2}_200_3D', (N2,)*DIM),
     # (f'smoke_bunny_N{N}_200_3D', (N,)*DIM),
     # (f'smoke_bunny_N{N2}_200_3D', (N2,)*DIM)
+    # (f'waterflow_pool_N{N}_200_3D', (N,)*DIM),
+    # ('dambreak_N64_200_3D', (64,)*3)
+    ('mantaflow', (128,)*3)
 ]
 
 NN = 128
@@ -373,13 +392,17 @@ num_levels = 5
 for scene, shape in bcs:
     for i in range(25, 26):
         # print('i', i)
+        # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_smoke_dambreak_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l5_trilinear_{i}.tar")
+        # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l4_smmodel.tar")
+        # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l4.tar")
         model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_l5_trilinear_{i}.tar")
         # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", f"checkpt_mixedBCs_M{num_mat}_ritz{num_ritz}_rhs{num_rhs}_imgs{num_imgs}_lr0.0001_30.tar")
         # model_file = os.path.join(OUT_PATH, f"output_{DIM}D_{NN}", "checkpt_smoke_dambreak_M1_ritz1600_rhs768_l3_100.tar")
         # model = SPDSMModelDn3D(num_levels)
-        # model = SmallSMModelDn3D(num_levels, num_imgs, 'trilinear')
+        model = SmallSMModelDn3D(num_levels, num_imgs, 'trilinear')
+        # model = CNNModel1(n=num_levels, N=NN)
 
-        # state_dict = torch.load(model_file, map_location=device)['model_state_dict']
+        state_dict = torch.load(model_file, map_location=device)['model_state_dict']
 
         # for i in range(num_levels):
         #     state_dict[f'c0.{i}.bias'] = state_dict[f'c0.{i}.bias'].mean(dim=0, keepdim=True)
@@ -387,9 +410,9 @@ for scene, shape in bcs:
         #     state_dict[f'c0.{i}.weight'] = state_dict[f'c0.{i}.weight'].mean(dim=0, keepdim=True)
         #     state_dict[f'c1.{i}.weight'] = state_dict[f'c1.{i}.weight'].mean(dim=0, keepdim=True)
 
-        # model.load_state_dict(state_dict)
-        # model = model.to(device)
-        # model.eval()
+        model.load_state_dict(state_dict)
+        model = model.to(device)
+        model.eval()
 
         # output_file1 = model_file.replace("checkpt", f"test_{scene}").replace(".tar", ".txt")
         os.makedirs("tests", exist_ok=True)
@@ -398,7 +421,7 @@ for scene, shape in bcs:
             f.write('')
         # with open(output_file1, 'w') as f:
         #     f.write('')
-        model = None
+        # model = None
         tests = Tests(model, solvers, 1e-6)
 
         #####
@@ -407,7 +430,7 @@ for scene, shape in bcs:
         # avg_others_time = []
         #####
         # results = tests.run_frames_avg_time(scene, shape, frames, output_file, avg_nn_time, avg_or_time, avg_others_time)
-        results = tests.run_frames_amgx(scene, shape, frames, output_file) #, solver='npsd')
+        results = tests.profile_scene(scene, shape, frames, output_file, solver='npsd')
     # print("Average time for NN", np.mean(avg_nn_time))
     # print("Average time for OR", np.mean(avg_or_time))
     # print("Average others", np.mean(avg_others_time))
