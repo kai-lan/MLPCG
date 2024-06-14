@@ -1,6 +1,8 @@
-# A Neural-preconditioned Poisson Solver for Mixed Dirichlet and Neumann Boundary Conditions
+# A Neural-preconditioned Poisson Solver for Mixed Dirichlet and Neumann Boundary Conditions (ICML 2024)
 
-This is the codebase for our paper.
+This is the codebase for our paper: https://arxiv.org/abs/2310.00177.
+
+Here is an intro video about our project: https://youtu.be/Z1fQoe66YN0?si=5oYr5FdXSeEK4lk-.
 
 
 ## Requirements and dependencies
