@@ -1,4 +1,5 @@
 # A Neural-preconditioned Poisson Solver for Mixed Dirichlet and Neumann Boundary Conditions (ICML 2024)
+![feature picture](feature.png)
 
 This is the codebase for our paper: https://arxiv.org/abs/2310.00177.
 
