@@ -181,7 +181,8 @@ if __name__ == '__main__':
         num_matrices[i:] += len(bcs[i][-1])
 
     num_ritz = 1600
-    num_rhs = 640+128 # number of ritz vectors for training for each matrix
+    # num_rhs = 640+128 # number of ritz vectors for training for each matrix
+    num_rhs = 800
     kernel_size = 3 # kernel size
     num_imgs = 3
 
@@ -195,7 +196,7 @@ if __name__ == '__main__':
 
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
 
-    suffix =  f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l4_spd'
+    suffix =  f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l{num_levels}_test'
 
     os.makedirs(outdir, exist_ok=True)
 
@@ -204,8 +205,8 @@ if __name__ == '__main__':
     if DIM == 2:
         model = SmallSMModelDn(num_levels, num_imgs)
     else:
-        model = SPDSMModelDn3D(num_levels)
-        # model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear")
+        # model = SPDSMModelDn3D(num_levels)
+        model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear")
 
     model.move_to(cuda)
     loss_fn = residual_loss
@@ -213,7 +214,8 @@ if __name__ == '__main__':
     # transfer_weights_from_old_model(outdir, f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l3_trilinear', model)
 
     # optimizer = optim.Adam(create_param_groups_from_old_model(num_levels-1, model), lr=lr)
-    optimizer = optim.Adam(create_param_groups(model), lr=lr)
+    # optimizer = optim.Adam(create_param_groups(model), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
 
 
     if resume:
