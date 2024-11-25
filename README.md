@@ -1,58 +1,64 @@
-> [!NOTE]
-> For running tests for our paper, please direct to `icml2024` branch.
+# A Neural-preconditioned Poisson Solver for Mixed Dirichlet and Neumann Boundary Conditions (ICML 2024)
+![feature picture](feature.png)
 
-# MLPCG
+This is the codebase for our paper: https://arxiv.org/abs/2310.00177.
 
-Machine Learned Preconditioned Conjugate Gradient (MLPCG) methods invents a compact linear neural network that approximate an inverse of a discrete Poisson matrix, and is used as a preconditioner for solving the Poisson equations. The Poisson equations arise from fluid simulation, where both fluid and solid object are present in the domain.
-This project studies machine learning approach to accelerate the pressure Poisson solver in fluid simulations. Previous related work include [DeepGradient](https://arxiv.org/pdf/2205.10763.pdf) and [FluidNet](https://arxiv.org/pdf/1607.03597.pdf).
+Here is an intro video about our project: https://youtu.be/Z1fQoe66YN0?si=5oYr5FdXSeEK4lk-.
 
 
 ## Requirements and dependencies
-* Python
-* Pytorch: > 2.0
-* AMGCL: https://github.com/ddemidov/amgcl
-    * Boost: required by AMGCL
-We recommend using virtual environment such as conda.
+* Python.
+* [Pytorch](https://pytorch.org/get-started/locally/) > 2.0.
+* [CUDA Tookit](https://developer.nvidia.com/cuda-downloads) required.
+* [Boost](https://www.boost.org/): required by AMGCL
+* `git submodule update --init --recursive` should register the following submodules in `cxx_src` folder:
+    * [AMGCL](https://github.com/ddemidov/amgcl).
+    * [AMGX](https://github.com/NVIDIA/AMGX).
+    * [VexCL](https://github.com/ddemidov/vexcl).
+    * [PyBind11](https://github.com/pybind/pybind11).
 
-### Training dataset
+* Download [eigen 3.4](https://eigen.tuxfamily.org/index.php?title=Main_Page) into the project folder, and name it `eigen-3.4.0`.
+* [CuPy](https://cupy.dev/) for CUDA implementation of CG.
+* [SciPy](https://scipy.org/) for linear algebra support.
+* [Ninja](https://ninja-build.org/) required to load Torch C++ extension.
 
+We recommend using a virtual environment such as `conda`.
 
-#### For developers
----
-
-The dataset can be generated from [tgsl](https://gitlab.com/teran-group/tgsl). Inside the `projects/incompressible_flow`.
-
-The output includes `*.bgeo` files for visualization in Houdini, `flags_*.bin` for integer-valued images, `div_v_star_*.bin` rhs for pressure equation, `pressure_*.bin` solution, `A_*.bin` sparse matrix.
-
-Your data should has the following path:
+# Setup
+In order to test `AMGCL` or `IC`, you need to do the following inside `cxx_src` folder, :
 ```
-{PROJECT_FOLDER}/data/{scene}/{A_*.bin, div_v_star_*.bin, flags_*.bin, pressure_*.bin, *.bgeo}
-{PROJECT_FOLDER}/data/{scene}/preprocessed/{rhs.pt, A.pt, fluid_cells.pt, b_*.pt}
+    mkdir build && cd build
+    cmake .. -GNinja
+    ninja
 ```
-
-To generate ritz vectors, modify and run `lib/create_dataset.py`. To generate training rhs, modify and run `preprocess.py`.
-
-#### For users
----
-Download the corresponding data from [here](https://drive.google.com/drive/folders/1q1D5LJmQqfNcJUDj5x3tC5cpIyRoSyGR?usp=drive_link). For 3D 256 training, we use the following data:
+In order to test `AMGX`, follow the instructions on [here](https://github.com/NVIDIA/AMGX) to build the project. Then inside `cxx_src/pyamgx`, run
 ```
-dambreak_N256_200_3D
-dambreak_hill_N128_N256_200_3D
-dambreak_dragons_N128_N256_200_3D
-ball_cube_N256_200_3D
-ball_bowl_N256_200_3D
-standing_dipping_block_N256_200_3D
-standing_rotating_blade_N256_200_3D
-waterflow_pool_N256_200_3D
-waterflow_panels_N256_200_3D
-waterflow_rotating_cube_N256_200_3D
+pip install .
 ```
 
-The ritz vectors (`ritz_1600.npy`) have been generated for you inside `preprocessed` folder except for `dambreak_hill_N128_N256_200_3D`, which includes all the `*.pt` vectors ready.
+## Testing
+Download test data and trained model from [here](https://drive.google.com/file/d/1HvPYeFbw34-esAd6Lk5LaQu4w2DuFUMq/view?usp=drive_link).
 
-A trained model is also included in `trained_model` folder. Download it and place it in `{PROJECT_DIR}/output/output_3D_256`.
+Inside the project folder, unzip it, and you should expect the following files:
+```
+data/dambreak_pillars_N128_N256_200_3D/div_v_star_200.bin
+data/dambreak_pillars_N128_N256_200_3D/A_200.bin
+data/dambreak_pillars_N128_N256_200_3D/flags_200.bin
+data/smoke_bunny_N256_200_3D/div_v_star_200.bin
+data/smoke_bunny_N256_200_3D/A_200.bin
+data/smoke_bunny_N256_200_3D/flags_200.bin
+data/smoke_solid_N128_200_3D/div_v_star_200.bin
+data/smoke_solid_N128_200_3D/A_200.bin
+data/smoke_solid_N128_200_3D/flags_200.bin
+data/waterflow_ball_N256_200_3D/div_v_star_200.bin
+data/waterflow_ball_N256_200_3D/A_200.bin
+data/waterflow_ball_N256_200_3D/flags_200.bin
+output/output_3D_128/checkpt_mixedBCs_M11_ritz1600_rhs800_l5_trilinear_25.tar
+output/output_3D_128/checkpt_mixedBCs_M11_ritz1600_rhs800_l4_trilinear_62.tar
+```
 
-Run `python user_preprocess.py` to generate all the necessary `*.pt` files for training.
-
-Run `python user_train_256.py` for training. Adjust the batch size to maximize GPU usage.
-
+Run the test with
+```
+python test.py
+```
+The first time will be slow, as the PyTorch CUDA extension is compiled.

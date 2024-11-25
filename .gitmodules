@@ -8,3 +8,6 @@
 	path = cxx_src/pybind11
 	url = git@github.com:pybind/pybind11.git
 
+[submodule "cxx_src/AMGX"]
+	path = cxx_src/AMGX
+	url = git@github.com:NVIDIA/AMGX.git

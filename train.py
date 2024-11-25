@@ -182,7 +182,8 @@ if __name__ == '__main__':
         num_matrices[i:] += len(bcs[i][-1])
 
     num_ritz = 1600
-    num_rhs = 640+128 # number of ritz vectors for training for each matrix
+    # num_rhs = 640+128 # number of ritz vectors for training for each matrix
+    num_rhs = 800
     kernel_size = 3 # kernel size
     num_imgs = 3
 
@@ -196,7 +197,7 @@ if __name__ == '__main__':
 
     outdir = os.path.join(OUT_PATH, f"output_{DIM}D_{N}")
 
-    suffix =  f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l4_cnnmodel1_nearest'
+    suffix =  f'mixedBCs_M{len(bcs)}_ritz{num_ritz}_rhs{num_rhs}_l{num_levels}_test'
 
     os.makedirs(outdir, exist_ok=True)
 
@@ -206,8 +207,7 @@ if __name__ == '__main__':
         model = SmallSMModelDn(num_levels, num_imgs)
     else:
         # model = SPDSMModelDn3D(num_levels)
-        # model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear")
-        model = CNNModel1(n=num_levels, N=N, interpolation_mode='nearest') # 64 dambreak used nearest neighbor
+        model = SmallSMModelDn3D(num_levels, num_imgs, "trilinear")
 
     model.move_to(cuda)
     loss_fn = residual_loss
