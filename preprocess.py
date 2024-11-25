@@ -10,27 +10,25 @@ import warnings
 warnings.filterwarnings("ignore") # UserWarning: Sparse CSR tensor support is in beta state
 torch.set_grad_enabled(False)
 
+NUM_THREADS = 10
 DIM = 3
 N = 128
 num_imgs = 3
-device = torch.device("cpu")
+device = torch.device("cuda")
 
-matrices = np.linspace(10, 200, 10, dtype=int)[5:]
+
 scenes = [
-    # f'dambreak_N{N}',
-    # f'dambreak_hill_N{N}',
-    # f'dambreak_hill_N{N//2}_N{N}',
-    # f'dambreak_dragons_N{N//2}_N{N}',
-    # f'two_balls_N{N}',
-    # f'ball_cube_N{N}',
-    # f'ball_bowl_N{N}',
-    # f'standing_dipping_block_N{N}',
-    # f'standing_rotating_blade_N{N}',
-    # f'standing_scooping_N{N}',
-    # f'waterflow_pool_N{N}',
-    # f'waterflow_panels_N{N}',
-    # f'waterflow_rotating_cube_N{N}',
-    f"smoke_moving_donuts_N{N}"
+    (f'dambreak_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+    (f'dambreak_hill_N{N}_N{N*2}',     (N*2,)+(N,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
+    (f'dambreak_dragons_N{N}_N{N*2}',  (N*2,)+(N,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
+    (f'ball_cube_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+    (f'ball_bowl_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+    (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+    (f'standing_rotating_blade_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+    (f'waterflow_pool_N{N}',            (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+    (f'waterflow_panels_N{N}',          (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+    (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+    (f'smoke_moving_donuts_N{N}',       (N,)*DIM,               np.linspace(10, 200, 10, dtype=int))
 ]
 
 
@@ -60,57 +58,57 @@ def createTrainingData(N, DIM, ritz_vectors, sample_size, fluid_cells, outdir):
 
 
 
-def worker(indices):
+def worker(scene, frames):
     print('Process id', os.getpid())
-    for scene in scenes:
-        if DIM == 2:
-            data_folder = f"{DATA_PATH}/{scene}_200"
-        else:
-            data_folder = f"{DATA_PATH}/{scene}_200_{DIM}D"
-        for index in indices:
-            out_folder = f"{data_folder}/preprocessed/{index}"
-            os.makedirs(out_folder, exist_ok=True)
-            rhs_np = load_vector(os.path.join(data_folder, f"div_v_star_{index}.bin"))
-            flags_sp = read_flags(os.path.join(data_folder, f"flags_{index}.bin"))
-            flags_binary_sp = convert_to_binary_images(flags_sp, num_imgs)
+    if DIM == 2:
+        data_folder = f"{DATA_PATH}/{scene}_200"
+    else:
+        data_folder = f"{DATA_PATH}/{scene}_200_{DIM}D"
+    for frame in frames:
+        out_folder = f"{data_folder}/preprocessed/{frame}"
+        os.makedirs(out_folder, exist_ok=True)
+        rhs_np = load_vector(os.path.join(data_folder, f"div_v_star_{frame}.bin"))
+        flags_sp = read_flags(os.path.join(data_folder, f"flags_{frame}.bin"))
+        flags_binary_sp = convert_to_binary_images(flags_sp, num_imgs)
 
-            fluid_cells = np.where(flags_sp == 2)[0]
-            air_cells = np.where(flags_sp == 3)[0]
+        fluid_cells = np.where(flags_sp == 2)[0]
+        # air_cells = np.where(flags_sp == 3)[0]
 
-            np.save(f"{out_folder}/fluid_cells.npy", fluid_cells)
-            torch.save(torch.from_numpy(fluid_cells).to(device), os.path.join(out_folder, f"fluid_cells.pt"))
+        np.save(f"{out_folder}/fluid_cells.npy", fluid_cells)
+        torch.save(torch.from_numpy(fluid_cells).to(device), os.path.join(out_folder, f"fluid_cells.pt"))
 
-            A_sp = readA_sparse(os.path.join(data_folder, f"A_{index}.bin"), sparse_type='csr')
+        A_sp = readA_sparse(os.path.join(data_folder, f"A_{frame}.bin"), sparse_type='csr')
 
-            A_sp = compressedMat(A_sp, flags_sp)
+        A_sp = compressedMat(A_sp, flags_sp)
 
-            A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float32, device=device).to_sparse_csc()
-            torch.save(A, os.path.join(out_folder, f"A.pt"))
+        A = torch.sparse_csr_tensor(A_sp.indptr, A_sp.indices, A_sp.data, A_sp.shape, dtype=torch.float32, device=device).to_sparse_csc()
+        torch.save(A, os.path.join(out_folder, f"A.pt"))
 
 
-            flags_binary = torch.tensor(flags_binary_sp, dtype=torch.float32, device=device)
-            torch.save(flags_binary, os.path.join(out_folder, f"flags_binary_{num_imgs}.pt"))
+        flags_binary = torch.tensor(flags_binary_sp, dtype=torch.float32, device=device)
+        torch.save(flags_binary, os.path.join(out_folder, f"flags_binary_{num_imgs}.pt"))
 
-            rhs_np = compressedVec(rhs_np, flags_sp)
+        rhs_np = compressedVec(rhs_np, flags_sp)
 
-            rhs = torch.tensor(rhs_np, dtype=torch.float32, device=device)
-            torch.save(rhs, os.path.join(out_folder, f"rhs.pt"))
+        rhs = torch.tensor(rhs_np, dtype=torch.float32, device=device)
+        torch.save(rhs, os.path.join(out_folder, f"rhs.pt"))
 
-            ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}.npy")
+        ritz_vec = np.load(f"{out_folder}/ritz_{num_ritz_vectors}.npy")
 
-            createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder)
+        createTrainingData(N, DIM, ritz_vec, num_rhs, fluid_cells, out_folder)
 
 
 if __name__ == '__main__':
     t0 = time.time()
-    total_work = matrices
-    num_threads = len(total_work)
-    chunks = np.array_split(total_work, num_threads)
-    thread_list = []
-    for thr in range(num_threads):
-        thread = Process(target=worker, args=(chunks[thr],))
-        thread_list.append(thread)
-        thread_list[thr].start()
-    for thread in thread_list:
-        thread.join()
-    print('Total time', time.time() - t0, 's')
+    for scene in scenes:
+        name, shape, total_work = scene
+        num_threads = min(len(total_work), NUM_THREADS)
+        chunks = np.array_split(total_work, num_threads)
+        thread_list = []
+        for thr in range(num_threads):
+            thread = Process(target=worker, args=(name, chunks[thr],))
+            thread_list.append(thread)
+            thread_list[thr].start()
+        for thread in thread_list:
+            thread.join()
+    print('Total time', time.time() - t0)

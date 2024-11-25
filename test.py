@@ -6,7 +6,7 @@ import cupyx.scipy.sparse as cpsp
 from cupyx.profiler import benchmark as cuda_benchmark
 import torch.utils.benchmark as torch_benchmark
 from model import *
-from old_model import *
+# from old_model import *
 from sm_model_3d import *
 from lib.read_data import *
 from lib.discrete_laplacian import *
@@ -259,8 +259,12 @@ class Tests:
             rhs_sp = load_vector(os.path.join(scene_path, f"div_v_star_{frame}.bin")).astype(np.float64)
             flags_sp = read_flags(os.path.join(scene_path, f"flags_{frame}.bin"))
             fluid_cells = np.argwhere(flags_sp == FLUID).ravel()
-            A_comp = compressedMat(A_sp, flags_sp)
-            rhs_comp = compressedVec(rhs_sp, flags_sp)
+            if len(rhs_sp) == np.prod(shape):
+                A_comp = compressedMat(A_sp, flags_sp)
+                rhs_comp = compressedVec(rhs_sp, flags_sp)
+            else:
+                A_comp = A_sp
+                rhs_comp = rhs_sp
 
             if self.solvers['AMGCL']:
                 x_amgcl, (iters_amgcl, tot_time, res_amgcl) = AMGCL_CUDA(rhs_comp, A_comp, np.zeros_like(rhs_comp), self.max_cg_iters, tol=self.rel_tol, verbose=True)
@@ -333,7 +337,7 @@ solvers = {
         "MLPCG": True,
         "AMGCL": False,
         "IC": False,
-        "CG": False,
+        "CG": True,
         "AMGX": False
         }
 

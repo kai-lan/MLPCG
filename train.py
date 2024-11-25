@@ -14,7 +14,7 @@ from lib.dataset import *
 from lib.GLOBAL_VARS import *
 from lib.global_clock import GlobalClock
 from model import *
-from old_model import *
+# from old_model import *
 # from sm_model import *
 from sm_model_3d import *
 from loss_functions import residual_loss
@@ -157,22 +157,22 @@ if __name__ == '__main__':
     N = 128
     DIM = 3
     lr = 0.0001
-    epoch_num_per_matrix = 1
-    epoch_num = 1000
+    epoch_num_per_matrix = 5
+    epoch_num = 100
     epochs_per_save = 5
     shape = (1,)+(N,)*DIM
     bcs = [
-        # (f'dambreak_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        # (f'dambreak_hill_N{N}_N{N*2}',     (N*2,)+(N,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
-        # (f'dambreak_dragons_N{N}_N{N*2}',  (N*2,)+(N,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
-        # (f'ball_cube_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        # (f'ball_bowl_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        # (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        # (f'standing_rotating_blade_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
-        (f'waterflow_pool_N{N}',            (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[-1:]),
-        # (f'waterflow_panels_N{N}',          (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        # (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
-        # (f'smoke_moving_donuts_N{N}',       (N,)*DIM,               np.linspace(10, 200, 10, dtype=int))
+        (f'dambreak_N{N}',                  (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+        (f'dambreak_hill_N{N}_N{N*2}',     (N*2,)+(N,)*(DIM-1),   np.linspace(1, 200, 10, dtype=int)),
+        (f'dambreak_dragons_N{N}_N{N*2}',  (N*2,)+(N,)*(DIM-1),    [1, 6, 10, 15, 21, 35, 44, 58, 81, 101, 162, 188]),
+        (f'ball_cube_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        (f'ball_bowl_N{N}',                 (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        (f'standing_dipping_block_N{N}',    (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        (f'standing_rotating_blade_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)),
+        (f'waterflow_pool_N{N}',            (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        (f'waterflow_panels_N{N}',          (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        (f'waterflow_rotating_cube_N{N}',   (N,)*DIM,               np.linspace(1, 200, 10, dtype=int)[1:]),
+        (f'smoke_moving_donuts_N{N}',       (N,)*DIM,               np.linspace(10, 200, 10, dtype=int))
     ]
     bc = 'mixedBCs11'
     b_size = 128
@@ -182,8 +182,8 @@ if __name__ == '__main__':
         num_matrices[i:] += len(bcs[i][-1])
 
     num_ritz = 1600
-    # num_rhs = 640+128 # number of ritz vectors for training for each matrix
-    num_rhs = 800
+    num_rhs = 640+128 # number of ritz vectors for training for each matrix
+    # num_rhs = 800
     kernel_size = 3 # kernel size
     num_imgs = 3
 
@@ -281,8 +281,8 @@ if __name__ == '__main__':
         time_history.append(time.time() - start_time)
 
         saveData(model, optimizer, i, log, outdir, suffix, train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
-        # # if i % 5 == 0:
-        saveData(model, optimizer, i, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
+        if i % epochs_per_save == 0:
+            saveData(model, optimizer, i, log, outdir, suffix+f'_{i}', train_loss, valid_loss, time_history, grad_history, update_history, overwrite=(not resume))
 
     end_time = time.time()
     print("Took", end_time-start_time, 's')
